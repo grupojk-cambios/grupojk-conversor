@@ -1,0 +1,185 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg-color: #010E24;
+  --surface-color: #061934;
+  --surface-high: #102645;
+  --primary-color: #10B981;
+  --primary-glow: rgba(16, 185, 129, 0.2);
+  --secondary-color: #69F6B8;
+  --text-high: #FFFFFF;
+  --text-mid: #D8E3FB;
+  --text-low: #9EABC8;
+  --accent-gradient: linear-gradient(135deg, #10B981 0%, #06B77F 100%);
+  --glass-bg: rgba(6, 25, 52, 0.6);
+  --glass-border: rgba(158, 171, 200, 0.15);
+  --shadow-premium: 0 24px 48px rgba(0, 0, 0, 0.4);
+  --error-color: #FF716C;
+  --success-color: #69F6B8;
+  --header-height: 80px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-mid);
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Manrope', sans-serif;
+  color: var(--text-high);
+}
+
+/* Glassmorphism Classes */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 2rem;
+  box-shadow: var(--shadow-premium);
+}
+
+.card {
+  padding: 2rem;
+  transition: transform 0.3s ease, background 0.3s ease-in-out;
+}
+
+.card:hover {
+  transform: translateY(-8px);
+  background: var(--surface-high);
+}
+
+/* Specific Component Styles */
+.nav-link {
+  color: var(--text-low);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+.nav-link:hover, .nav-link.active {
+  color: var(--primary-color);
+}
+
+.btn-primary {
+  background: var(--accent-gradient);
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 2rem;
+  color: var(--bg-color);
+  font-weight: 700;
+  font-family: 'Manrope', sans-serif;
+  cursor: pointer;
+  transition: box-shadow 0.3s, transform 0.2s;
+  box-shadow: 0 0 0 transparent;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 25px var(--primary-glow);
+  transform: scale(1.02);
+}
+
+.input-field {
+  background: var(--bg-color);
+  border: 1px solid var(--glass-border);
+  padding: 1.2rem;
+  border-radius: 1.5rem;
+  color: white;
+  width: 100%;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.input-field:focus {
+  border-color: var(--primary-color);
+}
+
+/* Responsive Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Search and Filters */
+.search-container {
+  max-width: 400px;
+  width: 100%;
+  position: relative;
+}
+
+.search-input {
+  background: var(--surface-color);
+  border: 1px solid var(--glass-border);
+  padding: 0.8rem 1rem 0.8rem 3rem;
+  border-radius: 1rem;
+  color: white;
+  width: 100%;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.3s;
+}
+
+.search-input:focus {
+  border-color: var(--primary-color);
+  background: var(--surface-high);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.search-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+}
+
+/* Badges */
+.badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.badge-success { background: rgba(16, 185, 129, 0.1); color: var(--primary-color); }
+.badge-error { background: rgba(255, 113, 108, 0.1); color: var(--error-color); }
+
+/* Animations */
+@keyframes glow-pulse {
+  0% { box-shadow: 0 0 5px var(--primary-glow); }
+  50% { box-shadow: 0 0 20px var(--primary-glow); }
+  100% { box-shadow: 0 0 5px var(--primary-glow); }
+}
+
+.animate-glow {
+  animation: glow-pulse 2s infinite;
+}
+
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-color); }
+::-webkit-scrollbar-thumb { background: var(--surface-high); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
