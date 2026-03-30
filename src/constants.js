@@ -87,6 +87,11 @@ export function getFlagUrl(pais) {
     return 'https://flagcdn.com/w80/us.png';
   }
 
+  // Efectivo Venezuela: imagen personalizada con mapa y billetes
+  if (name.includes('EFECTIVO VENEZUELA') || name.includes('EFECTIVO VEN')) {
+    return './efectivo-venezuela.png';
+  }
+
   return `https://flagcdn.com/w80/${iso}.png`;
 }
 
