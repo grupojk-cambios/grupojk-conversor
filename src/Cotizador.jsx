@@ -7,6 +7,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
   const [search, setSearch] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [visibleHeight, setVisibleHeight] = useState(window.innerHeight)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600)
@@ -22,6 +23,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
     const handleVV = () => {
       const offset = window.innerHeight - vv.height - vv.offsetTop
       setKeyboardOffset(Math.max(0, offset))
+      setVisibleHeight(vv.height)
     }
     vv.addEventListener('resize', handleVV)
     vv.addEventListener('scroll', handleVV)
@@ -30,6 +32,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
       vv.removeEventListener('resize', handleVV)
       vv.removeEventListener('scroll', handleVV)
       setKeyboardOffset(0)
+      setVisibleHeight(window.innerHeight)
     }
   }, [open, isMobile])
 
@@ -39,7 +42,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
   )
 
   const renderList = () => (
-    <div style={{ maxHeight: isMobile ? '70vh' : '300px', overflowY: 'auto', padding: '0.4rem' }} className="custom-scroll">
+    <div style={{ flex: 1, overflowY: 'auto', padding: '0.4rem' }} className="custom-scroll">
       {filtered.map(p => (
         <div 
           key={p.id}
@@ -119,7 +122,10 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           
           <div 
             className={isMobile ? 'bottom-sheet' : ''} 
-            style={isMobile ? { bottom: `${keyboardOffset}px` } : {
+            style={isMobile ? { 
+              bottom: `${keyboardOffset}px`,
+              maxHeight: `${Math.min(visibleHeight * 0.9, visibleHeight - 20)}px`
+            } : {
               position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 1000,
               background: 'var(--surface-high)', backdropFilter: 'blur(30px)',
               border: '1px solid var(--glass-border)', borderRadius: '1.25rem',
