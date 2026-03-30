@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl } from './constants'
+import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag } from './constants'
 
 // Componente interno para selector de países con buscador responsivo
 function PaisSelector({ label, paises, selected, onSelect }) {
@@ -60,7 +60,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           <img 
             src={getFlagUrl(p)}
             alt={p.nombre}
-            style={{ width: '1.8rem', height: '1.2rem', objectFit: 'contain', borderRadius: '3px' }}
+            style={{ width: isCustomFlag(p) ? '2.5rem' : '1.8rem', height: isCustomFlag(p) ? '2.5rem' : '1.2rem', objectFit: 'contain', borderRadius: isCustomFlag(p) ? '0' : '3px' }}
           />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '1rem', fontWeight: selected?.id === p.id ? 700 : 500, color: 'white' }}>{p.nombre}</div>
@@ -103,7 +103,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           <img 
             src={getFlagUrl(selected)}
             alt={selected.nombre}
-            style={{ width: '1.6rem', height: '1.1rem', objectFit: 'contain', borderRadius: '3px' }}
+            style={{ width: isCustomFlag(selected) ? '2.2rem' : '1.6rem', height: isCustomFlag(selected) ? '2.2rem' : '1.1rem', objectFit: 'contain', borderRadius: isCustomFlag(selected) ? '0' : '3px' }}
           />
         ) : <span style={{fontSize: '1.2rem'}}>🌐</span>}
         <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: '1.05rem' }}>
@@ -643,7 +643,7 @@ export default function Cotizador() {
             <img 
               src={getFlagUrl(origen)}
               alt={origen.nombre}
-              style={{ width: '1.2rem', height: '0.9rem', objectFit: 'contain' }}
+              style={{ width: isCustomFlag(origen) ? '2rem' : '1.2rem', height: isCustomFlag(origen) ? '2rem' : '0.9rem', objectFit: 'contain' }}
             />
             <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-low)' }}>{origen.codigo}</span>
           </>
