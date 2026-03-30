@@ -182,6 +182,7 @@ export default function Cotizador() {
   const [tasaDisplay, setTasaDisplay] = useState({ base: '', valor: 0, unidad: '' })
   const [lastEdited, setLastEdited] = useState('enviar') // 'enviar' | 'recibir'
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
+  const [errorDismissed, setErrorDismissed] = useState(false)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600)
@@ -269,6 +270,8 @@ export default function Cotizador() {
     setOrigen(p)
     if (p) localStorage.setItem('jk_last_origen', p.id)
     
+    setErrorDismissed(false)
+
     // No permitir mismo país en ambos lados
     if (destino && destino.id === p.id) {
       setDestino(null)
@@ -281,6 +284,8 @@ export default function Cotizador() {
     setDestino(p)
     if (p) localStorage.setItem('jk_last_destino', p.id)
 
+    setErrorDismissed(false)
+
     if (origen && origen.id === p.id) {
       setOrigen(null)
       localStorage.removeItem('jk_last_origen')
@@ -292,6 +297,8 @@ export default function Cotizador() {
     const tempD = destino
     setOrigen(tempD)
     setDestino(tempO)
+
+    setErrorDismissed(false)
 
     if (tempD) localStorage.setItem('jk_last_origen', tempD.id)
     else localStorage.removeItem('jk_last_origen')
@@ -343,8 +350,57 @@ export default function Cotizador() {
 
       <div className="glass" style={{ padding: isMobile ? '1.5rem' : '2.5rem', marginBottom: '2rem' }}>
 
+        {/* Origen + Swap + Destino */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', 
+          gap: isMobile ? '0.75rem' : '1rem', 
+          alignItems: 'end', 
+          marginBottom: '2rem' 
+        }}>
+
+          {/* Origen */}
+          <PaisSelector 
+            label="País de Origen"
+            paises={paises}
+            selected={origen}
+            onSelect={handleOrigen}
+          />
+
+          {/* Botón intercambiar */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: isMobile ? '0.5rem 0' : '0' }}>
+            <button
+              onClick={intercambiar}
+              style={{
+                width: isMobile ? '100%' : '3.5rem', 
+                height: '3.5rem',
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.2)',
+                borderRadius: isMobile ? '1rem' : '50%',
+                cursor: 'pointer',
+                fontSize: '1.4rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.3s',
+                color: 'var(--primary-color)'
+              }}
+              className="swap-btn"
+              title="Intercambiar países"
+            >
+              {isMobile ? '⇅ Cambiar Dirección' : '⇄'}
+            </button>
+          </div>
+
+          {/* Destino */}
+          <PaisSelector 
+            label="País de Destino"
+            paises={paises}
+            selected={destino}
+            onSelect={handleDestino}
+          />
+        </div>
+
         {/* Montos */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
           {/* Monto a Enviar */}
           <div style={{ minWidth: '0' }}>
             <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -390,80 +446,100 @@ export default function Cotizador() {
           </div>
         </div>
 
-        {/* Origen + Swap + Destino */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', 
-          gap: isMobile ? '0.75rem' : '1rem', 
-          alignItems: 'end', 
-          marginBottom: '2.5rem' 
-        }}>
-
-          {/* Origen */}
-          <PaisSelector 
-            label="País de Origen"
-            paises={paises}
-            selected={origen}
-            onSelect={handleOrigen}
-          />
-
-          {/* Botón intercambiar */}
-          <div style={{ display: 'flex', justifyContent: 'center', padding: isMobile ? '0.5rem 0' : '0' }}>
-            <button
-              onClick={intercambiar}
-              style={{
-                width: isMobile ? '100%' : '3.5rem', 
-                height: '3.5rem',
-                background: 'rgba(16,185,129,0.08)',
-                border: '1px solid rgba(16,185,129,0.2)',
-                borderRadius: isMobile ? '1rem' : '50%',
-                cursor: 'pointer',
-                fontSize: '1.4rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.3s',
-                color: 'var(--primary-color)'
-              }}
-              className="swap-btn"
-              title="Intercambiar países"
-            >
-              {isMobile ? '⇅ Cambiar Dirección' : '⇄'}
-            </button>
-          </div>
-
-          {/* Destino */}
-          <PaisSelector 
-            label="País de Destino"
-            paises={paises}
-            selected={destino}
-            onSelect={handleDestino}
-          />
-        </div>
-
-        {/* MENSAJE DE NO DISPONIBLE */}
-        {origen && destino && !isDisponible && (
+        {/* MENSAJE DE NO DISPONIBLE EN LÍNEA TIPO BANNER (por si cierran el modal) */}
+        {origen && destino && !isDisponible && errorDismissed && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '1.5rem',
-            padding: '2rem',
-            textAlign: 'center',
-            marginBottom: '2.5rem',
-            animation: 'slideUp 0.6s ease-out'
+            borderRadius: '1rem',
+            padding: '1rem 1.5rem',
+            marginBottom: '2rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            animation: 'fadeIn 0.3s'
           }}>
-            <p style={{
-              fontSize: '1.3rem',
-              fontWeight: 700,
-              color: 'var(--error-color)',
-              marginBottom: '0.5rem',
-            }}>
-              ⚠️ Conversión no disponible por el momento
-            </p>
-            <p style={{ color: 'var(--text-low)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-              {getMotivoNoDisponible()}<br/>
-              <span style={{opacity: 0.6, fontSize: '0.8rem', display: 'inline-block', marginTop: '0.5rem'}}>
-                Por favor, intenta más tarde o contacta a nuestros asesores.
-              </span>
-            </p>
+            <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+            <div>
+              <p style={{ color: 'var(--error-color)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>Conversión no disponible</p>
+              <p style={{ color: 'var(--text-low)', fontSize: '0.85rem' }}>{getMotivoNoDisponible()}</p>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE NO DISPONIBLE */}
+        {origen && destino && !isDisponible && !errorDismissed && (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
+              animation: 'fadeIn 0.2s ease-out'
+            }}
+            onClick={() => setErrorDismissed(true)}
+          >
+            <div 
+              style={{
+                background: 'var(--surface-high)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '1.5rem',
+                padding: '2.5rem 2rem',
+                maxWidth: '400px',
+                width: '100%',
+                textAlign: 'center',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                animation: 'slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ 
+                fontSize: '3.5rem', 
+                marginBottom: '1rem',
+                display: 'inline-block'
+              }}>
+                ⚠️
+              </div>
+              <h3 style={{
+                fontSize: '1.4rem',
+                fontWeight: 800,
+                color: 'var(--error-color)',
+                marginBottom: '1rem',
+                lineHeight: 1.2
+              }}>
+                Conversión no disponible
+              </h3>
+              <p style={{ color: 'var(--text-mid)', fontSize: '1rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+                {getMotivoNoDisponible()}
+              </p>
+              
+              <button 
+                onClick={() => setErrorDismissed(true)}
+                style={{
+                  width: '100%',
+                  padding: '1.2rem',
+                  borderRadius: '1rem',
+                  border: 'none',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: 'var(--error-color)',
+                  fontWeight: 800,
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em'
+                }}
+                onMouseOver={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)'}
+                onMouseOut={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+              >
+                Entendido
+              </button>
+            </div>
           </div>
         )}
 
