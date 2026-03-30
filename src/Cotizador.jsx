@@ -6,12 +6,32 @@ function PaisSelector({ label, paises, selected, onSelect }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Detectar teclado virtual y subir la bottom sheet para que el buscador siempre sea visible
+  useEffect(() => {
+    if (!open || !isMobile) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const handleVV = () => {
+      const offset = window.innerHeight - vv.height - vv.offsetTop
+      setKeyboardOffset(Math.max(0, offset))
+    }
+    vv.addEventListener('resize', handleVV)
+    vv.addEventListener('scroll', handleVV)
+    handleVV()
+    return () => {
+      vv.removeEventListener('resize', handleVV)
+      vv.removeEventListener('scroll', handleVV)
+      setKeyboardOffset(0)
+    }
+  }, [open, isMobile])
 
   const filtered = paises.filter(p =>
     p.nombre.toLowerCase().includes(search.toLowerCase()) ||
@@ -99,7 +119,7 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           
           <div 
             className={isMobile ? 'bottom-sheet' : ''} 
-            style={isMobile ? {} : {
+            style={isMobile ? { bottom: `${keyboardOffset}px` } : {
               position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 1000,
               background: 'var(--surface-high)', backdropFilter: 'blur(30px)',
               border: '1px solid var(--glass-border)', borderRadius: '1.25rem',
@@ -324,20 +344,19 @@ export default function Cotizador() {
             <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
               Monto a Enviar
             </label>
-            <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', borderRadius: '0.85rem', overflow: 'hidden', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.04)', opacity: isDisponible ? 1 : 0.5 }}>
               {origen && (
-                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.85rem' }}>
+                <span style={{ padding: '0 0.9rem', borderRight: '1px solid var(--glass-border)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {origen.codigo}
                 </span>
               )}
               <input
                 type="number"
-                className="input-field"
                 value={monto || ''}
                 min="0"
                 disabled={!isDisponible}
                 onChange={e => handleMontoEnviarChange(e.target.value)}
-                style={{ paddingLeft: '3.5rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, paddingRight: '1rem', opacity: isDisponible ? 1 : 0.5 }}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
               />
             </div>
           </div>
@@ -347,20 +366,19 @@ export default function Cotizador() {
             <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
               Monto a Recibir
             </label>
-            <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', borderRadius: '0.85rem', overflow: 'hidden', border: '1px solid rgba(255, 113, 108, 0.35)', background: 'rgba(255,255,255,0.04)', opacity: isDisponible ? 1 : 0.5 }}>
               {destino && (
-                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--error-color)', fontWeight: 800, fontSize: '0.85rem' }}>
+                <span style={{ padding: '0 0.9rem', borderRight: '1px solid rgba(255,113,108,0.3)', color: 'var(--error-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {destino.codigo}
                 </span>
               )}
               <input
                 type="number"
-                className="input-field"
                 value={montoRecibir || ''}
                 min="0"
                 disabled={!isDisponible}
                 onChange={e => handleMontoRecibirChange(e.target.value)}
-                style={{ paddingLeft: '3.5rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, paddingRight: '1rem', border: '1px solid rgba(255, 113, 108, 0.3)', opacity: isDisponible ? 1 : 0.5 }}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
               />
             </div>
           </div>
