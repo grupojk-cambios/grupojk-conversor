@@ -1,20 +1,64 @@
 import { useState, useEffect } from 'react'
 import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl } from './constants'
 
-// Componente interno para selector de países con buscador
+// Componente interno para selector de países con buscador responsivo
 function PaisSelector({ label, paises, selected, onSelect }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 600)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const filtered = paises.filter(p =>
     p.nombre.toLowerCase().includes(search.toLowerCase()) ||
     p.codigo.toLowerCase().includes(search.toLowerCase())
   )
 
-  // Cerrar al hacer clic fuera (simplificado con un backdrop invisible)
+  const renderList = () => (
+    <div style={{ maxHeight: isMobile ? '70vh' : '300px', overflowY: 'auto', padding: '0.4rem' }} className="custom-scroll">
+      {filtered.map(p => (
+        <div 
+          key={p.id}
+          onClick={() => { onSelect(p.id); setOpen(false); setSearch(''); }}
+          style={{
+            padding: '1rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '0.8rem',
+            borderRadius: '0.7rem',
+            background: selected?.id === p.id ? 'rgba(16,185,129,0.15)' : 'transparent',
+            transition: 'all 0.2s',
+            marginBottom: '4px'
+          }}
+          className="selector-item"
+        >
+          <img 
+            src={getFlagUrl(p)}
+            alt={p.nombre}
+            style={{ width: '1.8rem', height: '1.2rem', objectFit: 'contain', borderRadius: '3px' }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '1rem', fontWeight: selected?.id === p.id ? 700 : 500, color: 'white' }}>{p.nombre}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-low)', textTransform: 'uppercase' }}>{p.moneda}</div>
+          </div>
+          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary-color)', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
+            {p.codigo}
+          </span>
+        </div>
+      ))}
+      {filtered.length === 0 && (
+        <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-low)', fontSize: '0.9rem' }}>
+          No encontramos "{search}" 🔍
+        </div>
+      )}
+    </div>
+  )
+
   return (
-    <div style={{ position: 'relative', minWidth: '0' }}>
-      <label style={{ display: 'block', fontSize: '0.8rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+    <div style={{ position: 'relative', width: '100%' }}>
+      <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>
         {label}
       </label>
       <div 
@@ -24,88 +68,78 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           cursor: 'pointer', 
           display: 'flex', 
           alignItems: 'center', 
-          gap: '0.5rem',
-          height: '3.5rem',
-          padding: '0 1rem',
+          gap: '0.75rem',
+          height: '3.8rem',
+          padding: '0 1.25rem',
           border: open ? '1px solid var(--primary-color)' : '1px solid var(--glass-border)',
-          transition: 'all 0.3s'
+          background: 'rgba(255,255,255,0.03)',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       >
         {selected ? (
           <img 
             src={getFlagUrl(selected)}
             alt={selected.nombre}
-            style={{ width: '1.4rem', height: '1rem', objectFit: 'contain', borderRadius: '2px' }}
+            style={{ width: '1.6rem', height: '1.1rem', objectFit: 'contain', borderRadius: '3px' }}
           />
-        ) : '🌐'}
-        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
-          {selected ? `${selected.nombre} (${selected.codigo})` : 'Seleccionar...'}
+        ) : <span style={{fontSize: '1.2rem'}}>🌐</span>}
+        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, fontSize: '1.05rem' }}>
+          {selected ? selected.nombre : 'Elije un país...'}
         </span>
-        <span style={{ fontSize: '0.8rem', opacity: 0.5, transition: 'transform 0.3s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+        <span style={{ fontSize: '0.7rem', opacity: 0.6, transition: 'transform 0.4s', transform: open ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
       </div>
 
       {open && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
-          <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-            background: 'var(--glass-bg)', backdropFilter: 'blur(20px)',
-            border: '1px solid var(--glass-border)', borderRadius: '1rem',
-            marginTop: '0.5rem', overflow: 'hidden',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            <div style={{ padding: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}>
-              <input 
-                autoFocus
-                type="text"
-                placeholder="🔍 Buscar país o ISO..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  width: '100%', padding: '0.7rem 1rem', background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.15)', borderRadius: '0.75rem',
-                  color: 'white', outline: 'none', fontSize: '0.9rem'
-                }}
-              />
-            </div>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', padding: '0.4rem' }} className="custom-scroll">
-              {filtered.map(p => (
-                <div 
-                  key={p.id}
-                  onClick={() => { onSelect(p.id); setOpen(false); setSearch(''); }}
+          <div 
+            className="mobile-overlay" 
+            onClick={() => { setOpen(false); setSearch(''); }} 
+            style={{ display: isMobile ? 'block' : 'none' }}
+          />
+          
+          <div 
+            className={isMobile ? 'bottom-sheet' : ''} 
+            style={isMobile ? {} : {
+              position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 1000,
+              background: 'var(--surface-high)', backdropFilter: 'blur(30px)',
+              border: '1px solid var(--glass-border)', borderRadius: '1.25rem',
+              overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              animation: 'fadeIn 0.2s ease-out'
+            }}
+          >
+            {isMobile && <div className="bottom-sheet-header" />}
+            
+            <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ position: 'relative' }}>
+                <input 
+                  autoFocus
+                  type="text"
+                  placeholder="Escribe el nombre o código..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onClick={e => e.stopPropagation()}
                   style={{
-                    padding: '0.8rem 1rem', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.8rem',
-                    borderRadius: '0.7rem',
-                    background: selected?.id === p.id ? 'rgba(16,185,129,0.15)' : 'transparent',
-                    transition: 'all 0.2s',
-                    marginBottom: '2px'
+                    width: '100%', padding: '1rem 1rem 1rem 3rem', background: 'rgba(0,0,0,0.2)',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem',
+                    color: 'white', outline: 'none', fontSize: '1rem'
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                  onMouseLeave={e => e.currentTarget.style.background = selected?.id === p.id ? 'rgba(16,185,129,0.15)' : 'transparent'}
-                >
-                  <img 
-                    src={getFlagUrl(p)}
-                    alt={p.nombre}
-                    style={{ width: '1.4rem', height: '1rem', objectFit: 'contain', borderRadius: '2px' }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: selected?.id === p.id ? 700 : 400 }}>{p.nombre}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-low)', textTransform: 'uppercase' }}>{p.moneda}</div>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary-color)', opacity: 0.8, background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.5rem', borderRadius: '0.4rem', fontFamily: 'monospace' }}>
-                    {p.codigo}
-                  </span>
-                </div>
-              ))}
-              {filtered.length === 0 && (
-                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-low)', fontSize: '0.85rem' }}>
-                  No se encontró nada para "<strong>{search}</strong>"
-                </div>
-              )}
+                />
+                <span style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+              </div>
             </div>
+
+            {renderList()}
+            
+            {isMobile && (
+              <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+                <button 
+                  onClick={() => { setOpen(false); setSearch(''); }}
+                  style={{ width: '100%', padding: '1rem', borderRadius: '1rem', border: 'none', background: 'var(--surface-high)', color: 'white', fontWeight: 600 }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -121,6 +155,13 @@ export default function Cotizador() {
   const [montoRecibir, setMontoRecibir] = useState(0)
   const [tasaDisplay, setTasaDisplay] = useState({ base: '', valor: 0, unidad: '' })
   const [lastEdited, setLastEdited] = useState('enviar') // 'enviar' | 'recibir'
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 600)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     const todos = cargarPaises()
@@ -274,18 +315,18 @@ export default function Cotizador() {
         </p>
       </div>
 
-      <div className="glass" style={{ padding: '2.5rem', marginBottom: '2rem' }}>
+      <div className="glass" style={{ padding: isMobile ? '1.5rem' : '2.5rem', marginBottom: '2rem' }}>
 
         {/* Montos */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
           {/* Monto a Enviar */}
           <div style={{ minWidth: '0' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
               Monto a Enviar
             </label>
             <div style={{ position: 'relative' }}>
               {origen && (
-                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.05em' }}>
+                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.85rem' }}>
                   {origen.codigo}
                 </span>
               )}
@@ -296,19 +337,19 @@ export default function Cotizador() {
                 min="0"
                 disabled={!isDisponible}
                 onChange={e => handleMontoEnviarChange(e.target.value)}
-                style={{ paddingLeft: '3.5rem', fontSize: '1.5rem', fontWeight: 700, paddingRight: '1rem', opacity: isDisponible ? 1 : 0.5 }}
+                style={{ paddingLeft: '3.5rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, paddingRight: '1rem', opacity: isDisponible ? 1 : 0.5 }}
               />
             </div>
           </div>
 
           {/* Monto a Recibir */}
           <div style={{ minWidth: '0' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 600 }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
               Monto a Recibir
             </label>
             <div style={{ position: 'relative' }}>
               {destino && (
-                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--error-color)', fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.05em' }}>
+                <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--error-color)', fontWeight: 800, fontSize: '0.85rem' }}>
                   {destino.codigo}
                 </span>
               )}
@@ -319,14 +360,20 @@ export default function Cotizador() {
                 min="0"
                 disabled={!isDisponible}
                 onChange={e => handleMontoRecibirChange(e.target.value)}
-                style={{ paddingLeft: '3.5rem', fontSize: '1.5rem', fontWeight: 700, paddingRight: '1rem', border: '1px solid rgba(255, 113, 108, 0.3)', opacity: isDisponible ? 1 : 0.5 }}
+                style={{ paddingLeft: '3.5rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, paddingRight: '1rem', border: '1px solid rgba(255, 113, 108, 0.3)', opacity: isDisponible ? 1 : 0.5 }}
               />
             </div>
           </div>
         </div>
 
         {/* Origen + Swap + Destino */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '1rem', alignItems: 'end', marginBottom: '2rem' }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', 
+          gap: isMobile ? '0.75rem' : '1rem', 
+          alignItems: 'end', 
+          marginBottom: '2.5rem' 
+        }}>
 
           {/* Origen */}
           <PaisSelector 
@@ -337,25 +384,27 @@ export default function Cotizador() {
           />
 
           {/* Botón intercambiar */}
-          <button
-            onClick={intercambiar}
-            style={{
-              width: '3rem', height: '3rem',
-              background: 'rgba(16,185,129,0.1)',
-              border: '1px solid rgba(16,185,129,0.3)',
-              borderRadius: '50%',
-              cursor: 'pointer',
-              fontSize: '1.3rem',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.3s',
-              margin: 'auto 0',
-            }}
-            title="Intercambiar países"
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(16,185,129,0.25)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.1)'}
-          >
-            ⇄
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: isMobile ? '0.5rem 0' : '0' }}>
+            <button
+              onClick={intercambiar}
+              style={{
+                width: isMobile ? '100%' : '3.5rem', 
+                height: '3.5rem',
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.2)',
+                borderRadius: isMobile ? '1rem' : '50%',
+                cursor: 'pointer',
+                fontSize: '1.4rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.3s',
+                color: 'var(--primary-color)'
+              }}
+              className="swap-btn"
+              title="Intercambiar países"
+            >
+              {isMobile ? '⇅ Cambiar Dirección' : '⇄'}
+            </button>
+          </div>
 
           {/* Destino */}
           <PaisSelector 
