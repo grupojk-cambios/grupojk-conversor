@@ -268,8 +268,7 @@ export default function Cotizador({ modo = 'detal' }) {
       } else if (lastEdited === 'recibir' && montoRecibir !== '' && montoRecibir > 0) {
         if (isDisp) {
           const nuevoMonto = calcularConversionInversa(origen, destino, montoRecibir, paises, modo)
-          const esCruceDolar = isCajaDolar(origen) && isCajaDolar(destino)
-          setMonto(esCruceDolar ? Math.ceil(nuevoMonto) : Math.round((nuevoMonto + Number.EPSILON) * 100) / 100)
+          setMonto(Math.round((nuevoMonto + Number.EPSILON) * 100) / 100)
         } else {
           setMonto(0)
         }
