@@ -670,6 +670,22 @@ export default function Cotizador({ modo = 'detal' }) {
           </div>
         )}
 
+        {/* Explicación dinámica */}
+        {origen && destino && isDisponible && (
+          <div style={{
+            background: 'rgba(16,185,129,0.07)',
+            border: '1px solid rgba(16,185,129,0.2)',
+            borderRadius: '1rem',
+            padding: '1rem 1.5rem',
+            marginBottom: '2rem',
+          }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-low)', marginBottom: '0.2rem' }}>📋 Resumen de tu operación:</p>
+            <p style={{ fontWeight: 600, color: 'var(--text-mid)', lineHeight: 1.6 }}>
+              {explicacion()}
+            </p>
+          </div>
+        )}
+
         {/* TASA APLICADA DESTACADA EN EL MEDIO */}
         {origen && destino && isDisponible && (
           <div style={{ textAlign: 'center', marginTop: '-1rem', marginBottom: '2.5rem' }}>
@@ -711,22 +727,6 @@ export default function Cotizador({ modo = 'detal' }) {
                 Ingrese en <strong>Monto a recibir</strong> valores múltiplos de 10 (ej: 100, 110, 150...). El campo de envío está bloqueado para evitar errores.
               </p>
             </div>
-          </div>
-        )}
-
-        {/* Explicación dinámica */}
-        {origen && destino && isDisponible && (
-          <div style={{
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.2)',
-            borderRadius: '1rem',
-            padding: '1rem 1.5rem',
-            marginBottom: '2rem',
-          }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-low)', marginBottom: '0.2rem' }}>📋 Resumen de tu operación:</p>
-            <p style={{ fontWeight: 600, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-              {explicacion()}
-            </p>
           </div>
         )}
 
