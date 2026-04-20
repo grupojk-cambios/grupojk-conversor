@@ -478,8 +478,9 @@ export default function Cotizador({ modo = 'detal' }) {
             <button
               onClick={intercambiar}
               style={{
-                width: isMobile ? '100%' : '3.5rem', 
+                width: isMobile ? 'fit-content' : '3.5rem', 
                 height: '3.5rem',
+                padding: isMobile ? '0 2.5rem' : '0',
                 background: 'rgba(16,185,129,0.08)',
                 border: '1px solid rgba(16,185,129,0.2)',
                 borderRadius: isMobile ? '1rem' : '50%',
