@@ -568,7 +568,7 @@ export default function Cotizador({ modo = 'detal' }) {
               
               <div style={{ display: 'flex', gap: '0.6rem' }}>
                 <a
-                  href={`https://wa.me/593961230380?text=${encodeURIComponent(`¡Hola Kelvin! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
+                  href={`https://wa.me/593961230380?text=${encodeURIComponent(`¡Hola Kelvin! Quiero realizar esta transacción:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito?`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
@@ -596,7 +596,7 @@ export default function Cotizador({ modo = 'detal' }) {
                 </a>
 
                 <a
-                  href={`https://wa.me/593998053300?text=${encodeURIComponent(`¡Hola Dario! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
+                  href={`https://wa.me/593998053300?text=${encodeURIComponent(`¡Hola Dario! Quiero realizar esta transacción:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito?`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
