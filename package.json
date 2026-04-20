@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://kelvinGrupoJK.github.io/grupojk-conversor",
+  "homepage": "https://grupojk-cambios.github.io/grupojk-conversor",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
