@@ -563,7 +563,7 @@ export default function Cotizador({ modo = 'detal' }) {
 
             <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '1rem' }}>
               <p style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.1rem', marginBottom: '0.8rem', fontWeight: 600 }}>
-                Pactar este cambio con:
+                Realizar este cambio con:
               </p>
               
               <div style={{ display: 'flex', gap: '0.6rem' }}>
