@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput } from './constants'
 
 // Componente interno para selector de países con buscador responsivo
-function PaisSelector({ label, paises, selected, onSelect }) {
+function PaisSelector({ label, paises, selected, onSelect, noBottomRadius = false, hideLabel = false }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
@@ -86,9 +86,11 @@ function PaisSelector({ label, paises, selected, onSelect }) {
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>
-        {label}
-      </label>
+      {!hideLabel && (
+        <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>
+          {label}
+        </label>
+      )}
       <div 
         onClick={() => setOpen(!open)}
         className="input-field"
@@ -99,8 +101,8 @@ function PaisSelector({ label, paises, selected, onSelect }) {
           gap: '0.75rem',
           height: '3.8rem',
           padding: '0 1.25rem',
-          border: open ? '1px solid var(--primary-color)' : '1px solid var(--glass-border)',
-          background: 'rgba(255,255,255,0.03)',
+          borderBottomLeftRadius: noBottomRadius ? 0 : '1.5rem',
+          borderBottomRightRadius: noBottomRadius ? 0 : '1.5rem',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
         }}
       >
@@ -421,25 +423,58 @@ export default function Cotizador({ modo = 'detal' }) {
 
       <div className="glass" style={{ padding: isMobile ? '1.5rem' : '2.5rem', marginBottom: '2rem' }}>
 
-        {/* Origen + Swap + Destino */}
+        {/* Origen + Swap + Destino Integrados */}
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', 
-          gap: isMobile ? '0.75rem' : '1rem', 
-          alignItems: 'end', 
-          marginBottom: '2rem' 
+          gap: isMobile ? '1.5rem' : '1rem', 
+          alignItems: 'start', 
+          marginBottom: '2.5rem' 
         }}>
 
-          {/* Origen */}
-          <PaisSelector 
-            label="País de Origen"
-            paises={paisesSelector}
-            selected={origen}
-            onSelect={handleOrigen}
-          />
+          {/* Bloque Origen */}
+          <div style={{ width: '100%' }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>
+              País de Origen / Monto a Enviar
+            </label>
+            <PaisSelector 
+              hideLabel={true}
+              noBottomRadius={true}
+              paises={paisesSelector}
+              selected={origen}
+              onSelect={handleOrigen}
+            />
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              borderRadius: '1.5rem', 
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
+              overflow: 'hidden', 
+              border: '1px solid var(--glass-border)', 
+              background: 'rgba(255,255,255,0.04)', 
+              opacity: (isDisponible && !isEfectivoVen(destino)) ? 1 : 0.5,
+              position: 'relative',
+              marginTop: '-1px'
+            }}>
+              {origen && (
+                <span style={{ padding: '0 0.9rem', borderRight: '1px solid var(--glass-border)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {origen.codigo}
+                </span>
+              )}
+              <input
+                type="text"
+                value={monto || ''}
+                disabled={!isDisponible || isEfectivoVen(destino)}
+                onChange={e => handleMontoEnviarChange(e.target.value)}
+                placeholder={isEfectivoVen(destino) ? "Bloqueado" : "0"}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
+              />
+            </div>
+          </div>
 
           {/* Botón intercambiar */}
-          <div style={{ display: 'flex', justifyContent: 'center', padding: isMobile ? '0.5rem 0' : '0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: isMobile ? '0' : '2.2rem' }}>
             <button
               onClick={intercambiar}
               style={{
@@ -461,59 +496,32 @@ export default function Cotizador({ modo = 'detal' }) {
             </button>
           </div>
 
-          {/* Destino */}
-          <PaisSelector 
-            label="País de Destino"
-            paises={paisesSelector}
-            selected={destino}
-            onSelect={handleDestino}
-          />
-        </div>
-
-        {/* Montos */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
-          {/* Monto a Enviar */}
-          <div style={{ minWidth: '0' }}>
-            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
-              Monto a Enviar
+          {/* Bloque Destino */}
+          <div style={{ width: '100%' }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.6rem', textTransform: 'uppercase', fontWeight: 700 }}>
+              País de Destino / Recibirías
             </label>
+            <PaisSelector 
+              hideLabel={true}
+              noBottomRadius={true}
+              paises={paisesSelector}
+              selected={destino}
+              onSelect={handleDestino}
+            />
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
-              borderRadius: '0.85rem', 
+              borderRadius: '1.5rem', 
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
               overflow: 'hidden', 
-              border: '1px solid var(--glass-border)', 
+              border: isEfectivoVen(destino) ? '1px solid var(--primary-color)' : '1px solid var(--glass-border)', 
               background: 'rgba(255,255,255,0.04)', 
-              opacity: (isDisponible && !isEfectivoVen(destino)) ? 1 : 0.5,
-              position: 'relative'
+              opacity: isDisponible ? 1 : 0.5,
+              marginTop: '-1px'
             }}>
-              {origen && (
-                <span style={{ padding: '0 0.9rem', borderRight: '1px solid var(--glass-border)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {origen.codigo}
-                </span>
-              )}
-              <input
-                type="text"
-                value={monto || ''}
-                disabled={!isDisponible || isEfectivoVen(destino)}
-                onChange={e => handleMontoEnviarChange(e.target.value)}
-                placeholder={isEfectivoVen(destino) ? "Bloqueado" : "0"}
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
-              />
-              {isEfectivoVen(destino) && (
-                <span style={{ position: 'absolute', right: '1rem', bottom: '0.3rem', fontSize: '0.6rem', color: 'var(--text-low)', textTransform: 'uppercase' }}>Ingresa en Recibir →</span>
-              )}
-            </div>
-          </div>
-
-          {/* Monto a Recibir */}
-          <div style={{ minWidth: '0' }}>
-            <label style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.1em', color: 'var(--text-low)', marginBottom: '0.5rem', textTransform: 'uppercase', fontWeight: 700 }}>
-              Monto a Recibir
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', borderRadius: '0.85rem', overflow: 'hidden', border: isEfectivoVen(destino) ? '1px solid var(--primary-color)' : '1px solid rgba(255, 113, 108, 0.35)', background: 'rgba(255,255,255,0.04)', opacity: isDisponible ? 1 : 0.5 }}>
               {destino && (
-                <span style={{ padding: '0 0.9rem', borderRight: isEfectivoVen(destino) ? '1px solid var(--primary-color)' : '1px solid rgba(255,113,108,0.3)', color: isEfectivoVen(destino) ? 'var(--primary-color)' : 'var(--error-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span style={{ padding: '0 0.9rem', borderRight: isEfectivoVen(destino) ? '1px solid var(--primary-color)' : '1px solid var(--glass-border)', color: isEfectivoVen(destino) ? 'var(--primary-color)' : 'var(--error-color)', fontWeight: 800, fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {destino.codigo}
                 </span>
               )}
