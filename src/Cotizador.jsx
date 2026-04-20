@@ -541,9 +541,81 @@ export default function Cotizador({ modo = 'detal' }) {
               />
             </div>
           </div>
-        </div>
+        {/* Resumen de la operación y Pactar Cambio (Pegado al destino) */}
+        {origen && destino && isDisponible && monto && (
+          <div style={{
+            background: 'rgba(16,185,129,0.08)',
+            border: '1px solid rgba(16,185,129,0.2)',
+            borderRadius: '1.2rem',
+            padding: '1.2rem',
+            marginTop: '-1.5rem',
+            marginBottom: '2rem',
+            animation: 'fadeIn 0.4s'
+          }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-low)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              📋 Resumen de tu operación:
+            </p>
+            <p style={{ fontWeight: 700, color: 'white', lineHeight: 1.5, fontSize: '1rem', marginBottom: '1.2rem' }}>
+              {explicacion()}
+            </p>
 
-        {/* MENSAJE DE NO DISPONIBLE EN LÍNEA TIPO BANNER (por si cierran el modal) */}
+            <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '1rem' }}>
+              <p style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.1rem', marginBottom: '0.8rem', fontWeight: 600 }}>
+                Pactar este cambio con:
+              </p>
+              
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <a
+                  href={`https://wa.me/593961230380?text=${encodeURIComponent(`¡Hola Kelvin! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    background: '#25D366',
+                    color: 'white',
+                    padding: '0.8rem 0.4rem',
+                    borderRadius: '0.8rem',
+                    textDecoration: 'none',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
+                  }}
+                >
+                  <span style={{ fontSize: '1.1rem' }}>📲</span> Kelvin
+                </a>
+
+                <a
+                  href={`https://wa.me/593998053300?text=${encodeURIComponent(`¡Hola Dario! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    background: '#25D366',
+                    color: 'white',
+                    padding: '0.8rem 0.4rem',
+                    borderRadius: '0.8rem',
+                    textDecoration: 'none',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
+                  }}
+                >
+                  <span style={{ fontSize: '1.1rem' }}>📲</span> Dario
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MENSAJE DE NO DISPONIBLE EN LÍNEA TIPO BANNER */}
         {origen && destino && !isDisponible && errorDismissed && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
@@ -693,25 +765,9 @@ export default function Cotizador({ modo = 'detal' }) {
           </div>
         )}
 
-        {/* Explicación dinámica */}
-        {origen && destino && isDisponible && (
-          <div style={{
-            background: 'rgba(16,185,129,0.07)',
-            border: '1px solid rgba(16,185,129,0.2)',
-            borderRadius: '1rem',
-            padding: '1rem 1.5rem',
-            marginBottom: '2rem',
-          }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-low)', marginBottom: '0.2rem' }}>📋 Resumen de tu operación:</p>
-            <p style={{ fontWeight: 600, color: 'var(--text-mid)', lineHeight: 1.6 }}>
-              {explicacion()}
-            </p>
-          </div>
-        )}
-
-        {/* TASA APLICADA DESTACADA EN EL MEDIO */}
-        {origen && destino && isDisponible && (
-          <div style={{ textAlign: 'center', marginTop: '-1rem', marginBottom: '2.5rem' }}>
+        {/* TASA APLICADA DESTACADA */}
+        {origen && destino && isDisponible && monto && (
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
             <div style={{ 
               display: 'inline-flex',
               flexDirection: 'column', 
@@ -749,121 +805,6 @@ export default function Cotizador({ modo = 'detal' }) {
               <p style={{ color: 'var(--text-mid)', fontSize: '0.85rem' }}>
                 Ingrese en <strong>Monto a recibir</strong> valores múltiplos de 10 (ej: 100, 110, 150...). El campo de envío está bloqueado para evitar errores.
               </p>
-            </div>
-          </div>
-        )}
-
-        {/* Resultado */}
-        {parsearMonto(montoRecibir) > 0 && origen && destino && isDisponible && (
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(6,183,127,0.06) 100%)',
-            border: '1px solid rgba(16,185,129,0.3)',
-            borderRadius: '1.5rem',
-            padding: '2rem',
-            textAlign: 'center',
-            boxShadow: '0 15px 40px rgba(0,0,0,0.4)',
-            marginBottom: '2.5rem',
-            animation: 'slideUp 0.6s ease-out'
-          }}>
-            <p style={{
-              fontSize: '0.8rem',
-              color: 'var(--text-low)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.2rem',
-              marginBottom: '1rem',
-              fontWeight: 700
-            }}>
-              {destino.codigo} RECIBIRÍAS EN {destino.nombre.toUpperCase()}
-            </p>
-            <p style={{
-              fontSize: 'clamp(2rem, 8vw, 4.5rem)',
-              fontWeight: 900,
-              color: 'var(--primary-color)',
-              fontFamily: 'Manrope, sans-serif',
-              marginBottom: '0.5rem',
-            }}>
-              {formatearMonto(parsearMonto(montoRecibir), destino.codigo)} <span style={{ fontSize: '0.5em', color: 'var(--secondary-color)' }}>{destino.codigo}</span>
-            </p>
-
-
-
-            <div style={{
-              marginTop: '1.5rem',
-              padding: '0.75rem 1.5rem',
-              background: 'rgba(0,0,0,0.2)',
-              borderRadius: '2rem',
-              display: 'inline-block',
-              marginBottom: '2rem'
-            }}>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-low)' }}>
-                ⚡ Transferencia estimada: <strong style={{ color: 'white' }}>15 - 30 minutos</strong> · 💲 <strong style={{ color: 'white' }}>$0 comisión</strong>
-              </p>
-            </div>
-
-            {/* BOTONES DE WHATSAPP INTEGRADOS */}
-            <div style={{ borderTop: '1px solid rgba(16,185,129,0.2)', paddingTop: '2rem' }}>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.1rem', marginBottom: '1.2rem', fontWeight: 600 }}>
-                Pactar este cambio con:
-              </p>
-              
-              <div style={{ 
-                display: 'flex', 
-                gap: '0.75rem', 
-                justifyContent: 'center',
-                flexWrap: 'nowrap'
-              }}>
-                <a
-                  href={`https://wa.me/593961230380?text=${encodeURIComponent(`¡Hola Kelvin! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    background: '#25D366',
-                    color: 'white',
-                    padding: '1rem 0.5rem',
-                    borderRadius: '1rem',
-                    textDecoration: 'none',
-                    fontSize: isMobile ? '0.85rem' : '1rem',
-                    fontWeight: 800,
-                    boxShadow: '0 10px 20px rgba(37, 211, 102, 0.2)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.03)'}
-                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <span style={{ fontSize: '1.2rem' }}>📲</span> Kelvin
-                </a>
-
-                <a
-                  href={`https://wa.me/593998053300?text=${encodeURIComponent(`¡Hola Dario! Vi esta cotización en la web de JK Conversor y quiero pactarla:\n\n🔹 Envío: ${monto} ${origen.codigo} (${origen.nombre})\n🔸 Recibo: ${montoRecibir} ${destino.codigo} (${destino.nombre})\n📊 Tasa: ${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}\n\n¿Me ayudas con los datos para el depósito?`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    background: '#25D366',
-                    color: 'white',
-                    padding: '1rem 0.5rem',
-                    borderRadius: '1rem',
-                    textDecoration: 'none',
-                    fontSize: isMobile ? '0.85rem' : '1rem',
-                    fontWeight: 800,
-                    boxShadow: '0 10px 20px rgba(37, 211, 102, 0.2)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.03)'}
-                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <span style={{ fontSize: '1.2rem' }}>📲</span> Dario
-                </a>
-              </div>
             </div>
           </div>
         )}
