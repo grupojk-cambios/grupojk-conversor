@@ -204,6 +204,7 @@ export default function Cotizador({ modo = 'detal' }) {
   const [apellido, setApellido] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
   const [procesandoEnlace, setProcesandoEnlace] = useState(false)
+  const [datosGuardados, setDatosGuardados] = useState(false)
 
   const esMayor = modo === 'mayor'
   const isEfectivoVen = (p) => p?.nombre?.toUpperCase().includes('EFECTIVO VENEZUELA') || p?.nombre?.toUpperCase().includes('EFECTIVO VEN');
@@ -246,9 +247,15 @@ export default function Cotizador({ modo = 'detal' }) {
     setDestino(defaultDestino)
     
     // Cargar datos cliente
-    setNombre(localStorage.getItem('jk_cliente_nombre') || '')
-    setApellido(localStorage.getItem('jk_cliente_apellido') || '')
-    setWhatsapp(localStorage.getItem('jk_cliente_whatsapp') || '')
+    const savedNombre = localStorage.getItem('jk_cliente_nombre') || ''
+    const savedApellido = localStorage.getItem('jk_cliente_apellido') || ''
+    const savedWhatsapp = localStorage.getItem('jk_cliente_whatsapp') || ''
+    setNombre(savedNombre)
+    setApellido(savedApellido)
+    setWhatsapp(savedWhatsapp)
+    if (savedNombre && savedWhatsapp) {
+      setDatosGuardados(true)
+    }
   }, [])
 
   useEffect(() => {
@@ -431,6 +438,7 @@ export default function Cotizador({ modo = 'detal' }) {
     localStorage.setItem('jk_cliente_nombre', nombre)
     localStorage.setItem('jk_cliente_apellido', apellido)
     localStorage.setItem('jk_cliente_whatsapp', whatsapp)
+    setDatosGuardados(true)
 
     setProcesandoEnlace(true)
     const codigoUnico = `JK-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -620,38 +628,64 @@ export default function Cotizador({ modo = 'detal' }) {
 
             {/* Inputs Datos Cliente */}
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '1rem', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.8rem' }}>
-                <p style={{ fontSize: '0.75rem', color: 'var(--primary-color)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, margin: 0 }}>
-                  👤 Tus Datos para el Seguimiento:
-                </p>
-                <span style={{ fontSize: '0.65rem', color: '#ff4d4d', fontWeight: 800, textTransform: 'uppercase', padding: '0.2rem 0.5rem', background: 'rgba(255, 77, 77, 0.1)', borderRadius: '0.4rem', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
-                  ⚠️ Solo te lo pediremos una vez
-                </span>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
-                <input
-                  type="text"
-                  placeholder="Tu Nombre"
-                  value={nombre}
-                  onChange={e => setNombre(e.target.value)}
-                  style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Tu Apellido"
-                  value={apellido}
-                  onChange={e => setApellido(e.target.value)}
-                  style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
-                />
-              </div>
-              <input
-                type="text"
-                placeholder="Tu WhatsApp (Ej: +593...)"
-                value={whatsapp}
-                onChange={e => setWhatsapp(e.target.value)}
-                style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
-              />
+              {!datosGuardados ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--primary-color)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, margin: 0 }}>
+                      👤 Tus Datos para el Seguimiento:
+                    </p>
+                    <span style={{ fontSize: '0.65rem', color: '#ff4d4d', fontWeight: 800, textTransform: 'uppercase', padding: '0.2rem 0.5rem', background: 'rgba(255, 77, 77, 0.1)', borderRadius: '0.4rem', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
+                      ⚠️ Solo te lo pediremos una vez
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.8rem', marginBottom: '0.8rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Tu Nombre"
+                      value={nombre}
+                      onChange={e => setNombre(e.target.value)}
+                      style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Tu Apellido"
+                      value={apellido}
+                      onChange={e => setApellido(e.target.value)}
+                      style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Tu WhatsApp (Ej: +593...)"
+                    value={whatsapp}
+                    onChange={e => setWhatsapp(e.target.value)}
+                    style={{ width: '100%', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.8rem', color: 'white', outline: 'none' }}
+                  />
+                </>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-color)', fontSize: '1.2rem' }}>
+                      ✓
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'white' }}>{nombre} {apellido}</p>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-low)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <span style={{ color: 'var(--primary-color)' }}>●</span> REGISTRADO
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setDatosGuardados(false)} 
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '0.6rem', fontSize: '0.75rem', cursor: 'pointer', transition: 'background 0.2s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    Editar
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '1rem' }}>
