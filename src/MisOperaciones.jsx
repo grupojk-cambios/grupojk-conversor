@@ -47,6 +47,59 @@ export default function MisOperaciones() {
     }
   }
 
+  async function handleSubirPago(id, codigo) {
+    const refInput = document.getElementById(`ref-${id}`)
+    const fileInput = document.getElementById(`file-${id}`)
+    const referencia = refInput?.value || ''
+    const file = fileInput?.files[0]
+
+    if (!referencia && !file) {
+      alert('Por favor ingressa al menos el número de referencia o sube una foto.')
+      return
+    }
+
+    try {
+      let publicUrl = null
+
+      if (file) {
+        // Subir imagen a Supabase Storage
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${codigo}-${Date.now()}.${fileExt}`
+        const filePath = `clientes/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('comprobantes')
+          .upload(filePath, file)
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl: url } } = supabase.storage
+          .from('comprobantes')
+          .getPublicUrl(filePath)
+        
+        publicUrl = url
+      }
+
+      // Actualizar registro en la tabla
+      const { error: updateError } = await supabase
+        .from('transacciones')
+        .update({
+          referencia_pago: referencia,
+          comprobante_cliente: publicUrl,
+          estado: 'Verificando'
+        })
+        .eq('id', id)
+
+      if (updateError) throw updateError
+
+      alert('¡Datos de pago enviados correctamente! Estamos verificando tu operación.')
+      fetchMisTransacciones()
+    } catch (err) {
+      console.error('Error al subir pago:', err)
+      alert('Hubo un error al subir los datos. Asegúrate de que el archivo sea una imagen.')
+    }
+  }
+
   const getStatusColor = (estado) => {
     switch (estado) {
       case 'Completada': return '#10b981';
@@ -158,15 +211,94 @@ export default function MisOperaciones() {
               </div>
 
               {tr.estado === 'Pendiente' && (
-                <div style={{ marginTop: '1.2rem', padding: '0.8rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '0.6rem', border: '1px solid rgba(59, 130, 246, 0.2)', display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '1.2rem' }}>💡</span>
-                  <p style={{ fontSize: '0.75rem', color: '#93c5fd', margin: 0, lineHeight: 1.4 }}>
-                    Tu solicitud ha sido recibida. Un asesor se contactará contigo por WhatsApp para concretar el pago.
+                <div style={{ marginTop: '1.2rem', padding: '1.2rem', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '1rem', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#93c5fd', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>📤</span> REGISTRAR TU PAGO (P2P)
                   </p>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--text-low)', display: 'block', marginBottom: '0.4rem' }}>Número de Referencia / ID de Transacción</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ej: 123456789"
+                        id={`ref-${tr.id}`}
+                        style={{ width: '100%', padding: '0.7rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.6rem', color: 'white', fontSize: '0.85rem', outline: 'none' }}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--text-low)', display: 'block', marginBottom: '0.4rem' }}>Foto del Comprobante (Opcional)</label>
+                      <input 
+                        type="file" 
+                        id={`file-${tr.id}`}
+                        accept="image/*"
+                        style={{ fontSize: '0.75rem', color: 'var(--text-low)' }}
+                      />
+                    </div>
+
+                    <button 
+                      onClick={() => handleSubirPago(tr.id, tr.codigo)}
+                      style={{ 
+                        marginTop: '0.5rem',
+                        padding: '0.8rem',
+                        background: '#3b82f6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.8rem',
+                        fontWeight: 700,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      Enviar Datos de Pago
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {tr.estado === 'Verificando' && (
+              {(tr.referencia_pago || tr.comprobante_cliente) && tr.estado !== 'Pendiente' && (
+                <div style={{ marginTop: '1.2rem', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '0.8rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-low)', textTransform: 'uppercase', marginBottom: '0.6rem', fontWeight: 700 }}>Mi Comprobante Enviado:</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'white' }}>Ref: {tr.referencia_pago || 'N/A'}</span>
+                    {tr.comprobante_cliente && (
+                      <a href={tr.comprobante_cliente} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 600 }}>Ver Imagen</a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {tr.comprobante_admin && (
+                <div style={{ marginTop: '1.2rem', padding: '1.2rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '1rem', border: '2px solid var(--primary-color)' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary-color)', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>📥</span> COMPROBANTE DE JK CONVERSOR
+                  </p>
+                  <p style={{ fontSize: '0.75rem', color: 'white', marginBottom: '1rem' }}>Tu pago ha sido procesado con éxito. Aquí tienes tu comprobante:</p>
+                  <a 
+                    href={tr.comprobante_admin} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    style={{ 
+                      display: 'block',
+                      width: '100%',
+                      padding: '0.8rem',
+                      background: 'var(--primary-color)',
+                      color: 'var(--bg-color)',
+                      textAlign: 'center',
+                      borderRadius: '0.8rem',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    DESCARGAR COMPROBANTE FINAL
+                  </a>
+                </div>
+              )}
+
+              {tr.estado === 'Verificando' && !tr.comprobante_admin && (
                 <div style={{ marginTop: '1.2rem', padding: '0.8rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '0.6rem', border: '1px solid rgba(245, 158, 11, 0.2)', display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
                   <span style={{ fontSize: '1.2rem' }}>🔎</span>
                   <p style={{ fontSize: '0.75rem', color: '#fcd34d', margin: 0, lineHeight: 1.4 }}>
@@ -180,10 +312,36 @@ export default function MisOperaciones() {
       )}
 
       <div style={{ marginTop: '3rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-low)', fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--text-low)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           ¿Necesitas ayuda con una operación? <br/>
-          <a href="https://wa.me/593961230380" target="_blank" rel="noreferrer" style={{ color: 'var(--primary-color)', fontWeight: 600, textDecoration: 'none' }}>Contactar Soporte Técnico</a>
+          Contacta con nosotros:
         </p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <a 
+            href="https://wa.me/593961230380" 
+            target="_blank" 
+            rel="noreferrer" 
+            style={{ 
+              background: '#25D366', color: 'white', padding: '0.6rem 1.2rem', 
+              borderRadius: '0.8rem', fontSize: '0.8rem', textDecoration: 'none', 
+              fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' 
+            }}
+          >
+            🟢 Soporte Kelvin
+          </a>
+          <a 
+            href="https://wa.me/593998053300" 
+            target="_blank" 
+            rel="noreferrer" 
+            style={{ 
+              background: '#25D366', color: 'white', padding: '0.6rem 1.2rem', 
+              borderRadius: '0.8rem', fontSize: '0.8rem', textDecoration: 'none', 
+              fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' 
+            }}
+          >
+            🟢 Soporte Dario
+          </a>
+        </div>
       </div>
     </div>
   )

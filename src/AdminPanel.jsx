@@ -81,6 +81,44 @@ export default function AdminPanel({ onLogout }) {
     }
   }
 
+  const handleSubirComprobanteAdmin = async (id, codigo, file) => {
+    if (!file) return
+    
+    try {
+      // Subir imagen a Supabase Storage
+      const fileExt = file.name.split('.').pop()
+      const fileName = `admin-${codigo}-${Date.now()}.${fileExt}`
+      const filePath = `admin/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('comprobantes')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl: url } } = supabase.storage
+        .from('comprobantes')
+        .getPublicUrl(filePath)
+
+      // Actualizar registro en la tabla y marcar como completada
+      const { error: updateError } = await supabase
+        .from('transacciones')
+        .update({
+          comprobante_admin: url,
+          estado: 'Completada'
+        })
+        .eq('id', id)
+
+      if (updateError) throw updateError
+
+      mostrarMensaje('success', '✅ Comprobante enviado y transacción completada')
+      fetchTransacciones()
+    } catch (error) {
+      console.error('Error al subir comprobante admin:', error)
+      mostrarMensaje('error', '❌ Error al subir el comprobante')
+    }
+  }
+
   const transaccionesFiltradas = transacciones.filter(t => {
     const p = busqueda.toLowerCase()
     const nombreCompleto = `${t.nombre_cliente} ${t.apellido_cliente}`.toLowerCase()
@@ -171,8 +209,8 @@ export default function AdminPanel({ onLogout }) {
                 <th style={tableHeaderStyle}>Cliente</th>
                 <th style={tableHeaderStyle}>Origen (Envío)</th>
                 <th style={tableHeaderStyle}>Destino (Recibo)</th>
-                <th style={tableHeaderStyle}>Tasa</th>
-                <th style={tableHeaderStyle}>Estado</th>
+                <th style={tableHeaderStyle}>P2P (Cliente)</th>
+                <th style={tableHeaderStyle}>Estado / Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -196,8 +234,24 @@ export default function AdminPanel({ onLogout }) {
                     {/* Detalles del Cliente */}
                     <td style={tableCellStyle}>
                       <div style={{ fontWeight: 600 }}>{t.nombre_cliente} {t.apellido_cliente}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-low)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>
-                        <span style={{ color: '#25D366' }}>💬</span> {t.whatsapp_cliente}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
+                        <a 
+                          href={`https://wa.me/593961230380?text=Hola%20estoy%20revisando%20tu%20operaci%C3%B3n%20%23${t.codigo}`} 
+                          target="_blank" rel="noreferrer" 
+                          style={{ textDecoration: 'none', color: '#white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                        >
+                          🟢 Kelvin
+                        </a>
+                        <a 
+                          href={`https://wa.me/593998053300?text=Hola%20estoy%20revisando%20tu%20operaci%C3%B3n%20%23${t.codigo}`} 
+                          target="_blank" rel="noreferrer" 
+                          style={{ textDecoration: 'none', color: '#white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                        >
+                          🟢 Dario
+                        </a>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-low)', padding: '0.2rem' }}>
+                          Cliente: {t.whatsapp_cliente}
+                        </div>
                       </div>
                     </td>
 
@@ -221,48 +275,93 @@ export default function AdminPanel({ onLogout }) {
                       </div>
                     </td>
 
-                    {/* Tasa Pactada */}
+                    {/* P2P Cliente Data */}
                     <td style={tableCellStyle}>
-                       <span style={{ fontFamily: 'monospace', color: 'var(--text-low)' }}>{formatearMonto(t.tasa_pactada)}</span>
+                      {t.referencia_pago || t.comprobante_cliente ? (
+                        <div style={{ fontSize: '0.8rem' }}>
+                          {t.referencia_pago && <div style={{ fontWeight: 600, color: '#3b82f6' }}>Ref: {t.referencia_pago}</div>}
+                          {t.comprobante_cliente && (
+                            <a href={t.comprobante_cliente} target="_blank" rel="noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline', fontSize: '0.75rem' }}>Ver Imagen 🖼️</a>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-low)', fontSize: '0.75rem', fontStyle: 'italic' }}>Sin datos aún</span>
+                      )}
                     </td>
 
-                    {/* Estado con Selector Clicable */}
+                    {/* Estado con Selector y Carga de Comprobante Admin */}
                     <td style={tableCellStyle}>
-                      <select 
-                        value={t.estado} 
-                        onChange={(e) => actualizarEstado(t.id, e.target.value)}
-                        style={{
-                          backgroundColor: statusColors.bg,
-                          color: statusColors.color,
-                          border: `1px solid ${statusColors.color}`,
-                          padding: '0.4rem 2.2rem 0.4rem 0.8rem',
-                          borderRadius: '0.6rem',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          outline: 'none',
-                          cursor: 'pointer',
-                          appearance: 'none',
-                          WebkitAppearance: 'none',
-                          MozAppearance: 'none',
-                          backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='${statusColors.color.replace('#', '%23')}' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>")`,
-                          backgroundRepeat: 'no-repeat',
-                          backgroundPosition: 'calc(100% - 0.5rem) center',
-                          backgroundSize: '1.2rem',
-                          minWidth: '135px',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        {estadosDisponibles.map(est => (
-                          <option key={est} value={est} style={{ background: '#0a192f', color: 'white' }}>{est}</option>
-                        ))}
-                      </select>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <select 
+                          value={t.estado} 
+                          onChange={(e) => actualizarEstado(t.id, e.target.value)}
+                          style={{
+                            backgroundColor: statusColors.bg,
+                            color: statusColors.color,
+                            border: `1px solid ${statusColors.color}`,
+                            padding: '0.4rem 2rem 0.4rem 0.8rem',
+                            borderRadius: '0.6rem',
+                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            appearance: 'none',
+                            backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='${statusColors.color.replace('#', '%23')}' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>")`,
+                            backgroundRepeat: 'no-repeat',
+                            backgroundPosition: 'calc(100% - 0.5rem) center',
+                            backgroundSize: '1.2rem',
+                            minWidth: '135px'
+                          }}
+                        >
+                          {estadosDisponibles.map(est => (
+                            <option key={est} value={est} style={{ background: '#0a192f', color: 'white' }}>{est}</option>
+                          ))}
+                        </select>
+
+                        {t.estado === 'Verificando' && (
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <label className="cta-button" style={{ 
+                              padding: '0.4rem 0.8rem', fontSize: '0.7rem', display: 'inline-block',
+                              background: 'var(--primary-color)', color: '#0a192f', borderRadius: '0.5rem',
+                              cursor: 'pointer'
+                            }}>
+                              SUBIR RECIBO FINAL
+                              <input 
+                                type="file" 
+                                hidden 
+                                accept="image/*"
+                                onChange={(e) => handleSubirComprobanteAdmin(t.id, t.codigo, e.target.files[0])}
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        {t.comprobante_admin && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            <a href={t.comprobante_admin} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: '#10b981', textAlign: 'center', textDecoration: 'none', fontWeight: 700 }}>
+                              🖼️ Ver Recibo Enviado
+                            </a>
+                            <a 
+                              href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=%C2%A1Hola!%20Tu%20operaci%C3%B3n%20%23${t.codigo}%20en%20JK%20CONVERSOR%20ha%20sido%20COMPLETADA.%20Puedes%20ver%20tu%20recibo%20aqu%C3%AD:%20${t.comprobante_admin}`} 
+                              target="_blank" rel="noreferrer"
+                              style={{ 
+                                background: '#25D366', color: 'white', padding: '0.3rem', 
+                                borderRadius: '0.4rem', fontSize: '0.65rem', textAlign: 'center',
+                                textDecoration: 'none', fontWeight: 800
+                              }}
+                            >
+                              NOTIFICAR AL CLIENTE 💬
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-        )}
+        ) }
       </div>
     </div>
   )
