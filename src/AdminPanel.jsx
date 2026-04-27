@@ -236,21 +236,21 @@ export default function AdminPanel({ onLogout }) {
                       <div style={{ fontWeight: 600 }}>{t.nombre_cliente} {t.apellido_cliente}</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
                         <a 
-                          href={`https://wa.me/593961230380?text=Hola%20estoy%20revisando%20tu%20operaci%C3%B3n%20%23${t.codigo}`} 
+                          href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=Hola%20${t.nombre_cliente}%2C%20le%20saluda%20Kelvin%20de%20JK%20CONVERSOR%20sobre%20su%20operaci%C3%B3n%20%23${t.codigo}`} 
                           target="_blank" rel="noreferrer" 
-                          style={{ textDecoration: 'none', color: '#white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                          style={{ textDecoration: 'none', color: 'white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, justifyContent: 'center' }}
                         >
                           🟢 Kelvin
                         </a>
                         <a 
-                          href={`https://wa.me/593998053300?text=Hola%20estoy%20revisando%20tu%20operaci%C3%B3n%20%23${t.codigo}`} 
+                          href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=Hola%20${t.nombre_cliente}%2C%20le%20saluda%20Dario%20de%20JK%20CONVERSOR%20sobre%20su%20operaci%C3%B3n%20%23${t.codigo}`} 
                           target="_blank" rel="noreferrer" 
-                          style={{ textDecoration: 'none', color: '#white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700 }}
+                          style={{ textDecoration: 'none', color: 'white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, justifyContent: 'center' }}
                         >
                           🟢 Dario
                         </a>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-low)', padding: '0.2rem' }}>
-                          Cliente: {t.whatsapp_cliente}
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-low)', textAlign: 'center', marginTop: '0.2rem' }}>
+                          WhatsApp: {t.whatsapp_cliente}
                         </div>
                       </div>
                     </td>
