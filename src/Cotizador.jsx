@@ -223,10 +223,14 @@ export default function Cotizador({ modo = 'detal' }) {
 
   useEffect(() => {
     const todos = cargarPaises()
+    const selectorPaises = getPaisesParaSelector(todos)
     setPaises(todos)
-    setPaisesSelector(getPaisesParaSelector(todos))
+    setPaisesSelector(selectorPaises)
     setEvGrupos(agruparEfectivoVenezuela(todos))
     
+    // Opciones completas (base + sub-items como Zelle/EV/etc)
+    const opcionesGlobales = [...todos, ...selectorPaises];
+
     // Buscar en memoria, sino usar valores por defecto (Ecuador -> Colombia)
     const savedOrigenId = localStorage.getItem('jk_last_origen')
     const savedDestinoId = localStorage.getItem('jk_last_destino')
@@ -235,11 +239,11 @@ export default function Cotizador({ modo = 'detal' }) {
     let defaultDestino = todos.find(p => p.id === 8)
 
     if (savedOrigenId) {
-      const p = todos.find(x => x.id === parseInt(savedOrigenId))
+      const p = opcionesGlobales.find(x => String(x.id) === String(savedOrigenId))
       if (p) defaultOrigen = p
     }
     if (savedDestinoId) {
-      const p = todos.find(x => x.id === parseInt(savedDestinoId))
+      const p = opcionesGlobales.find(x => String(x.id) === String(savedDestinoId))
       if (p) defaultDestino = p
     }
 
@@ -333,7 +337,7 @@ export default function Cotizador({ modo = 'detal' }) {
       setEvEstadoSeleccionado(null)
       return
     }
-    const p = paises.find(p => p.id === parseInt(id)) || paisesSelector.find(p => p.id === id)
+    const p = paises.find(p => String(p.id) === String(id)) || paisesSelector.find(p => String(p.id) === String(id))
     if (!p) return
     setOrigen(p)
     localStorage.setItem('jk_last_origen', p.id)
@@ -341,7 +345,7 @@ export default function Cotizador({ modo = 'detal' }) {
     setErrorDismissed(false)
 
     // No permitir mismo país en ambos lados
-    if (destino && destino.id === p.id) {
+    if (destino && String(destino.id) === String(p.id)) {
       setDestino(null)
       localStorage.removeItem('jk_last_destino')
     }
@@ -355,13 +359,13 @@ export default function Cotizador({ modo = 'detal' }) {
       setEvEstadoSeleccionado(null)
       return
     }
-    const p = paises.find(p => p.id === parseInt(id)) || paisesSelector.find(p => p.id === id)
+    const p = paises.find(p => String(p.id) === String(id)) || paisesSelector.find(p => String(p.id) === String(id))
     setDestino(p)
     if (p) localStorage.setItem('jk_last_destino', p.id)
 
     setErrorDismissed(false)
 
-    if (origen && origen.id === p.id) {
+    if (origen && String(origen.id) === String(p.id)) {
       setOrigen(null)
       localStorage.removeItem('jk_last_origen')
     }
