@@ -157,6 +157,10 @@ function App() {
     if (sheetsReady && !user && ruta !== 'login') {
       navegar('login')
     }
+    // Si ya hay usuario y está en login, mandarlo al inicio
+    if (sheetsReady && user && ruta === 'login') {
+      navegar('inicio')
+    }
   }, [user, ruta, sheetsReady])
 
   // Enrutamiento básico con hash
