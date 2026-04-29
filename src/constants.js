@@ -33,7 +33,7 @@ export function calcularTasaEnvio(pais, modo = 'detal') {
   const tProveedor = parseFloat(rawProveedor) || 0;
 
   if (tProveedor === 0) return 0
-  if (pais.codigo === 'USD') return 1
+  // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
   let rawMargen;
   if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && parseFloat(pais.margenEnvioMayor) > 0) {
@@ -54,7 +54,7 @@ export function calcularTasaRecibo(pais, modo = 'detal') {
   const tProveedor = parseFloat(rawProveedor) || 0;
 
   if (tProveedor === 0) return 0
-  if (pais.codigo === 'USD') return 1
+  // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
   let rawMargen;
   if (modo === 'mayor' && pais.margenReciboMayor !== undefined && parseFloat(pais.margenReciboMayor) > 0) {

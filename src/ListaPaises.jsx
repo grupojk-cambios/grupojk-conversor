@@ -154,8 +154,8 @@ export default function ListaPaises({ modo = 'detal' }) {
                   {/* Código + tasa */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <span className="badge badge-success" style={{ fontFamily: 'monospace', fontSize: '0.72rem', marginBottom: '0.3rem', display: 'inline-block' }}>{pais.codigo}</span>
-                    <p style={{ fontWeight: 800, color: esUSD ? 'var(--text-mid)' : 'var(--primary-color)', fontSize: '1rem', fontFamily: 'Manrope, sans-serif' }}>
-                      {esUSD ? '1.0000' : formatearMonto(tp, pais.codigo)}
+                    <p style={{ fontWeight: 800, color: 'var(--primary-color)', fontSize: '1rem', fontFamily: 'Manrope, sans-serif' }}>
+                      {formatearMonto(tp, pais.codigo)}
                     </p>
                     <p style={{ fontSize: '0.65rem', color: 'var(--text-low)' }}>{pais.codigo}/USD</p>
                   </div>
@@ -218,8 +218,8 @@ export default function ListaPaises({ modo = 'detal' }) {
                     <span className="badge badge-success" style={{ fontFamily: 'monospace' }}>{pais.codigo}</span>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontWeight: 800, color: esUSD ? 'var(--text-mid)' : 'var(--primary-color)', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
-                      {esUSD ? '1.0000' : formatearMonto(tp, pais.codigo)}
+                    <p style={{ fontWeight: 800, color: 'var(--primary-color)', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                      {formatearMonto(tp, pais.codigo)}
                     </p>
                     <p style={{ fontSize: '0.7rem', color: 'var(--text-low)' }}>{pais.codigo}/USD</p>
                   </div>

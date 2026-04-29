@@ -170,16 +170,37 @@ export default function AdminPanel({ onLogout }) {
           </p>
         </div>
 
-        <button onClick={onLogout} style={{
-          background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-low)',
-          padding: '0.6rem 1.2rem', borderRadius: '0.8rem', cursor: 'pointer', fontWeight: 500,
-          fontSize: '0.9rem', transition: 'all 0.3s'
-        }}
-        onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
-        onMouseLeave={e => e.target.style.background = 'transparent'}
-        >
-          Cerrar Sesión
-        </button>
+        <div style={{ display: 'flex', gap: '0.8rem' }}>
+          <button 
+            onClick={() => window.location.hash = '#/inicio'} 
+            style={{
+              background: 'rgba(16, 185, 129, 0.1)', 
+              border: '1px solid var(--primary-color)', 
+              color: 'var(--primary-color)',
+              padding: '0.6rem 1.2rem', 
+              borderRadius: '0.8rem', 
+              cursor: 'pointer', 
+              fontWeight: 700,
+              fontSize: '0.9rem', 
+              transition: 'all 0.3s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'}
+          >
+            🏠 Ir a Inicio
+          </button>
+
+          <button onClick={onLogout} style={{
+            background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-low)',
+            padding: '0.6rem 1.2rem', borderRadius: '0.8rem', cursor: 'pointer', fontWeight: 500,
+            fontSize: '0.9rem', transition: 'all 0.3s'
+          }}
+          onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.05)'}
+          onMouseLeave={e => e.target.style.background = 'transparent'}
+          >
+            Cerrar Sesión
+          </button>
+        </div>
       </div>
 
       <div className="glass" style={{ padding: '1.5rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -251,6 +272,9 @@ export default function AdminPanel({ onLogout }) {
                         </a>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-low)', textAlign: 'center', marginTop: '0.2rem' }}>
                           WhatsApp: {t.whatsapp_cliente}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'white', textAlign: 'center', fontWeight: 700, marginTop: '0.1rem', textTransform: 'uppercase' }}>
+                          {t.nombre_cliente} {t.apellido_cliente}
                         </div>
                       </div>
                     </td>

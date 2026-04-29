@@ -13,6 +13,7 @@ const CLAVE_MAYOR = '1234jk'
 
 function LoginMayor({ onLogin }) {
   const [clave, setClave] = useState('')
+  const [showClave, setShowClave] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = (e) => {
@@ -36,15 +37,48 @@ function LoginMayor({ onLogin }) {
         <p style={{ color: 'var(--text-low)', fontSize: '0.9rem', marginBottom: '2rem' }}>Acceso exclusivo para remesistas y cambistas</p>
 
         <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            value={clave}
-            onChange={e => { setClave(e.target.value); setError(''); }}
-            placeholder="Ingrese la clave de acceso"
-            className="input-field"
-            style={{ marginBottom: '1rem', textAlign: 'center', fontSize: '1.1rem', letterSpacing: '0.15em' }}
-            autoFocus
-          />
+          <div style={{ position: 'relative', marginBottom: '1rem' }}>
+            <input
+              type={showClave ? 'text' : 'password'}
+              value={clave}
+              onChange={e => { setClave(e.target.value); setError(''); }}
+              placeholder="Ingrese la clave de acceso"
+              className="input-field"
+              style={{ width: '100%', textAlign: 'center', fontSize: '1.1rem', letterSpacing: '0.15em', paddingRight: '3.5rem' }}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShowClave(!showClave)}
+              style={{
+                position: 'absolute',
+                right: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-low)',
+                cursor: 'pointer',
+                padding: '0.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0.6
+              }}
+            >
+              {showClave ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              )}
+            </button>
+          </div>
           {error && (
             <p style={{ color: 'var(--error-color)', fontSize: '0.85rem', marginBottom: '1rem', fontWeight: 600 }}>
               ❌ {error}
@@ -89,22 +123,12 @@ function App() {
   useEffect(() => {
     // Escuchar cambios en la sesión de Supabase
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user ?? null
-      setUser(u)
-      // Si el usuario es el admin, asegurar el estado auth
-      if (u?.email === 'multimarcasjk2018@gmail.com') {
-        setAuth(true)
-        sessionStorage.setItem('jk_admin_auth', 'true')
-      }
+      setUser(session?.user ?? null)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user ?? null
-      setUser(u)
-      if (u?.email === 'multimarcasjk2018@gmail.com') {
-        setAuth(true)
-        sessionStorage.setItem('jk_admin_auth', 'true')
-      } else if (_event === 'SIGNED_OUT') {
+      setUser(session?.user ?? null)
+      if (_event === 'SIGNED_OUT') {
         setAuth(false)
         sessionStorage.removeItem('jk_admin_auth')
       }
@@ -136,6 +160,13 @@ function App() {
         
         if (data) {
           setProfile(data)
+          
+          // Si es admin, asegurar acceso al panel
+          if (data.role === 'admin') {
+            setAuth(true)
+            sessionStorage.setItem('jk_admin_auth', 'true')
+          }
+
           // Si no tiene WhatsApp y no estamos en la página de login, preguntar
           if (!data.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
             setShowWhatsAppModal(true)
