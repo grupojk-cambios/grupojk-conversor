@@ -89,11 +89,25 @@ function App() {
   useEffect(() => {
     // Escuchar cambios en la sesión de Supabase
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      setUser(u)
+      // Si el usuario es el admin, asegurar el estado auth
+      if (u?.email === 'multimarcasjk2018@gmail.com') {
+        setAuth(true)
+        sessionStorage.setItem('jk_admin_auth', 'true')
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      setUser(u)
+      if (u?.email === 'multimarcasjk2018@gmail.com') {
+        setAuth(true)
+        sessionStorage.setItem('jk_admin_auth', 'true')
+      } else if (_event === 'SIGNED_OUT') {
+        setAuth(false)
+        sessionStorage.removeItem('jk_admin_auth')
+      }
     })
 
     const isAuth = sessionStorage.getItem('jk_admin_auth')
@@ -113,8 +127,9 @@ function App() {
   useEffect(() => {
     if (user) {
       const fetchProfile = async () => {
+        const tabla = modoMayor ? 'perfiles_mayor' : 'perfiles_detal'
         const { data, error } = await supabase
-          .from('perfiles')
+          .from(tabla)
           .select('*')
           .eq('id', user.id)
           .single()
@@ -122,8 +137,31 @@ function App() {
         if (data) {
           setProfile(data)
           // Si no tiene WhatsApp y no estamos en la página de login, preguntar
-          if (!data.whatsapp && ruta !== 'login') {
+          if (!data.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
             setShowWhatsAppModal(true)
+          }
+        } else if (!error || error.code === 'PGRST116') {
+          // Si no existe el perfil en esta tabla, intentar crearlo con metadata
+          const { data: newUser } = await supabase.auth.getUser()
+          const metadata = newUser.user?.user_metadata
+          
+          const { data: created, error: createError } = await supabase
+            .from(tabla)
+            .insert([{
+              id: user.id,
+              full_name: metadata?.nombre || metadata?.full_name || user.email?.split('@')[0],
+              email: user.email,
+              whatsapp: metadata?.whatsapp || '',
+              tipo: modoMayor ? 'mayor' : 'detal'
+            }])
+            .select()
+            .single()
+            
+          if (created) {
+            setProfile(created)
+            if (!created.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
+              setShowWhatsAppModal(true)
+            }
           }
         }
       }
@@ -158,8 +196,9 @@ function App() {
     }
 
     setSavingWhatsApp(true)
+    const tabla = modoMayor ? 'perfiles_mayor' : 'perfiles_detal'
     const { error } = await supabase
-      .from('perfiles')
+      .from(tabla)
       .update({ whatsapp: limpio })
       .eq('id', user.id)
     
@@ -176,12 +215,22 @@ function App() {
 
   // Redirección forzada si no hay usuario (Capa de Seguridad)
   useEffect(() => {
-    if (sheetsReady && !user && ruta !== 'login') {
+    if (sheetsReady && !user && ruta !== 'login' && !ruta.startsWith('admin')) {
+      // Guardar la ruta a la que intentaba ir (memoria de ruta)
+      if (ruta !== 'inicio' && ruta !== 'login') {
+        sessionStorage.setItem('jk_intended_route', ruta)
+      }
       navegar('login')
     }
-    // Si ya hay usuario y está en login, mandarlo al inicio
+    // Si ya hay usuario y está en login, mandarlo al inicio o a la ruta guardada
     if (sheetsReady && user && ruta === 'login') {
-      navegar('inicio')
+      const intended = sessionStorage.getItem('jk_intended_route')
+      if (intended) {
+        sessionStorage.removeItem('jk_intended_route')
+        navegar(intended)
+      } else {
+        navegar('inicio')
+      }
     }
   }, [user, ruta, sheetsReady])
 
@@ -216,7 +265,13 @@ function App() {
 
   const handleMayorLogin = () => {
     setMayorAuth(true)
-    navegar('mayor-inicio')
+    const intended = sessionStorage.getItem('jk_intended_route')
+    if (intended && user) {
+      sessionStorage.removeItem('jk_intended_route')
+      navegar(intended)
+    } else if (!intended) {
+      navegar('mayor-inicio')
+    }
   }
 
   const handleMayorLogout = async () => {
@@ -240,19 +295,29 @@ function App() {
     )
   }
 
-  // Si intenta acceder a rutas mayor sin estar autenticado → login
+  // Si intenta acceder a rutas mayor sin estar autenticado → login de acceso mayor
   if (modoMayor && !mayorAuth && ruta !== 'mayor') {
-    // Redirigir a login mayor
+    // Guardar la ruta original si es específica
+    if (ruta.startsWith('mayor-')) {
+      sessionStorage.setItem('jk_intended_route', ruta)
+    }
+    // Redirigir a login mayor (password gate)
     window.location.hash = '#/mayor'
     return <LoginMayor onLogin={handleMayorLogin} />
   }
 
-  // Ruta exacta "mayor" = login
+  // Ruta exacta "mayor" = login (password gate)
   if (ruta === 'mayor' && !mayorAuth) {
     return <LoginMayor onLogin={handleMayorLogin} />
   }
   if (ruta === 'mayor' && mayorAuth) {
-    navegar('mayor-inicio')
+    const intended = sessionStorage.getItem('jk_intended_route')
+    if (intended) {
+      sessionStorage.removeItem('jk_intended_route')
+      navegar(intended)
+    } else {
+      navegar('mayor-inicio')
+    }
   }
 
   // Determinar si mostrar navbar público
@@ -291,7 +356,8 @@ function App() {
               <>
                 <button onClick={() => navegar('mayor-inicio')} className={`nav-link ${ruta === 'mayor-inicio' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Inicio</button>
                 <button onClick={() => navegar('mayor-cotizador')} className={`nav-link ${ruta === 'mayor-cotizador' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Cotizador</button>
-                <button onClick={() => navegar('mayor-tasas')} className={`nav-link ${ruta === 'mayor-tasas' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Tasas' : 'Lista de Tasas'}</button>
+                <button onClick={() => navegar('mayor-tasas')} className={`nav-link ${ruta === 'mayor-tasas' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Tasas</button>
+                <button onClick={() => navegar('mayor-mis-operaciones')} className={`nav-link ${ruta === 'mayor-mis-operaciones' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Mis Cambios' : 'Mis Cambios'}</button>
                 <button onClick={handleMayorLogout} style={{ background: 'none', border: '1px solid var(--error-color)', borderRadius: '0.6rem', color: 'var(--error-color)', fontSize: '0.75rem', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 700 }}>Salir</button>
               </>
             ) : (
@@ -390,13 +456,27 @@ function App() {
         {ruta === 'inicio' && <Dashboard onNavegar={navegar} modo="detal" />}
         {ruta === 'cotizador' && <Cotizador modo="detal" />}
         {ruta === 'tasas' && <ListaPaises modo="detal" />}
-        {ruta === 'mis-operaciones' && <MisOperaciones />}
-        {ruta === 'login' && <Auth onLogin={() => navegar('inicio')} />}
+        {ruta === 'mis-operaciones' && <MisOperaciones modo="detal" />}
+        {ruta === 'login' && (
+          <Auth 
+            tipo={sessionStorage.getItem('jk_intended_route')?.startsWith('mayor') ? 'mayor' : 'detal'} 
+            onLogin={() => {
+              const intended = sessionStorage.getItem('jk_intended_route')
+              if (intended) {
+                sessionStorage.removeItem('jk_intended_route')
+                navegar(intended)
+              } else {
+                navegar('inicio')
+              }
+            }} 
+          />
+        )}
         
         {/* MAYOR */}
         {ruta === 'mayor-inicio' && mayorAuth && <Dashboard onNavegar={navegar} modo="mayor" />}
         {ruta === 'mayor-cotizador' && mayorAuth && <Cotizador modo="mayor" />}
         {ruta === 'mayor-tasas' && mayorAuth && <ListaPaises modo="mayor" />}
+        {ruta === 'mayor-mis-operaciones' && mayorAuth && <MisOperaciones modo="mayor" />}
 
         {/* ADMIN */}
         {ruta === 'admin-jk' && (

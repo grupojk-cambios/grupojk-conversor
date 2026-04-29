@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 
-export default function MisOperaciones() {
+export default function MisOperaciones({ modo = 'detal' }) {
   const [transacciones, setTransacciones] = useState([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600)
 
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 600)
+    window.addEventListener('resize', handleResize)
+    
     // Verificar sesión inicial
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user)
@@ -15,11 +18,13 @@ export default function MisOperaciones() {
       else setLoading(false)
     })
 
-    // Suscribirse a cambios en tiempo real para que el cliente vea el cambio de estado sin refrescar
+    // Suscribirse a cambios en tiempo real
     const channel = supabase
       .channel('mis-cambios-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transacciones' }, () => {
-        if (user) fetchMisTransacciones(user.id)
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) fetchMisTransacciones(user.id)
+        })
       })
       .subscribe()
 
@@ -27,14 +32,16 @@ export default function MisOperaciones() {
       window.removeEventListener('resize', handleResize)
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [modo])
 
   async function fetchMisTransacciones(userId) {
     try {
+      const tipo = modo === 'mayor' ? 'Mayorista' : 'Estándar'
       const { data, error } = await supabase
         .from('transacciones')
         .select('*')
         .eq('user_id', userId)
+        .eq('tipo_cliente', tipo)
         .order('fecha', { ascending: false })
 
       if (error) throw error

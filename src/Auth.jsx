@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from './lib/supabase'
 
-export default function Auth({ onLogin }) {
+export default function Auth({ onLogin, tipo = 'detal' }) {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,7 +23,8 @@ export default function Auth({ onLogin }) {
           options: {
             data: {
               nombre: nombre,
-              whatsapp: whatsapp
+              whatsapp: whatsapp,
+              tipo: tipo
             }
           }
         })
