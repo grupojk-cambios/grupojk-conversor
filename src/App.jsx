@@ -7,6 +7,7 @@ import AdminPanel from './AdminPanel'
 import LoginAdmin from './LoginAdmin'
 import MisOperaciones from './MisOperaciones'
 import Auth from './Auth'
+import Perfil from './Perfil'
 import { supabase } from './lib/supabase'
 
 const CLAVE_MAYOR = '1234jk'
@@ -389,6 +390,7 @@ function App() {
                 <button onClick={() => navegar('mayor-cotizador')} className={`nav-link ${ruta === 'mayor-cotizador' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Cotizador</button>
                 <button onClick={() => navegar('mayor-tasas')} className={`nav-link ${ruta === 'mayor-tasas' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Tasas</button>
                 <button onClick={() => navegar('mayor-mis-operaciones')} className={`nav-link ${ruta === 'mayor-mis-operaciones' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Mis Cambios' : 'Mis Cambios'}</button>
+                <button onClick={() => navegar('perfil')} className={`nav-link ${ruta === 'perfil' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Perfil' : 'Mi Perfil'}</button>
                 <button onClick={handleMayorLogout} style={{ background: 'none', border: '1px solid var(--error-color)', borderRadius: '0.6rem', color: 'var(--error-color)', fontSize: '0.75rem', padding: '0.3rem 0.6rem', cursor: 'pointer', fontWeight: 700 }}>Salir</button>
               </>
             ) : (
@@ -397,6 +399,7 @@ function App() {
                 <button onClick={() => navegar('cotizador')} className={`nav-link ${ruta === 'cotizador' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Cotizador</button>
                 <button onClick={() => navegar('tasas')} className={`nav-link ${ruta === 'tasas' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>Tasas</button>
                 <button onClick={() => navegar('mis-operaciones')} className={`nav-link ${ruta === 'mis-operaciones' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Mis Cambios' : 'Mis Cambios'}</button>
+                <button onClick={() => navegar('perfil')} className={`nav-link ${ruta === 'perfil' ? 'active' : ''}`} style={{ background: 'none', border: 'none', fontSize: isMobile ? '0.8rem' : '1rem', cursor: 'pointer', padding: isMobile ? '0.3rem 0.5rem' : undefined }}>{isMobile ? 'Perfil' : 'Mi Perfil'}</button>
                 
                 {user ? (
                    <button 
@@ -488,6 +491,7 @@ function App() {
         {ruta === 'cotizador' && <Cotizador modo="detal" />}
         {ruta === 'tasas' && <ListaPaises modo="detal" />}
         {ruta === 'mis-operaciones' && <MisOperaciones modo="detal" />}
+        {ruta === 'perfil' && user && <Perfil profile={profile} onUpdate={setProfile} modo={modoMayor ? 'mayor' : 'detal'} />}
         {ruta === 'login' && (
           <Auth 
             tipo={sessionStorage.getItem('jk_intended_route')?.startsWith('mayor') ? 'mayor' : 'detal'} 
