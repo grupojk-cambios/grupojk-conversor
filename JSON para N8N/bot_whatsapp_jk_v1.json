@@ -1,0 +1,195 @@
+{
+  "name": "Bot WhatsApp JK Remesas - V1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook-whatsapp",
+        "options": {}
+      },
+      "id": "e6f7a8b9-c0d1-4e2f-a3b4-c5d6e7f8a9b0",
+      "name": "Webhook Evolution API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv",
+        "options": {}
+      },
+      "id": "f1a2b3c4-d5e6-4f7g-8h9i-j0k1l2m3n4o5",
+      "name": "Obtener Tasas Google Sheets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-4g7h-8i9j-k0l1m2n3o4p5",
+      "name": "Parsear CSV",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ],
+      "action": "toTable"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Eres el asistente de JK Remesas. Tienes acceso a las tasas actuales de envío en una tabla. Responde amablemente y ayuda a los clientes a cotizar. Si te preguntan 'tasa', usa los datos recibidos."
+        }
+      },
+      "id": "b1c2d3e4-f5g6-4h7i-8j9k-l0m1n2o3p4q5",
+      "name": "AI Agent",
+      "type": "n8n-nodes-base.aiAgent",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$node[\"Webhook Evolution API\"].json[\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$node[\"AI Agent\"].json[\"output\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-g5h6-4i7j-8k9l-m0n1o2p3q4r5",
+      "name": "Responder WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {}
+      },
+      "id": "d1e2f3g4-h5i6-4j7k-8l9m-n0o1p2q3r4s5",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        800,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "e1f2g3h4-i5j6-4k7l-8m9n-o0p1q2r3s4t5",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [
+        950,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Evolution API": {
+      "main": [
+        [
+          {
+            "node": "Obtener Tasas Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Tasas Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Parsear CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear CSV": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Responder WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

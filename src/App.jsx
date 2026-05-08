@@ -175,8 +175,14 @@ function App() {
           setProfile(perfilEncontrado)
           // Forzar el modo según la tabla donde se encontró
           const esMayor = tablaPertenece === 'perfiles_mayor'
-          setModoMayor(esMayor)
-          sessionStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
+          const modoActivo = sessionStorage.getItem('jk_active_mode')
+          
+          if (!modoActivo) {
+            setModoMayor(esMayor)
+            sessionStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
+          } else {
+            setModoMayor(modoActivo === 'mayor')
+          }
 
           if (perfilEncontrado.role === 'admin') {
             setAuth(true)
@@ -547,6 +553,11 @@ function App() {
             onUpdate={setProfile} 
             modo={modoMayor ? 'mayor' : 'detal'} 
             onLogout={modoMayor ? handleMayorLogout : handleLogout}
+            onSwitchMode={(nuevo) => {
+              sessionStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
+            }}
           />
         )}
         {ruta === 'login' && (

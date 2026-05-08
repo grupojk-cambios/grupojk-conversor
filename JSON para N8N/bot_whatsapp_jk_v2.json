@@ -1,0 +1,228 @@
+{
+  "name": "Bot WhatsApp JK Remesas - V2 (Mejorado)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook-whatsapp",
+        "options": {}
+      },
+      "id": "e6f7a8b9-c0d1-4e2f-a3b4-c5d6e7f8a9b0",
+      "name": "Webhook Evolution API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json[\"data\"][\"key\"][\"fromMe\"]}}",
+              "value2": "={{false}}"
+            }
+          ]
+        }
+      },
+      "id": "f2a3b4c5-d6e7-4f8g-9h0i-j1k2l3m4n5o6",
+      "name": "Es mensaje de cliente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv",
+        "options": {}
+      },
+      "id": "f1a2b3c4-d5e6-4f7g-8h9i-j0k1l2m3n4o5",
+      "name": "Consultar Tasas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        600,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-4g7h-8i9j-k0l1m2n3o4p5",
+      "name": "CSV a JSON",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        800,
+        140
+      ],
+      "action": "toTable"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "Eres el asistente inteligente de 'Cambios JK'. \nTu objetivo es ayudar a los clientes con el envío de remesas.\n\nREGLAS:\n1. Si el cliente pregunta por tasas, usa la información de la tabla adjunta.\n2. Si el cliente pregunta por un país que no está en la lista, dile amablemente que por ahora no operamos ahí.\n3. Si el cliente envía una foto (comprobante), dile que Kelvin o Dario revisarán el pago en unos minutos.\n4. Mantén un tono profesional y amable.\n5. No inventes tasas. Si no estás seguro, pide al cliente que espere a un asesor humano."
+        }
+      },
+      "id": "b1c2d3e4-f5g6-4h7i-8j9k-l0m1n2o3p4q5",
+      "name": "AI Agent JK",
+      "type": "n8n-nodes-base.aiAgent",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$node[\"Webhook Evolution API\"].json[\"data\"][\"key\"][\"remoteJid\"]}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$json[\"output\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-g5h6-4i7j-8k9l-m0n1o2p3q4r5",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "d1e2f3g4-h5i6-4j7k-8l9m-n0o1p2q3r4s5",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        900,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "e1f2g3h4-i5j6-4k7l-8m9n-o0p1q2r3s4t5",
+      "name": "Memoria de Chat",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Evolution API": {
+      "main": [
+        [
+          {
+            "node": "Es mensaje de cliente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es mensaje de cliente?": {
+      "main": [
+        [
+          {
+            "node": "Consultar Tasas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Tasas": {
+      "main": [
+        [
+          {
+            "node": "CSV a JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CSV a JSON": {
+      "main": [
+        [
+          {
+            "node": "AI Agent JK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent JK": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent JK",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria de Chat": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent JK",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
