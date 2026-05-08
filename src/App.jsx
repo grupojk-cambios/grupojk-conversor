@@ -175,13 +175,16 @@ function App() {
           setProfile(perfilEncontrado)
           // Forzar el modo según la tabla donde se encontró
           const esMayor = tablaPertenece === 'perfiles_mayor'
+          const esAdmin = perfilEncontrado.role === 'admin'
           const modoActivo = sessionStorage.getItem('jk_active_mode')
           
-          if (!modoActivo) {
+          if (esAdmin && modoActivo) {
+            // Si es admin y ya eligió un modo, respetarlo
+            setModoMayor(modoActivo === 'mayor')
+          } else {
+            // Para usuarios normales o admins sin elección previa, forzar modo de tabla
             setModoMayor(esMayor)
             sessionStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
-          } else {
-            setModoMayor(modoActivo === 'mayor')
           }
 
           if (perfilEncontrado.role === 'admin') {

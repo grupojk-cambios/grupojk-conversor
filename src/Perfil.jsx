@@ -148,52 +148,54 @@ export default function Perfil({ profile, onUpdate, modo = 'detal', onLogout, on
           </button>
         </form>
 
-        {/* Selector de Modo */}
-        <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
-          <label style={{ display: 'block', color: 'white', fontSize: '0.8rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
-            Configuración de Interfaz
-          </label>
-          
-          <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-low)', marginBottom: '0.5rem' }}>
-              Selecciona el modo de uso que prefieres. El modo mayorista requiere clave de acceso.
-            </p>
+        {/* Selector de Modo (Solo para Admins) */}
+        {profile?.role === 'admin' && (
+          <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+            <label style={{ display: 'block', color: 'white', fontSize: '0.8rem', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 600 }}>
+              Configuración de Interfaz (Admin)
+            </label>
             
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <button 
-                onClick={() => onSwitchMode && onSwitchMode('detal')}
-                style={{
-                  padding: '0.8rem',
-                  borderRadius: '0.6rem',
-                  border: '1px solid ' + (modo === 'detal' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
-                  background: modo === 'detal' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                  color: modo === 'detal' ? 'var(--primary-color)' : 'white',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                🏠 MODO DETAL
-              </button>
+            <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-low)', marginBottom: '0.5rem' }}>
+                Como administrador, puedes alternar entre la vista de Detal y Mayorista para revisar las tasas.
+              </p>
               
-              <button 
-                onClick={() => onSwitchMode && onSwitchMode('mayor')}
-                style={{
-                  padding: '0.8rem',
-                  borderRadius: '0.6rem',
-                  border: '1px solid ' + (modo === 'mayor' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
-                  background: modo === 'mayor' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                  color: modo === 'mayor' ? 'var(--primary-color)' : 'white',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                💼 MODO MAYOR
-              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <button 
+                  onClick={() => onSwitchMode && onSwitchMode('detal')}
+                  style={{
+                    padding: '0.8rem',
+                    borderRadius: '0.6rem',
+                    border: '1px solid ' + (modo === 'detal' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
+                    background: modo === 'detal' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                    color: modo === 'detal' ? 'var(--primary-color)' : 'white',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  🏠 MODO DETAL
+                </button>
+                
+                <button 
+                  onClick={() => onSwitchMode && onSwitchMode('mayor')}
+                  style={{
+                    padding: '0.8rem',
+                    borderRadius: '0.6rem',
+                    border: '1px solid ' + (modo === 'mayor' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
+                    background: modo === 'mayor' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                    color: modo === 'mayor' ? 'var(--primary-color)' : 'white',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  💼 MODO MAYOR
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <button 
