@@ -3,11 +3,8 @@ import { getFlagUrl, obtenerTasasProcesadas, formatearMonto } from './constants'
 export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }) {
   if (!paisOrigen) return null
 
-  // Destinos destacados para la hoja (puedes ajustar esta lista)
-  const destinos = paises.filter(p => 
-    p.id !== paisOrigen.id && 
-    ['VE', 'CO', 'PE', 'CL', 'AR', 'US', 'USDT'].includes(p.iso2?.toUpperCase())
-  )
+  // Mostrar TODOS los países disponibles como destino (excepto el origen)
+  const destinos = paises.filter(p => p.id !== paisOrigen.id)
 
   const handleShare = async () => {
     const url = window.location.href

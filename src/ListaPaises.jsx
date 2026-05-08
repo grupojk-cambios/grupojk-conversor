@@ -21,16 +21,12 @@ export default function ListaPaises({ modo = 'detal' }) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Países filtrados por búsqueda
   const paisesFiltrados = paises.filter(p =>
     p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
     p.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
     p.moneda.toLowerCase().includes(busqueda.toLowerCase())
   )
-
-  // Países recomendados para la cabecera de "Hojas de Tasas"
-  const paisesOrigenTop = paises.filter(p => 
-    ['AR', 'PE', 'CL', 'CO', 'US', 'CU'].includes(p.iso2?.toUpperCase())
-  ).sort((a, b) => a.nombre.localeCompare(b.nombre))
 
   const getTasa = (pais) => {
     if (listaActiva === 'enviar') return calcularTasaEnvio(pais, modo)
@@ -55,59 +51,13 @@ export default function ListaPaises({ modo = 'detal' }) {
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: isMobile ? '1.5rem 1rem' : '2rem 1.5rem' }}>
 
-      <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
         <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', marginBottom: '0.5rem' }}>
           🌎 Tasas de Cambio{esMayor ? ' Mayor' : ''}
         </h2>
-        <p style={{ color: 'var(--text-low)', marginBottom: '2rem' }}>
-          Selecciona un país para ver su hoja de tasas personalizada o busca en el listado general.
+        <p style={{ color: 'var(--text-low)', marginBottom: '1rem' }}>
+          Haz clic en cualquier país para ver su <b>Hoja de Tasas Premium</b> para compartir.
         </p>
-
-        {/* ── SELECTOR DE HOJA POR PAÍS ── */}
-        <div style={{ 
-          display: 'flex', 
-          flexWrap: 'nowrap', 
-          overflowX: 'auto', 
-          gap: '1rem', 
-          padding: '0.5rem',
-          paddingBottom: '1.5rem',
-          marginBottom: '1rem',
-          justifyContent: isMobile ? 'flex-start' : 'center',
-          scrollbarWidth: 'none'
-        }}>
-          {paisesOrigenTop.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPaisOrigenSeleccionado(p)}
-              className="glass"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.6rem',
-                padding: '0.8rem 1.2rem',
-                minWidth: '90px',
-                border: '1px solid var(--glass-border)',
-                background: 'rgba(255,255,255,0.03)',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.transform = 'translateY(-5px)'
-                e.currentTarget.style.borderColor = 'var(--primary-color)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.borderColor = 'var(--glass-border)'
-              }}
-            >
-              <div style={{ width: '2.5rem', height: '1.7rem', borderRadius: '0.3rem', overflow: 'hidden', boxShadow: '0 4px 8px rgba(0,0,0,0.3)' }}>
-                <img src={getFlagUrl(p)} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'white', textTransform: 'uppercase' }}>{p.nombre}</span>
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* ── TABS TOGGLE ── */}
@@ -200,12 +150,15 @@ export default function ListaPaises({ modo = 'detal' }) {
               return (
                 <div
                   key={pais.id}
+                  onClick={() => setPaisOrigenSeleccionado(pais)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '0.75rem',
-                    padding: '0.9rem 1rem',
+                    padding: '1.2rem 1rem',
                     borderBottom: idx < paisesFiltrados.length - 1 ? '1px solid var(--glass-border)' : 'none',
+                    cursor: 'pointer',
+                    background: 'rgba(255,255,255,0.01)'
                   }}
                 >
                   {/* Bandera */}
@@ -261,17 +214,25 @@ export default function ListaPaises({ modo = 'detal' }) {
               return (
                 <div
                   key={pais.id}
+                  onClick={() => setPaisOrigenSeleccionado(pais)}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '2.5rem 1fr 1fr 1fr 1fr',
                     gap: '1rem',
-                    padding: '1rem 1.5rem',
+                    padding: '1.2rem 1.5rem',
                     borderBottom: idx < paisesFiltrados.length - 1 ? '1px solid var(--glass-border)' : 'none',
-                    transition: 'background 0.2s',
+                    transition: 'all 0.2s',
                     alignItems: 'center',
+                    cursor: 'pointer'
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(16,185,129,0.04)'
+                    e.currentTarget.style.transform = 'scale(1.005)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  }}
                 >
                   <div style={{ width: '2.5rem', height: '1.6rem', borderRadius: '0.3rem', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                     <img src={getFlagUrl(pais)} alt={pais.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
