@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, formatearMonto, getFlagUrl } from './constants'
+import HojaTasas from './HojaTasas'
 
 
 export default function ListaPaises({ modo = 'detal' }) {
@@ -7,6 +8,7 @@ export default function ListaPaises({ modo = 'detal' }) {
   const [busqueda, setBusqueda] = useState('')
   const [listaActiva, setListaActiva] = useState('enviar')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const [paisOrigenSeleccionado, setPaisOrigenSeleccionado] = useState(null)
   const esMayor = modo === 'mayor'
 
   useEffect(() => {
@@ -25,6 +27,11 @@ export default function ListaPaises({ modo = 'detal' }) {
     p.moneda.toLowerCase().includes(busqueda.toLowerCase())
   )
 
+  // Países recomendados para la cabecera de "Hojas de Tasas"
+  const paisesOrigenTop = paises.filter(p => 
+    ['AR', 'PE', 'CL', 'CO', 'US', 'CU'].includes(p.iso2?.toUpperCase())
+  ).sort((a, b) => a.nombre.localeCompare(b.nombre))
+
   const getTasa = (pais) => {
     if (listaActiva === 'enviar') return calcularTasaEnvio(pais, modo)
     return calcularTasaRecibo(pais, modo)
@@ -32,16 +39,75 @@ export default function ListaPaises({ modo = 'detal' }) {
 
   const labelColumna = listaActiva === 'enviar' ? 'Tasa Enviar / USD' : 'Tasa Recibir / USD'
 
+  if (paisOrigenSeleccionado) {
+    return (
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: isMobile ? '1rem' : '2rem' }}>
+        <HojaTasas 
+          paisOrigen={paisOrigenSeleccionado} 
+          paises={paises} 
+          modo={modo} 
+          onBack={() => setPaisOrigenSeleccionado(null)} 
+        />
+      </div>
+    )
+  }
+
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: isMobile ? '1.5rem 1rem' : '2rem 1.5rem' }}>
 
-      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+      <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
         <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.5rem)', marginBottom: '0.5rem' }}>
           🌎 Tasas de Cambio{esMayor ? ' Mayor' : ''}
         </h2>
-        <p style={{ color: 'var(--text-low)' }}>
-          {paises.length} países disponibles · Tasa base: 1 USD
+        <p style={{ color: 'var(--text-low)', marginBottom: '2rem' }}>
+          Selecciona un país para ver su hoja de tasas personalizada o busca en el listado general.
         </p>
+
+        {/* ── SELECTOR DE HOJA POR PAÍS ── */}
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'nowrap', 
+          overflowX: 'auto', 
+          gap: '1rem', 
+          padding: '0.5rem',
+          paddingBottom: '1.5rem',
+          marginBottom: '1rem',
+          justifyContent: isMobile ? 'flex-start' : 'center',
+          scrollbarWidth: 'none'
+        }}>
+          {paisesOrigenTop.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPaisOrigenSeleccionado(p)}
+              className="glass"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.6rem',
+                padding: '0.8rem 1.2rem',
+                minWidth: '90px',
+                border: '1px solid var(--glass-border)',
+                background: 'rgba(255,255,255,0.03)',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-5px)'
+                e.currentTarget.style.borderColor = 'var(--primary-color)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.borderColor = 'var(--glass-border)'
+              }}
+            >
+              <div style={{ width: '2.5rem', height: '1.7rem', borderRadius: '0.3rem', overflow: 'hidden', boxShadow: '0 4px 8px rgba(0,0,0,0.3)' }}>
+                <img src={getFlagUrl(p)} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'white', textTransform: 'uppercase' }}>{p.nombre}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── TABS TOGGLE ── */}

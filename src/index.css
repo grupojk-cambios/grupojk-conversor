@@ -17,6 +17,9 @@
   --error-color: #FF716C;
   --success-color: #69F6B8;
   --header-height: 80px;
+  --glass-bg-premium: rgba(15, 23, 42, 0.7);
+  --premium-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --premium-bg: #0f172a;
 }
 
 * {
@@ -250,5 +253,62 @@ select:focus {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ── PREMIUM RATE SHEET ── */
+.premium-sheet {
+  background-color: var(--premium-bg);
+  background-image: 
+    radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+  border-radius: 2rem;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  position: relative;
+}
+
+.glass-card {
+  background: var(--glass-bg-premium);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 1.25rem;
+}
+
+.rate-row-premium {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.rate-row-premium:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rate-value-premium {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 800;
+  color: var(--primary-color);
+  font-size: 1.2rem;
+  text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+
+.sidebar-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-low);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .premium-sheet {
+    border-radius: 1rem;
   }
 }
