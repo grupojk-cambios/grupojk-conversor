@@ -253,7 +253,7 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
 }
 
 function BankItem({ name, logo }) {
-  const [imgError, setImgError] = React.useState(false);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div style={{ 
