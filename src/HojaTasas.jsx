@@ -194,16 +194,16 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
             }}>
                {paisOrigen.id === 8 || paisOrigen.nombre.toUpperCase().includes('VENEZUELA') ? (
                  <>
-                   <BankItem name="B. VENEZUELA" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Banco_de_Venezuela_logo.svg/512px-Banco_de_Venezuela_logo.svg.png" />
-                   <BankItem name="BANESCO" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Banesco_Logo.svg/512px-Banesco_Logo.svg.png" />
-                   <BankItem name="MERCANTIL" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Mercantil_Banco_logo.svg/512px-Mercantil_Banco_logo.svg.png" />
-                   <BankItem name="PROVINCIAL" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/BBVA_logo.svg/512px-BBVA_logo.svg.png" />
-                   <BankItem name="BICENTENARIO" logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR0Y6I7z6m8f3p3L9S7-Z8mY_h7xV_9z9Fv8Q&s" />
-                   <BankItem name="BNC" logo="https://logodownload.org/wp-content/uploads/2019/12/bnc-logo-vector.png" />
-                   <BankItem name="BINANCE" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Binance_Logo.svg/512px-Binance_Logo.svg.png" />
-                   <BankItem name="ZELLE" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Zelle_logo.svg/512px-Zelle_logo.svg.png" />
-                   <BankItem name="ZINLI" logo="https://yt3.googleusercontent.com/v8tTq3xVlR4T-S_8D3M0Yj-FfV7_G_k-L_8V8-o8_m5_9Y1Y-fV_m5_9Y1Y-fV_m5_9Y=s900-c-k-c0x00ffffff-no-rj" />
-                   <BankItem name="USDT" logo="https://cryptologos.cc/logos/tether-usdt-logo.png" />
+                   <BankItem name="B. VENEZUELA" logo="https://upload.wikimedia.org/wikipedia/commons/a/a2/Banco_de_Venezuela_logo.svg" />
+                   <BankItem name="BANESCO" logo="https://upload.wikimedia.org/wikipedia/commons/4/4c/Banesco_Logo.svg" />
+                   <BankItem name="MERCANTIL" logo="https://upload.wikimedia.org/wikipedia/commons/e/e0/Mercantil_Banco_logo.svg" />
+                   <BankItem name="PROVINCIAL" logo="https://upload.wikimedia.org/wikipedia/commons/6/6c/BBVA_logo.svg" />
+                   <BankItem name="BICENTENARIO" logo="https://logovector.org/wp-content/uploads/2021/04/banco-bicentenario-logo-vector.png" />
+                   <BankItem name="BNC" logo="https://bncenlinea.com/favicon.ico" />
+                   <BankItem name="BINANCE" logo="https://img.icons8.com/color/96/binance.png" />
+                   <BankItem name="ZELLE" logo="https://img.icons8.com/color/96/zelle.png" />
+                   <BankItem name="ZINLI" logo="https://zinli.com/favicon.ico" />
+                   <BankItem name="USDT" logo="https://img.icons8.com/color/96/tether.png" />
                  </>
                ) : (
                  <div style={{ gridColumn: 'span 2', textAlign: 'center' }}>
@@ -252,6 +252,8 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
 }
 
 function BankItem({ name, logo }) {
+  const [imgError, setImgError] = React.useState(false);
+
   return (
     <div style={{ 
       display: 'flex', 
@@ -263,8 +265,17 @@ function BankItem({ name, logo }) {
       border: '1px solid rgba(255,255,255,0.08)',
       height: '2.5rem'
     }}>
-      <div style={{ width: '1.2rem', height: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logo} alt={name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+      <div style={{ width: '1.4rem', height: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {!imgError ? (
+          <img 
+            src={logo} 
+            alt={name} 
+            onError={() => setImgError(true)}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
+          />
+        ) : (
+          <span style={{ fontSize: '0.8rem' }}>🏦</span>
+        )}
       </div>
       <span style={{ 
         fontSize: '0.6rem', 
