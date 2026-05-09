@@ -109,16 +109,12 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
               let tasaCruzada = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
               let valorFinal = tasaCruzada
               let labelRelacion = `${destino.codigo} / ${paisOrigen.codigo}`
-              let monedaFormato = destino.codigo
 
               if (isCajaDolar(destino) && !isCajaDolar(paisOrigen)) {
                 valorFinal = 1 / tasaCruzada
-                labelRelacion = `${paisOrigen.codigo} / ${destino.codigo}`
-                monedaFormato = paisOrigen.codigo
               } 
               else if (tasaCruzada < 0.1 && !isCajaDolar(destino)) {
                 valorFinal = tasaCruzada * 1000
-                labelRelacion = `${destino.codigo} x 1.000 ${paisOrigen.codigo}`
               }
 
               return (
@@ -157,16 +153,21 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
         {/* Columna Derecha: Sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           
-          {/* Contacto */}
+          {/* Contactos */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '1.2rem', padding: '1.2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.6 }}>Contáctanos</span>
               <span style={{ fontSize: '1.2rem' }}>🟢</span>
             </div>
-            <p style={{ fontWeight: 800, fontSize: '1.2rem', color: '#10b981', margin: 0 }}>+57 323 394 7051</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.3rem' }}>
-              <span style={{ color: '#10b981', fontSize: '0.8rem' }}>✔️</span>
-              <span style={{ fontSize: '0.65rem', fontWeight: 600, opacity: 0.5 }}>Atención inmediata</span>
+            
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Atención Kelvin</p>
+              <p style={{ fontWeight: 800, fontSize: '1.1rem', color: '#10b981', margin: 0 }}>+593 96 123 0380</p>
+            </div>
+
+            <div>
+              <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>Atención Dario</p>
+              <p style={{ fontWeight: 800, fontSize: '1.1rem', color: '#10b981', margin: 0 }}>+593 99 805 3300</p>
             </div>
           </div>
 
@@ -178,25 +179,18 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
             <p style={{ fontSize: '0.7rem', opacity: 0.5, margin: 0 }}>Lunes a Sábado</p>
           </div>
 
-          {/* Métodos de Pago */}
+          {/* Métodos de Pago - Estructura Base */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '1.2rem', padding: '1.2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
               <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '0.4rem' }}>💳</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.6 }}>Metodos de Pago</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.6 }}>Bancos Disponibles</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', alignItems: 'center' }}>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f3ba2f' }}>🔶 BINANCE</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6366f1' }}>💜 Zelle</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#2563eb' }}>🔹 BCP</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d946ef' }}>💖 Zinli</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981' }}>🟢 USDT</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#eab308' }}>🟡 Bancolombia</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444' }}>🔴 Banesco</div>
-               <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#3b82f6' }}>🌊 BBVA</div>
+            <div style={{ textAlign: 'center' }}>
+               <p style={{ fontSize: '0.7rem', opacity: 0.5, margin: 0 }}>Consulta bancos disponibles para {paisOrigen.nombre} vía WhatsApp</p>
             </div>
           </div>
 
-          {/* Botón Acción (No visible en captura ideally, pero útil para compartir) */}
+          {/* Botón Acción */}
           <button 
             onClick={handleShare}
             className="no-print"
@@ -219,29 +213,15 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
 
       </div>
 
-      {/* Footer Bar Estilo Unicambios */}
+      {/* Marca de Agua Inferior Estilizada */}
       <div style={{ 
-        marginTop: '2.5rem', 
-        background: 'linear-gradient(90deg, #10b981, #064e3b)', 
-        padding: '0.8rem 1.5rem', 
-        borderRadius: '0.5rem',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        position: 'relative',
-        zIndex: 1
+        marginTop: '3rem', 
+        textAlign: 'center',
+        opacity: 0.3
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '1rem' }}>📞</span>
-          <span style={{ fontSize: '0.8rem', fontWeight: 800 }}>+57 3233947051</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-             <span style={{ fontSize: '1rem' }}>📸</span>
-             <span style={{ fontSize: '0.75rem', fontWeight: 800 }}>@grupojkconversor</span>
-          </div>
-          <span style={{ fontSize: '0.8rem' }}>✔️</span>
-        </div>
+        <p style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.3em', textTransform: 'uppercase' }}>
+          JK CONVERSOR • SEGURIDAD Y CONFIANZA
+        </p>
       </div>
 
     </div>
