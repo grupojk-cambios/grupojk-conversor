@@ -179,14 +179,37 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
             <p style={{ fontSize: '0.7rem', opacity: 0.5, margin: 0 }}>Lunes a Sábado</p>
           </div>
 
-          {/* Métodos de Pago - Estructura Base */}
+          {/* Métodos de Pago - Dinámicos por País Origen */}
           <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '1.2rem', padding: '1.2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.2rem' }}>
               <span style={{ fontSize: '1.2rem', display: 'block', marginBottom: '0.4rem' }}>💳</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.6 }}>Bancos Disponibles</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.6 }}>Métodos de Pago</span>
             </div>
-            <div style={{ textAlign: 'center' }}>
-               <p style={{ fontSize: '0.7rem', opacity: 0.5, margin: 0 }}>Consulta bancos disponibles para {paisOrigen.nombre} vía WhatsApp</p>
+            
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(2, 1fr)', 
+              gap: '0.6rem',
+              alignItems: 'center'
+            }}>
+               {paisOrigen.id === 8 || paisOrigen.nombre.toUpperCase().includes('VENEZUELA') ? (
+                 <>
+                   <BankItem name="B. VENEZUELA" logo="🇻🇪" />
+                   <BankItem name="BANESCO" logo="🟢" />
+                   <BankItem name="MERCANTIL" logo="🔵" />
+                   <BankItem name="PROVINCIAL" logo="🌊" />
+                   <BankItem name="BICENTENARIO" logo="🔴" />
+                   <BankItem name="BNC" logo="🏦" />
+                   <BankItem name="BINANCE" logo="🔶" />
+                   <BankItem name="ZELLE" logo="💜" />
+                   <BankItem name="ZINLI" logo="💖" />
+                   <BankItem name="USDT" logo="🟢" />
+                 </>
+               ) : (
+                 <div style={{ gridColumn: 'span 2', textAlign: 'center' }}>
+                   <p style={{ fontSize: '0.7rem', opacity: 0.5, margin: 0 }}>Consulta bancos disponibles para {paisOrigen.nombre} vía WhatsApp</p>
+                 </div>
+               )}
             </div>
           </div>
 
@@ -224,6 +247,32 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
         </p>
       </div>
 
+    </div>
+  )
+}
+
+function BankItem({ name, logo }) {
+  return (
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '0.4rem',
+      background: 'rgba(255,255,255,0.05)',
+      padding: '0.4rem 0.6rem',
+      borderRadius: '0.6rem',
+      border: '1px solid rgba(255,255,255,0.05)',
+      height: '2.2rem'
+    }}>
+      <span style={{ fontSize: '1rem', width: '1.2rem', textAlign: 'center' }}>{logo}</span>
+      <span style={{ 
+        fontSize: '0.6rem', 
+        fontWeight: 800, 
+        color: 'rgba(255,255,255,0.9)',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        letterSpacing: '0.02em'
+      }}>{name}</span>
     </div>
   )
 }
