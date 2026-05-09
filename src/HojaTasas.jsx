@@ -1,4 +1,4 @@
-import { getFlagUrl, obtenerTasasProcesadas, formatearMonto } from './constants'
+import { getFlagUrl, obtenerTasasProcesadas, formatearMonto, isCajaDolar } from './constants'
 
 export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }) {
   if (!paisOrigen) return null
@@ -74,8 +74,27 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
           
           {destinos.map((destino) => {
             const { tasaDestinoDesdeDolares, tasaOrigenParaDolares } = obtenerTasasProcesadas(paisOrigen, destino, paises, modo)
-            // Tasa cruzada: 1 unidad de Origen -> X unidades de Destino
-            const tasaCruzada = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+            
+            // Tasa base: 1 unidad Origen -> X unidades Destino
+            let tasaCruzada = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+            
+            let valorFinal = tasaCruzada
+            let labelRelacion = `${destino.codigo} / ${paisOrigen.codigo}`
+            let monedaFormato = destino.codigo
+            let baseUnidades = 1
+
+            // 1. Si el DESTINO es USD/USDT, mostramos la inversa (ej. 1700 ARS/USD)
+            if (isCajaDolar(destino) && !isCajaDolar(paisOrigen)) {
+              valorFinal = 1 / tasaCruzada
+              labelRelacion = `${paisOrigen.codigo} / ${destino.codigo}`
+              monedaFormato = paisOrigen.codigo
+            } 
+            // 2. Si la tasa es muy pequeña (ej. COP -> VES), usamos base 1.000 para que sea legible
+            else if (tasaCruzada < 0.1 && !isCajaDolar(destino)) {
+              valorFinal = tasaCruzada * 1000
+              labelRelacion = `${destino.codigo} x 1.000 ${paisOrigen.codigo}`
+              baseUnidades = 1000
+            }
 
             return (
               <div key={destino.id} className="rate-row-premium">
@@ -88,10 +107,10 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <span className="rate-value-premium">
-                    {formatearMonto(tasaCruzada, destino.codigo)}
+                    {formatearMonto(valorFinal, monedaFormato)}
                   </span>
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-low)', marginTop: '2px' }}>
-                    {destino.codigo} / {paisOrigen.codigo}
+                  <p style={{ fontSize: '0.65rem', color: 'var(--primary-color)', marginTop: '2px', fontWeight: 600 }}>
+                    {labelRelacion}
                   </p>
                 </div>
               </div>
