@@ -1,3 +1,4 @@
+import React, { useState } from 'react'
 import { getFlagUrl, obtenerTasasProcesadas, formatearMonto, isCajaDolar } from './constants'
 
 export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }) {
