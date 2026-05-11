@@ -195,15 +195,15 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
             }}>
                {paisOrigen.id === 8 || paisOrigen.nombre.toUpperCase().includes('VENEZUELA') ? (
                  <>
-                   <BankItem name="B. VENEZUELA" logo="https://upload.wikimedia.org/wikipedia/commons/a/a2/Banco_de_Venezuela_logo.svg" />
-                   <BankItem name="BANESCO" logo="https://upload.wikimedia.org/wikipedia/commons/4/4c/Banesco_Logo.svg" />
-                   <BankItem name="MERCANTIL" logo="https://upload.wikimedia.org/wikipedia/commons/e/e0/Mercantil_Banco_logo.svg" />
-                   <BankItem name="PROVINCIAL" logo="https://upload.wikimedia.org/wikipedia/commons/6/6c/BBVA_logo.svg" />
-                   <BankItem name="BICENTENARIO" logo="https://logovector.org/wp-content/uploads/2021/04/banco-bicentenario-logo-vector.png" />
-                   <BankItem name="BNC" logo="https://bncenlinea.com/favicon.ico" />
-                   <BankItem name="BINANCE" logo="https://img.icons8.com/color/96/binance.png" />
+                   <BankItem name="B. VENEZUELA" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Banco_de_Venezuela_logo.svg/512px-Banco_de_Venezuela_logo.svg.png" />
+                   <BankItem name="BANESCO" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Banesco_Logo.svg/512px-Banesco_Logo.svg.png" />
+                   <BankItem name="MERCANTIL" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Mercantil_Banco_logo.svg/512px-Mercantil_Banco_logo.svg.png" />
+                   <BankItem name="PROVINCIAL" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/BBVA_2019.svg/512px-BBVA_2019.svg.png" />
+                   <BankItem name="BICENTENARIO" logo="https://www.bancobicentenario.com.ve/favicon.ico" />
+                   <BankItem name="BNC" logo="https://www.bncenlinea.com/favicon.ico" />
+                   <BankItem name="BINANCE" logo="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Binance_Logo.svg/512px-Binance_Logo.svg.png" />
                    <BankItem name="ZELLE" logo="https://img.icons8.com/color/96/zelle.png" />
-                   <BankItem name="ZINLI" logo="https://zinli.com/favicon.ico" />
+                   <BankItem name="ZINLI" logo="https://www.google.com/s2/favicons?domain=zinli.com&sz=128" />
                    <BankItem name="USDT" logo="https://img.icons8.com/color/96/tether.png" />
                  </>
                ) : (
@@ -266,7 +266,17 @@ function BankItem({ name, logo }) {
       border: '1px solid rgba(255,255,255,0.08)',
       height: '2.5rem'
     }}>
-      <div style={{ width: '1.4rem', height: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ 
+        width: '1.4rem', 
+        height: '1.4rem', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        overflow: 'hidden',
+        background: 'rgba(255,255,255,0.9)',
+        borderRadius: '0.2rem',
+        padding: '2px'
+      }}>
         {!imgError ? (
           <img 
             src={logo} 
