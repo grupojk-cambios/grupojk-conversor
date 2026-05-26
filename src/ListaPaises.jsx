@@ -169,11 +169,6 @@ export default function ListaPaises({ modo = 'detal' }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pais.nombre}</p>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-low)', marginTop: '1px' }}>{pais.moneda}</p>
-                    {pais.proveedor && (
-                      <p style={{ fontSize: '0.65rem', color: '#a78bfa', marginTop: '3px', fontWeight: 600 }}>
-                        👤 {pais.proveedor}
-                      </p>
-                    )}
                   </div>
                   {/* Código + tasa */}
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -193,20 +188,20 @@ export default function ListaPaises({ modo = 'detal' }) {
             {/* Header */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '2.5rem 1.5fr 1fr 1fr 1fr 1fr',
+              gridTemplateColumns: '2.5rem 1fr 1fr 1fr 1fr',
               gap: '1rem',
               padding: '1rem 1.5rem',
               background: 'rgba(16,185,129,0.08)',
               borderBottom: '1px solid var(--glass-border)',
             }}>
-              {['', 'Proveedor', 'País', 'Moneda', 'Código ISO', labelColumna].map((h, i) => (
+              {['', 'País', 'Moneda', 'Código ISO', labelColumna].map((h, i) => (
                 <div key={i} style={{
                   fontSize: '0.7rem',
-                  color: i === 5 ? 'var(--primary-color)' : (i === 1 ? '#a78bfa' : 'var(--text-low)'),
+                  color: i === 4 ? 'var(--primary-color)' : 'var(--text-low)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.1em',
                   fontWeight: 700,
-                  textAlign: i === 5 ? 'right' : 'left',
+                  textAlign: i === 4 ? 'right' : 'left',
                 }}>
                   {h}
                 </div>
@@ -222,7 +217,7 @@ export default function ListaPaises({ modo = 'detal' }) {
                   onClick={() => setPaisOrigenSeleccionado(pais)}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2.5rem 1.5fr 1fr 1fr 1fr 1fr',
+                    gridTemplateColumns: '2.5rem 1fr 1fr 1fr 1fr',
                     gap: '1rem',
                     padding: '1.2rem 1.5rem',
                     borderBottom: idx < paisesFiltrados.length - 1 ? '1px solid var(--glass-border)' : 'none',
@@ -241,29 +236,6 @@ export default function ListaPaises({ modo = 'detal' }) {
                 >
                   <div style={{ width: '2.5rem', height: '1.6rem', borderRadius: '0.3rem', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                     <img src={getFlagUrl(pais)} alt={pais.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                  {/* Proveedor */}
-                  <div style={{ minWidth: 0 }}>
-                    {pais.proveedor ? (
-                      <span style={{
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        color: '#a78bfa',
-                        background: 'rgba(167,139,250,0.1)',
-                        border: '1px solid rgba(167,139,250,0.2)',
-                        borderRadius: '0.4rem',
-                        padding: '0.15rem 0.5rem',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: 'block',
-                        maxWidth: '100%'
-                      }}>
-                        👤 {pais.proveedor}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>—</span>
-                    )}
                   </div>
                   <div>
                     <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem' }}>{pais.nombre}</p>
