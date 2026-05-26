@@ -419,6 +419,7 @@ export async function sincronizarGoogleSheets() {
     const idxMargenEnvioMayor = headRow.findIndex(h => h.includes('MARGEN ENVIO MAYOR') || h.includes('MARGEN ENVÍO MAYOR'));
     const idxMargenReciboMayor = headRow.findIndex(h => h.includes('MARGEN RECIBO MAYOR'));
     const idxCiudades = headRow.findIndex(h => h.includes('CIUDADES'));
+    const idxProveedor = headRow.findIndex(h => h.includes('PROVEEDOR') || h.includes('SUPPLIER'));
     const idxMon = headRow.findIndex(h => h.includes('NOMBRE') || h.includes('MONEDA'));
 
     // Empezamos desde la línea 1 (omitiendo cabeceras País, Tasa Envio, etc)
@@ -484,7 +485,8 @@ export async function sincronizarGoogleSheets() {
           factorUSDT: valFactorUSDT || (base ? base.factorUSDT || 0 : 0),
           margenEnvioMayor: idxMargenEnvioMayor !== -1 && row.length > idxMargenEnvioMayor ? parseVal(row[idxMargenEnvioMayor]) : 0,
           margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseVal(row[idxMargenReciboMayor]) : 0,
-          ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : ''
+          ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : '',
+          proveedor: idxProveedor !== -1 && row.length > idxProveedor ? row[idxProveedor].trim() : ''
         });
       }
     }
