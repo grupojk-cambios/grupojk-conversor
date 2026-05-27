@@ -16,11 +16,11 @@
 /* Base de la tarjeta premium */
 .premium-tree {
   width: 100%;
-  aspect-ratio: 4/5; /* Aspect ratio para historias/estados */
+  aspect-ratio: 9/16; /* Aspect ratio exacto para historias/estados de WhatsApp */
   background: linear-gradient(135deg, #020b18 0%, #01040a 100%);
   position: relative;
   overflow: hidden;
-  padding: 2rem 1.5rem;
+  padding: 2.5rem 1.5rem;
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.05);
