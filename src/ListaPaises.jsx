@@ -28,10 +28,8 @@ export default function ListaPaises({ modo = 'detal' }) {
     p.moneda.toLowerCase().includes(busqueda.toLowerCase())
   )
 
-  // Referencia base: USDT (1:1 con USD, márgenes variables desde Sheets)
-  // Fallback: Ecuador (id=9) si USDT no está cargado
-  const paisReferencia = paises.find(p => p.codigo === 'USDT')
-                      || paises.find(p => p.id === 9)
+  // Referencia USD: Ecuador (id=9) — mismo que usa el Cotizador internamente
+  const paisReferencia = paises.find(p => p.id === 9)
 
   const getTasa = (pais) => {
     // Si no hay referencia cargada aún, o el país ES Ecuador, usar cálculo simple
