@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import GeneradorEstados from './GeneradorEstados'
 
 export default function AdminPanel({ onLogout }) {
   const [transacciones, setTransacciones] = useState([])
   const [busqueda, setBusqueda] = useState('')
   const [loading, setLoading] = useState(true)
   const [mensaje, setMensaje] = useState(null)
+  const [vistaActiva, setVistaActiva] = useState('transacciones') // 'transacciones' | 'estados'
 
   const estadosDisponibles = ['Pendiente', 'Verificando', 'Completada', 'Cancelada']
 
@@ -163,10 +165,10 @@ export default function AdminPanel({ onLogout }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '2rem', marginBottom: '0.2rem' }}>
-            <span style={{ color: 'var(--primary-color)' }}>📊</span> Control de Transacciones
+            <span style={{ color: 'var(--primary-color)' }}>{vistaActiva === 'transacciones' ? '📊' : '📱'}</span> {vistaActiva === 'transacciones' ? 'Control de Transacciones' : 'Generador de Estados'}
           </h2>
           <p style={{ color: 'var(--text-low)' }}>
-            Revisa y actualiza el estado de las operaciones de tus clientes en tiempo real.
+            {vistaActiva === 'transacciones' ? 'Revisa y actualiza el estado de las operaciones de tus clientes en tiempo real.' : 'Crea imágenes perfectas con tus tasas para publicar en WhatsApp.'}
           </p>
         </div>
 
@@ -203,18 +205,49 @@ export default function AdminPanel({ onLogout }) {
         </div>
       </div>
 
-      <div className="glass" style={{ padding: '1.5rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div className="search-container" style={{ flex: '1', minWidth: '250px' }}>
-          <span className="search-icon">🔍</span>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Buscar por código, nombre o WhatsApp..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-          />
-        </div>
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+        <button 
+          onClick={() => setVistaActiva('transacciones')}
+          style={{
+            background: vistaActiva === 'transacciones' ? 'rgba(0, 198, 255, 0.1)' : 'transparent',
+            border: `1px solid ${vistaActiva === 'transacciones' ? 'var(--primary-color)' : 'transparent'}`,
+            color: vistaActiva === 'transacciones' ? 'var(--primary-color)' : 'var(--text-low)',
+            padding: '0.6rem 1.2rem', borderRadius: '0.8rem', cursor: 'pointer', fontWeight: 700,
+            transition: 'all 0.3s'
+          }}
+        >
+          📊 Transacciones
+        </button>
+        <button 
+          onClick={() => setVistaActiva('estados')}
+          style={{
+            background: vistaActiva === 'estados' ? 'rgba(0, 198, 255, 0.1)' : 'transparent',
+            border: `1px solid ${vistaActiva === 'estados' ? 'var(--primary-color)' : 'transparent'}`,
+            color: vistaActiva === 'estados' ? 'var(--primary-color)' : 'var(--text-low)',
+            padding: '0.6rem 1.2rem', borderRadius: '0.8rem', cursor: 'pointer', fontWeight: 700,
+            transition: 'all 0.3s'
+          }}
+        >
+          📱 Estados WhatsApp
+        </button>
       </div>
+
+      {vistaActiva === 'estados' ? (
+        <GeneradorEstados />
+      ) : (
+        <>
+          <div className="glass" style={{ padding: '1.5rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            <div className="search-container" style={{ flex: '1', minWidth: '250px' }}>
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar por código, nombre o WhatsApp..."
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+              />
+            </div>
+          </div>
 
       <div className="glass" style={{ overflowX: 'auto', borderRadius: '1.5rem', padding: '1rem' }}>
         {loading ? (
@@ -387,6 +420,8 @@ export default function AdminPanel({ onLogout }) {
           </table>
         ) }
       </div>
+      </>
+      )}
     </div>
   )
 }

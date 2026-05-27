@@ -1,0 +1,132 @@
+.generador-estados-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  align-items: center;
+}
+
+.estado-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 400px;
+}
+
+.estado-card {
+  width: 100%;
+  aspect-ratio: 9/16;
+  background: linear-gradient(145deg, #061934 0%, #020813 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  color: white;
+}
+
+.estado-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.estado-content {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.estado-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.estado-title {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--primary-color, #00c6ff);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-shadow: 0 4px 20px rgba(0, 198, 255, 0.4);
+}
+
+.estado-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.estado-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  flex: 1;
+  justify-content: center;
+}
+
+.estado-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.estado-country-info {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.estado-flag {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.estado-country-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.estado-rate-info {
+  text-align: right;
+}
+
+.estado-rate {
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: #10b981;
+}
+
+.estado-currency {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: -0.2rem;
+}
+
+.estado-footer {
+  text-align: center;
+  margin-top: auto;
+  padding-top: 1.5rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
