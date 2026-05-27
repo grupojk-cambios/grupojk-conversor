@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import html2canvas from 'html2canvas'
-import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto } from './constants'
+import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets } from './constants'
 import './GeneradorEstados.css'
 
 export default function GeneradorEstados() {
@@ -11,10 +11,40 @@ export default function GeneradorEstados() {
   const cardRefs = useRef([])
 
   useEffect(() => {
-    // Solo países con tasa > 0
-    const paises = cargarPaises().filter(p => p.tasaProveedor > 0 || p.tasaProveedorEnvio > 0 || p.id === 9)
-    setTodosPaises(paises)
+    const loadData = async () => {
+      // Cargar local primero
+      const paisesLocales = cargarPaises().filter(p => p.tasaProveedor > 0 || p.tasaProveedorEnvio > 0 || p.id === 9)
+      setTodosPaises(paisesLocales)
+      
+      // Sincronizar en background con Sheets para tener las tasas frescas
+      await sincronizarGoogleSheets()
+      const paisesActualizados = cargarPaises().filter(p => p.tasaProveedor > 0 || p.tasaProveedorEnvio > 0 || p.id === 9)
+      setTodosPaises(paisesActualizados)
+    }
+    loadData()
   }, [])
+
+  // Manejar botón atrás del teléfono/mouse para cerrar el modal
+  useEffect(() => {
+    const handlePopState = () => {
+      if (expandido !== null) {
+        setExpandido(null)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [expandido])
+
+  const toggleExpandido = (index) => {
+    if (index !== null) {
+      window.history.pushState({ modalAbierto: true }, '')
+      setExpandido(index)
+    } else {
+      if (expandido !== null) {
+        window.history.back() // Esto disparará el popstate y cerrará el modal
+      }
+    }
+  }
 
   useEffect(() => {
     if (paisOrigen) {
@@ -66,7 +96,7 @@ export default function GeneradorEstados() {
       link.click()
       
       // Cerrar modal automáticamente después de descargar si lo abrimos solo para esto
-      setExpandido(null)
+      toggleExpandido(null)
     } catch (error) {
       console.error('Error al generar la imagen:', error)
       alert('Hubo un error al descargar la imagen.')
@@ -257,7 +287,7 @@ export default function GeneradorEstados() {
                 border: '1px solid rgba(255,255,255,0.2)',
                 boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
               }}
-              onClick={() => setExpandido(index)}
+              onClick={() => toggleExpandido(index)}
             >
               {/* Contenedor que escala la tarjeta original 450x800 a 50% usando transform CSS puro */}
               <div style={{
@@ -285,7 +315,7 @@ export default function GeneradorEstados() {
 
             {/* Modal Full Screen (Visible cuando el usuario hace clic en el preview) */}
             {isExpanded && (
-              <div className="modal-overlay" onClick={() => setExpandido(null)}>
+              <div className="modal-overlay" onClick={() => toggleExpandido(null)}>
                 <div 
                   className="modal-content" 
                   onClick={e => e.stopPropagation()} 
