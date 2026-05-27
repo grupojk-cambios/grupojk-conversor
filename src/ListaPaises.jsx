@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, formatearMonto, getFlagUrl } from './constants'
+import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, formatearMonto, getFlagUrl, obtenerTasasProcesadas } from './constants'
 import HojaTasas from './HojaTasas'
 
 
@@ -28,9 +28,25 @@ export default function ListaPaises({ modo = 'detal' }) {
     p.moneda.toLowerCase().includes(busqueda.toLowerCase())
   )
 
+  // Referencia USD: Ecuador (id=9) — mismo que usa el Cotizador internamente
+  const paisReferencia = paises.find(p => p.id === 9)
+
   const getTasa = (pais) => {
-    if (listaActiva === 'enviar') return calcularTasaEnvio(pais, modo)
-    return calcularTasaRecibo(pais, modo)
+    // Si no hay referencia cargada aún, o el país ES Ecuador, usar cálculo simple
+    if (!paisReferencia || pais.id === paisReferencia.id) {
+      if (listaActiva === 'enviar') return calcularTasaEnvio(pais, modo)
+      return calcularTasaRecibo(pais, modo)
+    }
+
+    if (listaActiva === 'enviar') {
+      // Simula Ecuador → País: cuánta moneda local recibe el cliente por 1 USD
+      const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisReferencia, pais, paises, modo)
+      return (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+    } else {
+      // Simula País → Ecuador: cuánta moneda local entrega el cliente por 1 USD
+      const { tasaOrigenParaDolares } = obtenerTasasProcesadas(pais, paisReferencia, paises, modo)
+      return tasaOrigenParaDolares
+    }
   }
 
   const labelColumna = listaActiva === 'enviar' ? 'Tasa Enviar / USD' : 'Tasa Recibir / USD'
