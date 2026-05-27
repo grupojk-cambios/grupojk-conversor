@@ -200,6 +200,7 @@ export default function GeneradorEstados() {
               alt={paisOrigen.nombre} 
               className="origin-flag"
               crossOrigin="anonymous" 
+              onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/350/350965.png' }}
             />
             <span className="origin-currency">1 {paisOrigen.codigo}</span>
           </div>
@@ -226,7 +227,7 @@ export default function GeneradorEstados() {
         <div className="tree-right">
           {chunk.map(pais => (
             <div key={pais.id} className="tree-dest-row">
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2em' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2em', width: '55px', flexShrink: 0 }}>
                 <div style={{ fontSize: '0.55em', fontWeight: 'bold', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', textAlign: 'center', lineHeight: '1' }}>
                   {pais.nombre}
                 </div>
@@ -235,6 +236,7 @@ export default function GeneradorEstados() {
                   alt={pais.nombre} 
                   className="dest-flag"
                   crossOrigin="anonymous" 
+                  onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/350/350965.png' }}
                 />
               </div>
               <div className="dest-info">

@@ -66,9 +66,9 @@
   align-items: center;
   justify-content: center;
   gap: 1em;
-  margin-bottom: 2em;
+  margin-bottom: 0.8em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 1.5em;
+  padding-bottom: 1em;
 }
 
 .header-logo {
