@@ -94,7 +94,7 @@ export function getFlagUrl(pais) {
 
   // Europa (prevenir que un iso2 mal configurado rompa la bandera)
   if (code === 'EUR' || code === 'EU' || name.includes('EURO')) {
-    return 'https://flagcdn.com/w80/eu.png';
+    return 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Flag_of_Europe.svg/256px-Flag_of_Europe.svg.png';
   }
 
   // Si el usuario configuró Zelle pero olvidó la bandera US
