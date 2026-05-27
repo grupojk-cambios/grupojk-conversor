@@ -7,6 +7,7 @@ export default function GeneradorEstados() {
   const [todosPaises, setTodosPaises] = useState([])
   const [paisOrigen, setPaisOrigen] = useState(null)
   const [chunks, setChunks] = useState([])
+  const [expandido, setExpandido] = useState(null)
   const cardRefs = useRef([])
 
   useEffect(() => {
@@ -41,6 +42,13 @@ export default function GeneradorEstados() {
   }, [paisOrigen, todosPaises])
 
   const descargarImagen = async (index) => {
+    // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
+    if (expandido !== index) {
+      setExpandido(index)
+      // Esperar un poco para que el DOM se actualice antes de capturar
+      await new Promise(r => setTimeout(r, 300))
+    }
+
     const element = cardRefs.current[index]
     if (!element) return
 
@@ -137,15 +145,23 @@ export default function GeneradorEstados() {
 
       <div className="generador-estados-container">
         {chunks.map((chunk, index) => {
-          // Calculamos dinámicamente las posiciones Y para el SVG basándonos en la cantidad de elementos en este chunk
           const numItems = chunk.length;
+          const isExpanded = expandido === index;
           
           return (
-          <div key={index} className="estado-card-wrapper">
+          <div key={index} className="estado-card-wrapper" style={{ alignItems: 'center' }}>
+            <p style={{ color: 'var(--text-low)', fontSize: '0.8rem', marginBottom: '-0.5rem' }}>
+              {isExpanded ? 'Visualización Completa' : 'Haz clic en la imagen para verla en tamaño completo'}
+            </p>
             {/* Tarjeta a exportar */}
             <div 
-              className="estado-card premium-tree" 
+              className={`estado-card premium-tree ${isExpanded ? 'is-expanded' : ''}`} 
               ref={el => cardRefs.current[index] = el}
+              onClick={() => setExpandido(isExpanded ? null : index)}
+              style={{
+                '--tree-max-width': isExpanded ? '450px' : '220px',
+                '--tree-font-size': isExpanded ? '16px' : '8px'
+              }}
             >
               {/* Marca de Agua (Fondo muy visible) */}
               <div className="watermark-container">
