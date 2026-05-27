@@ -15,8 +15,8 @@ export default function GeneradorEstados() {
     setBaseUSD(ecuador)
 
     if (ecuador) {
-      // Filtrar activos y que no sea Ecuador
-      const paisesDestino = todosPaises.filter(p => p.id !== 9 && p.activo)
+      // Filtrar que no sea Ecuador y que tenga tasa configurada
+      const paisesDestino = todosPaises.filter(p => p.id !== 9 && p.tasaProveedor > 0)
 
       // Calcular la tasa enviar para cada país desde USD
       const paisesConTasa = paisesDestino.map(pais => {
