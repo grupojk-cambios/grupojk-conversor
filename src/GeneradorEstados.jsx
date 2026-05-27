@@ -108,7 +108,7 @@ export default function GeneradorEstados() {
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
               }}
             >
-              <img src={getFlagUrl(pais.codigo)} alt={pais.nombre} style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', objectFit: 'cover' }} />
+              <img src={getFlagUrl(pais)} alt={pais.nombre} style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', objectFit: 'cover' }} />
               <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pais.nombre}</span>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-low)' }}>{pais.codigo}</span>
             </button>
@@ -178,7 +178,7 @@ export default function GeneradorEstados() {
                   <div className="tree-origin-box">
                     <span className="origin-name">{paisOrigen.nombre}</span>
                     <img 
-                      src={getFlagUrl(paisOrigen.codigo)} 
+                      src={getFlagUrl(paisOrigen)} 
                       alt={paisOrigen.nombre} 
                       className="origin-flag"
                       crossOrigin="anonymous" 
@@ -210,7 +210,7 @@ export default function GeneradorEstados() {
                   {chunk.map(pais => (
                     <div key={pais.id} className="tree-dest-row">
                       <img 
-                        src={getFlagUrl(pais.codigo)} 
+                        src={getFlagUrl(pais)} 
                         alt={pais.nombre} 
                         className="dest-flag"
                         crossOrigin="anonymous" 
