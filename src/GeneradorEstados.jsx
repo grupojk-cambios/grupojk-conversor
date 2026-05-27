@@ -159,8 +159,9 @@ export default function GeneradorEstados() {
               ref={el => cardRefs.current[index] = el}
               onClick={() => setExpandido(isExpanded ? null : index)}
               style={{
-                '--tree-max-width': isExpanded ? '450px' : '220px',
-                '--tree-font-size': isExpanded ? '16px' : '8px'
+                maxWidth: isExpanded ? '450px' : '220px',
+                fontSize: isExpanded ? '16px' : '8px',
+                margin: '0 auto'
               }}
             >
               {/* Marca de Agua (Fondo muy visible) */}
