@@ -226,8 +226,8 @@ export default function GeneradorEstados() {
         <div className="tree-right">
           {chunk.map(pais => (
             <div key={pais.id} className="tree-dest-row">
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3em' }}>
-                <div style={{ fontSize: '0.65em', fontWeight: 'bold', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', textAlign: 'center', lineHeight: '1' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2em' }}>
+                <div style={{ fontSize: '0.55em', fontWeight: 'bold', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', textAlign: 'center', lineHeight: '1' }}>
                   {pais.nombre}
                 </div>
                 <img 

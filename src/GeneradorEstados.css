@@ -190,16 +190,16 @@
 .tree-dest-row {
   display: flex;
   align-items: center;
-  gap: 0.8em;
+  gap: 0.5em;
   background: rgba(255, 255, 255, 0.02);
-  padding: 0.5em;
+  padding: 0.3em 0.5em;
   border-radius: 0.8em;
   border: 1px solid transparent;
 }
 
 .dest-flag {
-  width: 2.2em;
-  height: 2.2em;
+  width: 1.8em;
+  height: 1.8em;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -211,7 +211,7 @@
 }
 
 .dest-rate {
-  font-size: 1.1em;
+  font-size: 1em;
   font-weight: 800;
   color: #10b981; /* Verde positivo */
   line-height: 1.1;
