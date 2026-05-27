@@ -87,9 +87,14 @@ export function getFlagUrl(pais) {
   const name = pais.nombre ? pais.nombre.toUpperCase() : '';
   const iso = pais.iso2 ? pais.iso2.toLowerCase() : code.substring(0, 2).toLowerCase();
 
-  // Logos de Cripto
+  // Logos de Cripto (usar raw.githubusercontent que soporta CORS para html2canvas)
   if (code === 'USDT' || iso === 'usdt' || name.includes('USDT') || name.includes('TETHER')) {
-    return 'https://assets.coingecko.com/coins/images/325/large/Tether.png';
+    return 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdt.png';
+  }
+
+  // Europa (prevenir que un iso2 mal configurado rompa la bandera)
+  if (code === 'EUR' || code === 'EU' || name.includes('EURO')) {
+    return 'https://flagcdn.com/w80/eu.png';
   }
 
   // Si el usuario configuró Zelle pero olvidó la bandera US
