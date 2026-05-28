@@ -196,7 +196,7 @@ export default function GeneradorEstados() {
           <div className="tree-origin-box">
             <span className="origin-name">{paisOrigen.nombre}</span>
             <img 
-              src={getFlagUrl(paisOrigen)} 
+              src={`${getFlagUrl(paisOrigen)}?v=canvas`} 
               alt={paisOrigen.nombre} 
               className="origin-flag"
               crossOrigin="anonymous" 
@@ -232,7 +232,7 @@ export default function GeneradorEstados() {
                   {pais.nombre}
                 </div>
                 <img 
-                  src={getFlagUrl(pais)} 
+                  src={`${getFlagUrl(pais)}?v=canvas`} 
                   alt={pais.nombre} 
                   className="dest-flag"
                   crossOrigin="anonymous" 
