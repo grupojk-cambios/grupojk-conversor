@@ -1,0 +1,215 @@
+{
+  "name": "Apertura (Sticker) y Cierre (Imagen) Automático",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,20 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst hour = now.getHours();\n\n// 1. REEMPLAZA CON LOS IDS DE TUS GRUPOS REALES\nconst grupos = [\n  '593961230380-1588719606@g.us', // CAMBIOS JK #1\n  '120363291497664389@g.us',      // VENTAS MAYOR\n  '593961230380-1588719963@g.us'  // CAMBIOS JK #2\n];\n\nif (hour < 12) {\n  // --- APERTURA ---\n  return {\n    tipo: 'apertura',\n    grupos: grupos,\n    // 2. REEMPLAZA CON LA URL DE TU STICKER (Debe ser formato .webp de preferencia)\n    stickerUrl: 'https://ejemplo.com/tu-sticker-apertura.webp'\n  };\n} else {\n  // --- CIERRE ---\n  return {\n    tipo: 'cierre',\n    grupos: grupos,\n    // 3. REEMPLAZA CON LA URL DE TU IMAGEN DE CIERRE\n    imageUrl: 'https://ejemplo.com/tu-imagen-cierre.png',\n    texto: '¡Buenas noches! 🔴 Hemos cerrado operaciones por hoy. Retomamos mañana a las 8:00 AM.'\n  };\n}"
+      },
+      "id": "code-1",
+      "name": "Lógica Apertura/Cierre",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.tipo }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "apertura",
+              "output": 0
+            },
+            {
+              "value2": "cierre",
+              "output": 1
+            }
+          ]
+        }
+      },
+      "id": "switch-1",
+      "name": "Es Apertura o Cierre?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "grupos",
+        "options": {}
+      },
+      "id": "split-apertura",
+      "name": "Separar Grupos (Apertura)",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [650, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendSticker/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.EVOLUTION_API_KEY}}" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "number", "value": "={{$json.grupos}}" },
+            { "name": "sticker", "value": "={{$('Lógica Apertura/Cierre').item.json.stickerUrl}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-sticker-grupos",
+      "name": "Enviar Sticker (Grupos)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendStatus/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.EVOLUTION_API_KEY}}" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "type", "value": "text" },
+            { "name": "content", "value": "¡Buenos días! 🟢 Ya estamos operativos para sus cambios." },
+            { "name": "backgroundColor", "value": "#10b981" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-status-apertura",
+      "name": "Estado Texto (Apertura)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [650, 250]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "grupos",
+        "options": {}
+      },
+      "id": "split-cierre",
+      "name": "Separar Grupos (Cierre)",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [650, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendMedia/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.EVOLUTION_API_KEY}}" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "number", "value": "={{$json.grupos}}" },
+            { "name": "mediatype", "value": "image" },
+            { "name": "media", "value": "={{$('Lógica Apertura/Cierre').item.json.imageUrl}}" },
+            { "name": "caption", "value": "={{$('Lógica Apertura/Cierre').item.json.texto}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-imagen-grupos",
+      "name": "Enviar Imagen (Grupos)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendStatus/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.EVOLUTION_API_KEY}}" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "type", "value": "image" },
+            { "name": "content", "value": "={{$('Lógica Apertura/Cierre').item.json.imageUrl}}" },
+            { "name": "caption", "value": "={{$('Lógica Apertura/Cierre').item.json.texto}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-status-cierre",
+      "name": "Estado Imagen (Cierre)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [650, 650]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [ { "node": "Lógica Apertura/Cierre", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Lógica Apertura/Cierre": {
+      "main": [
+        [ { "node": "Es Apertura o Cierre?", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Es Apertura o Cierre?": {
+      "main": [
+        [
+          { "node": "Separar Grupos (Apertura)", "type": "main", "index": 0 },
+          { "node": "Estado Texto (Apertura)", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Separar Grupos (Cierre)", "type": "main", "index": 0 },
+          { "node": "Estado Imagen (Cierre)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Separar Grupos (Apertura)": {
+      "main": [
+        [ { "node": "Enviar Sticker (Grupos)", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Separar Grupos (Cierre)": {
+      "main": [
+        [ { "node": "Enviar Imagen (Grupos)", "type": "main", "index": 0 } ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "name": "Apertura y Cierre Automático - Grupos y Estados",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8,20 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst hour = now.getHours();\nlet text = '';\n\n// Si la hora es menor a las 12 PM (Ej: 8 AM), es apertura\nif (hour < 12) {\n  text = '¡Buenos días! 🟢 Ya estamos operativos y listos para recibir sus solicitudes de cambio.';\n} \n// Sino (Ej: 8 PM), es cierre\nelse {\n  text = '¡Buenas noches! 🔴 Hemos cerrado operaciones por hoy. Retomamos mañana a las 8:00 AM.';\n}\n\nreturn {\n  texto_mensaje: text,\n  grupos: [\n    // Reemplaza estos IDs por los IDs reales de tus grupos. \n    // Puedes verlos en la consola de Evolution API o imprimiendo los mensajes entrantes.\n    '1234567890-123456@g.us',\n    '0987654321-654321@g.us'\n  ]\n};"
+      },
+      "id": "code-1",
+      "name": "Definir Mensaje y Grupos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "grupos",
+        "options": {}
+      },
+      "id": "split-1",
+      "name": "Item Lists (Separar Grupos)",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [600, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{$json.grupos}}"
+            },
+            {
+              "name": "text",
+              "value": "={{$('Definir Mensaje y Grupos').item.json.texto_mensaje}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-groups",
+      "name": "Enviar a Grupos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [800, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_URL}}/message/sendStatus/{{$env.EVOLUTION_INSTANCE}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "content",
+              "value": "={{$json.texto_mensaje}}"
+            },
+            {
+              "name": "backgroundColor",
+              "value": "#10b981"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-status",
+      "name": "Enviar a Estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [600, 420]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Definir Mensaje y Grupos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Definir Mensaje y Grupos": {
+      "main": [
+        [
+          {
+            "node": "Item Lists (Separar Grupos)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enviar a Estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Lists (Separar Grupos)": {
+      "main": [
+        [
+          {
+            "node": "Enviar a Grupos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
