@@ -2,8 +2,8 @@
 
 :root {
   --bg-color: #020b18;
-  --surface-color: #061934;
-  --surface-high: #102645;
+  --surface-color: rgba(255, 255, 255, 0.03);
+  --surface-high: rgba(255, 255, 255, 0.08);
   --primary-color: #10B981;
   --primary-glow: rgba(16, 185, 129, 0.2);
   --secondary-color: #69F6B8;
@@ -11,7 +11,7 @@
   --text-mid: #D8E3FB;
   --text-low: #9EABC8;
   --accent-gradient: linear-gradient(135deg, #10B981 0%, #06B77F 100%);
-  --glass-bg: rgba(6, 25, 52, 0.6);
+  --glass-bg: rgba(0, 0, 0, 0.2);
   --glass-border: rgba(158, 171, 200, 0.15);
   --shadow-premium: 0 24px 48px rgba(0, 0, 0, 0.4);
   --error-color: #FF716C;
