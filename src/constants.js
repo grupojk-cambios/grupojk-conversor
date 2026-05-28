@@ -92,9 +92,9 @@ export function getFlagUrl(pais) {
     return 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/usdt.png';
   }
 
-  // Europa (restaurado para no romper la app)
+  // Europa (servida de forma local para cero problemas de CORS)
   if (code === 'EUR' || code === 'EU' || name.includes('EURO')) {
-    return 'https://flagcdn.com/w80/eu.png';
+    return `${import.meta.env.BASE_URL}eu.png`;
   }
 
   // Si el usuario configuró Zelle pero olvidó la bandera US
