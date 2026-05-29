@@ -1,5 +1,5 @@
 {
-  "name": "Apertura y Cierre Automático - Grupos y Estados",
+  "name": "Apertura (Sticker) y Cierre (Imagen) Automático",
   "nodes": [
     {
       "parameters": {
@@ -7,149 +7,194 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 8,20 * * *"
+              "expression": "0 1 9,18 * * 1-6"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 0 10,14 * * 0"
             }
           ]
         }
       },
-      "id": "trigger-1",
+      "id": "2322dad8-6da4-470a-b265-eb2ccca5e67d",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [200, 300]
+      "position": [-304, 176]
     },
     {
       "parameters": {
-        "jsCode": "const now = new Date();\nconst hour = now.getHours();\nlet text = '';\n\n// Si la hora es menor a las 12 PM (Ej: 8 AM), es apertura\nif (hour < 12) {\n  text = '¡Buenos días! 🟢 Ya estamos operativos y listos para recibir sus solicitudes de cambio.';\n} \n// Sino (Ej: 8 PM), es cierre\nelse {\n  text = '¡Buenas noches! 🔴 Hemos cerrado operaciones por hoy. Retomamos mañana a las 8:00 AM.';\n}\n\nreturn {\n  texto_mensaje: text,\n  grupos: [\n    // Reemplaza estos IDs por los IDs reales de tus grupos. \n    // Puedes verlos en la consola de Evolution API o imprimiendo los mensajes entrantes.\n    '1234567890-123456@g.us',\n    '0987654321-654321@g.us'\n  ]\n};"
+        "jsCode": "const hour = $now.hour;\n\nconst grupos = [\n  '593961230380-1588719606@g.us',\n  '120363291497664389@g.us',\n  '593961230380-1588719963@g.us'\n];\n\nif (hour < 12) {\n  return {\n    tipo: 'apertura',\n    grupos: grupos,\n    stickerUrl: 'https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp'\n  };\n} else {\n  return {\n    tipo: 'cierre',\n    grupos: grupos,\n    imageUrl: 'https://raw.githubusercontent.com/grupojk-cambios/grupojk-conversor/main/public/logos/imagen-cierre.jpg',\n    texto: '¡Buenas noches! Hemos cerrado operaciones por hoy. Retomamos mañana a las 9:00 AM.'\n  };\n}"
       },
-      "id": "code-1",
-      "name": "Definir Mensaje y Grupos",
+      "id": "f6bbebff-9f1a-40ae-b678-4e837974844a",
+      "name": "Lógica Apertura/Cierre",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 300]
+      "position": [-64, 176]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.tipo }}",
+        "rules": {
+          "rules": [
+            { "value2": "apertura" },
+            { "value2": "cierre", "output": 1 }
+          ]
+        }
+      },
+      "id": "3fa82225-d977-422c-a506-2252da1e9b2c",
+      "name": "Es Apertura o Cierre?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [160, 144]
     },
     {
       "parameters": {
         "fieldToSplitOut": "grupos",
         "options": {}
       },
-      "id": "split-1",
-      "name": "Item Lists (Separar Grupos)",
+      "id": "2a8327c7-ffed-42cb-961c-56e1b177e615",
+      "name": "Separar Grupos (Apertura)",
       "type": "n8n-nodes-base.itemLists",
       "typeVersion": 3,
-      "position": [600, 180]
+      "position": [464, -96]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.EVOLUTION_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE}}",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendSticker/BOT CAMBIOS JK Kelvin",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$env.EVOLUTION_API_KEY}}"
-            }
+            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" }
           ]
         },
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            {
-              "name": "number",
-              "value": "={{$json.grupos}}"
-            },
-            {
-              "name": "text",
-              "value": "={{$('Definir Mensaje y Grupos').item.json.texto_mensaje}}"
-            }
+            { "name": "number", "value": "={{$json.grupos}}" },
+            { "name": "sticker", "value": "={{$('Lógica Apertura/Cierre').item.json.stickerUrl}}" }
           ]
         },
         "options": {}
       },
-      "id": "http-groups",
-      "name": "Enviar a Grupos",
+      "id": "5437f4fb-b5c9-40ca-9b71-962c13198173",
+      "name": "Enviar Sticker (Grupos)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [800, 180]
+      "position": [672, -96],
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.EVOLUTION_URL}}/message/sendStatus/{{$env.EVOLUTION_INSTANCE}}",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/status/send/BOT CAMBIOS JK Kelvin",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{$env.EVOLUTION_API_KEY}}"
-            }
+            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "type",
-              "value": "text"
-            },
-            {
-              "name": "content",
-              "value": "={{$json.texto_mensaje}}"
-            },
-            {
-              "name": "backgroundColor",
-              "value": "#10b981"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1\n}",
         "options": {}
       },
-      "id": "http-status",
-      "name": "Enviar a Estado",
+      "id": "5fdfd169-8b29-40b8-9f56-2d6a164eea2b",
+      "name": "Estado Texto (Apertura)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [600, 420]
+      "position": [496, 112],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "grupos",
+        "options": {}
+      },
+      "id": "30ec173e-3065-49e1-b87e-9b889bbf770d",
+      "name": "Separar Grupos (Cierre)",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [464, 288]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendMedia/BOT CAMBIOS JK Kelvin",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"mediatype\": \"image\",\n  \"mimetype\": \"image/jpeg\",\n  \"media\": \"{{ $('Lógica Apertura/Cierre').first().json.imageUrl }}\",\n  \"caption\": \"{{ $('Lógica Apertura/Cierre').first().json.texto }}\"\n}",
+        "options": {}
+      },
+      "id": "29d7f023-6ce7-482c-a8e5-73744bb0cf09",
+      "name": "Enviar Imagen (Grupos)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [672, 288],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/status/send/BOT CAMBIOS JK Kelvin",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"image\",\n  \"content\": \"{{ $('Lógica Apertura/Cierre').first().json.imageUrl }}\",\n  \"caption\": \"{{ $('Lógica Apertura/Cierre').first().json.texto }}\"\n}",
+        "options": {}
+      },
+      "id": "b65c3857-97dd-4988-859a-6300432d67fc",
+      "name": "Estado Imagen (Cierre)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [512, 496],
+      "onError": "continueErrorOutput"
     }
   ],
   "connections": {
     "Schedule Trigger": {
+      "main": [[{ "node": "Lógica Apertura/Cierre", "type": "main", "index": 0 }]]
+    },
+    "Lógica Apertura/Cierre": {
+      "main": [[{ "node": "Es Apertura o Cierre?", "type": "main", "index": 0 }]]
+    },
+    "Es Apertura o Cierre?": {
       "main": [
         [
-          {
-            "node": "Definir Mensaje y Grupos",
-            "type": "main",
-            "index": 0
-          }
+          { "node": "Separar Grupos (Apertura)", "type": "main", "index": 0 },
+          { "node": "Estado Texto (Apertura)", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Separar Grupos (Cierre)", "type": "main", "index": 0 },
+          { "node": "Estado Imagen (Cierre)", "type": "main", "index": 0 }
         ]
       ]
     },
-    "Definir Mensaje y Grupos": {
-      "main": [
-        [
-          {
-            "node": "Item Lists (Separar Grupos)",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Enviar a Estado",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Separar Grupos (Apertura)": {
+      "main": [[{ "node": "Enviar Sticker (Grupos)", "type": "main", "index": 0 }]]
     },
-    "Item Lists (Separar Grupos)": {
-      "main": [
-        [
-          {
-            "node": "Enviar a Grupos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Separar Grupos (Cierre)": {
+      "main": [[{ "node": "Enviar Imagen (Grupos)", "type": "main", "index": 0 }]]
     }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "ec124380c98d69dd328e8aa4b5354a1ab647c5a98191507714a5584c7d707de5"
   }
 }
