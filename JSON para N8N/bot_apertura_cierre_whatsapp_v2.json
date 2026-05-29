@@ -16,21 +16,27 @@
           ]
         }
       },
-      "id": "2322dad8-6da4-470a-b265-eb2ccca5e67d",
+      "id": "4b0b0c39-2967-40f8-8ce6-5ef584b26879",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [-304, 176]
+      "position": [
+        -1168,
+        512
+      ]
     },
     {
       "parameters": {
         "jsCode": "const hour = $now.hour;\n\nconst grupos = [\n  '593961230380-1588719606@g.us',\n  '120363291497664389@g.us',\n  '593961230380-1588719963@g.us'\n];\n\nif (hour < 12) {\n  return {\n    tipo: 'apertura',\n    grupos: grupos,\n    stickerUrl: 'https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp'\n  };\n} else {\n  return {\n    tipo: 'cierre',\n    grupos: grupos,\n    imageUrl: 'https://raw.githubusercontent.com/grupojk-cambios/grupojk-conversor/main/public/logos/imagen-cierre.jpg',\n    texto: '¡Buenas noches! Hemos cerrado operaciones por hoy. Retomamos mañana a las 9:00 AM.'\n  };\n}"
       },
-      "id": "f6bbebff-9f1a-40ae-b678-4e837974844a",
+      "id": "f7491209-2e2f-4f7d-bd0c-5d131e12e25b",
       "name": "Lógica Apertura/Cierre",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-64, 176]
+      "position": [
+        -960,
+        512
+      ]
     },
     {
       "parameters": {
@@ -38,75 +44,101 @@
         "value1": "={{ $json.tipo }}",
         "rules": {
           "rules": [
-            { "value2": "apertura" },
-            { "value2": "cierre", "output": 1 }
+            {
+              "value2": "apertura"
+            },
+            {
+              "value2": "cierre",
+              "output": 1
+            }
           ]
         }
       },
-      "id": "3fa82225-d977-422c-a506-2252da1e9b2c",
+      "id": "a1b7cab0-94c7-48e3-8bdd-8b79bc0a0663",
       "name": "Es Apertura o Cierre?",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [160, 144]
+      "position": [
+        -768,
+        480
+      ]
     },
     {
       "parameters": {
         "fieldToSplitOut": "grupos",
         "options": {}
       },
-      "id": "2a8327c7-ffed-42cb-961c-56e1b177e615",
+      "id": "71218422-2856-49dc-bc7c-51b12141678f",
       "name": "Separar Grupos (Apertura)",
       "type": "n8n-nodes-base.itemLists",
       "typeVersion": 3,
-      "position": [464, -96]
+      "position": [
+        -320,
+        240
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendSticker/BOT CAMBIOS JK Kelvin",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "number", "value": "={{$json.grupos}}" },
-            { "name": "sticker", "value": "={{$('Lógica Apertura/Cierre').item.json.stickerUrl}}" }
-          ]
-        },
-        "options": {}
-      },
-      "id": "5437f4fb-b5c9-40ca-9b71-962c13198173",
-      "name": "Enviar Sticker (Grupos)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [672, -96],
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/status/send/BOT CAMBIOS JK Kelvin",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "4B4A59BF61DC-4013-8107-DFD841C73197"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1\n}",
+        "jsonBody": "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"sticker\": \"{{ $('Lógica Apertura/Cierre').item.json.stickerUrl }}\"\n}",
         "options": {}
       },
-      "id": "5fdfd169-8b29-40b8-9f56-2d6a164eea2b",
+      "id": "b2a2de31-9b78-4e6e-a127-504aefb7426e",
+      "name": "Enviar Sticker (Grupos)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -16,
+        240
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "4B4A59BF61DC-4013-8107-DFD841C73197"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+        "options": {}
+      },
+      "id": "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
       "name": "Estado Texto (Apertura)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [496, 112],
+      "position": [
+        -160,
+        464
+      ],
       "onError": "continueErrorOutput"
     },
     {
@@ -114,21 +146,30 @@
         "fieldToSplitOut": "grupos",
         "options": {}
       },
-      "id": "30ec173e-3065-49e1-b87e-9b889bbf770d",
+      "id": "e25f5dc1-9a54-4a97-b2fd-2c5256251881",
       "name": "Separar Grupos (Cierre)",
       "type": "n8n-nodes-base.itemLists",
       "typeVersion": 3,
-      "position": [464, 288]
+      "position": [
+        -288,
+        656
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendMedia/BOT CAMBIOS JK Kelvin",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "4B4A59BF61DC-4013-8107-DFD841C73197"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -136,61 +177,121 @@
         "jsonBody": "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"mediatype\": \"image\",\n  \"mimetype\": \"image/jpeg\",\n  \"media\": \"{{ $('Lógica Apertura/Cierre').first().json.imageUrl }}\",\n  \"caption\": \"{{ $('Lógica Apertura/Cierre').first().json.texto }}\"\n}",
         "options": {}
       },
-      "id": "29d7f023-6ce7-482c-a8e5-73744bb0cf09",
+      "id": "38b274f1-34b2-49cc-b41e-5b47984a4909",
       "name": "Enviar Imagen (Grupos)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [672, 288],
+      "position": [
+        64,
+        656
+      ],
       "onError": "continueErrorOutput"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/status/send/BOT CAMBIOS JK Kelvin",
+        "url": "https://cambios-jk-remesas-evolution-api.wh5rmr.easypanel.host/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "4B4A59BF61DC-4013-8107-DFD841C73197" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "apikey",
+              "value": "4B4A59BF61DC-4013-8107-DFD841C73197"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"type\": \"image\",\n  \"content\": \"{{ $('Lógica Apertura/Cierre').first().json.imageUrl }}\",\n  \"caption\": \"{{ $('Lógica Apertura/Cierre').first().json.texto }}\"\n}",
+        "jsonBody": "={\n  \"type\": \"image\",\n  \"content\": \"{{ $('Lógica Apertura/Cierre').first().json.imageUrl }}\",\n  \"caption\": \"{{ $('Lógica Apertura/Cierre').first().json.texto }}\",\n  \"allContacts\": true\n}",
         "options": {}
       },
-      "id": "b65c3857-97dd-4988-859a-6300432d67fc",
+      "id": "9bc6929a-bc23-4d92-8ea2-76ebd0569a75",
       "name": "Estado Imagen (Cierre)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [512, 496],
+      "position": [
+        -144,
+        912
+      ],
       "onError": "continueErrorOutput"
     }
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [[{ "node": "Lógica Apertura/Cierre", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Lógica Apertura/Cierre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Lógica Apertura/Cierre": {
-      "main": [[{ "node": "Es Apertura o Cierre?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Es Apertura o Cierre?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Es Apertura o Cierre?": {
       "main": [
         [
-          { "node": "Separar Grupos (Apertura)", "type": "main", "index": 0 },
-          { "node": "Estado Texto (Apertura)", "type": "main", "index": 0 }
+          {
+            "node": "Separar Grupos (Apertura)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Estado Texto (Apertura)",
+            "type": "main",
+            "index": 0
+          }
         ],
         [
-          { "node": "Separar Grupos (Cierre)", "type": "main", "index": 0 },
-          { "node": "Estado Imagen (Cierre)", "type": "main", "index": 0 }
+          {
+            "node": "Separar Grupos (Cierre)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Estado Imagen (Cierre)",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Separar Grupos (Apertura)": {
-      "main": [[{ "node": "Enviar Sticker (Grupos)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Enviar Sticker (Grupos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Separar Grupos (Cierre)": {
-      "main": [[{ "node": "Enviar Imagen (Grupos)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Enviar Imagen (Grupos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
