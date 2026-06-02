@@ -280,7 +280,13 @@ export default function GeneradorEstados() {
       <div className="watermark-container">
         <img 
           src="./logo-jk-transparente.png" 
-          alt="Watermark" 
+          alt="Watermark 1" 
+          className="estado-watermark" 
+          crossOrigin="anonymous"
+        />
+        <img 
+          src="./logo-jk-transparente.png" 
+          alt="Watermark 2" 
           className="estado-watermark" 
           crossOrigin="anonymous"
         />
@@ -398,7 +404,13 @@ export default function GeneradorEstados() {
         <div className="watermark-container">
           <img 
             src="./logo-jk-transparente.png" 
-            alt="Watermark" 
+            alt="Watermark 1" 
+            className="estado-watermark" 
+            crossOrigin="anonymous"
+          />
+          <img 
+            src="./logo-jk-transparente.png" 
+            alt="Watermark 2" 
             className="estado-watermark" 
             crossOrigin="anonymous"
           />
