@@ -39,11 +39,11 @@
 /* Marca de Agua Muy Visible */
 .watermark-container {
   position: absolute;
-  top: 32%; /* Bajados al 32% */
+  top: 28%; /* Bajados al 28% */
   left: 0;
   width: 100%; 
   height: 70%; /* Cubre verticalmente */
-  opacity: 0.3; /* Opacidad del contenedor */
+  opacity: 0.45; /* Opacidad fijada al 45% */
   pointer-events: none;
   z-index: 1;
   display: flex;
@@ -53,11 +53,11 @@
 }
 
 .estado-watermark {
-  width: 90%;
-  height: 45%; /* Dos logos caben perfectamente en el contenedor */
+  width: 130%; /* Ancho ajustado para que cubra bien */
+  height: auto; /* Height auto para que NO se deforme en html2canvas */
   object-fit: contain; /* Ajusta sin deformar el logo */
   filter: grayscale(100%) contrast(200%);
-  opacity: 0.5; /* Opacidad bajada al 50% como solicitado */
+  opacity: 1; /* Opacidad controlada por el contenedor principal */
 }
 
 /* Header Minimalista (Logo Izquierda) */

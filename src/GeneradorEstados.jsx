@@ -122,7 +122,7 @@ export default function GeneradorEstados() {
       const image = canvas.toDataURL('image/png')
       const link = document.createElement('a')
       link.href = image
-      link.download = `JK_Estados_${paisOrigen.codigo}_Parte_${index + 1}.png`
+      link.download = `JK_Estados_${paisOrigen.codigo}_Parte_${index + 1}_${Date.now()}.png`
       link.click()
       
       // Cerrar modal automáticamente después de descargar si lo abrimos solo para esto
@@ -155,7 +155,7 @@ export default function GeneradorEstados() {
       const image = canvas.toDataURL('image/png')
       const link = document.createElement('a')
       link.href = image
-      link.download = `JK_Pizarra_Global_${isSquare ? 'Cuadrado' : 'Historia'}_Parte_${index + 1}.png`
+      link.download = `JK_Pizarra_Global_${isSquare ? 'Cuadrado' : 'Historia'}_Parte_${index + 1}_${Date.now()}.png`
       link.click()
       
       // Cerrar modal automáticamente después de descargar si lo abrimos solo para esto
