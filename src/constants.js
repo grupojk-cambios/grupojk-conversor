@@ -331,8 +331,13 @@ export function formatearMonto(valor, codigo, maxDigits) {
     })
   }
 
-  // Lógica inteligente: Si el valor es muy pequeño (menor a 1), necesitamos al menos 4 decimales
-  const decimales = valor < 1 ? 4 : (valor < 100 ? 3 : 2)
+  // Lógica inteligente: Si el valor es muy pequeño (menor a 1), necesitamos al menos 4 decimales, y más si es muy muy pequeño
+  let decimales = 2
+  if (valor < 0.00001) decimales = 7
+  else if (valor < 0.0001) decimales = 6
+  else if (valor < 0.001) decimales = 5
+  else if (valor < 1) decimales = 4
+  else if (valor < 100) decimales = 3
 
   return valor.toLocaleString('es-CO', {
     minimumFractionDigits: 2,

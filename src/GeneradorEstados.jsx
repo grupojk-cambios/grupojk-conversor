@@ -54,10 +54,26 @@ export default function GeneradorEstados() {
       // Calcular la tasa enviar para cada país desde el Origen
       const paisesConTasa = paisesDestino.map(pais => {
         const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisOrigen, pais, todosPaises, 'detal')
-        const tasaFinal = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+        const tc = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+        
+        let displayRate = tc;
+        let displayUnit = pais.codigo;
+        let isInverse = false;
+
+        // Si el origen NO es dólar y el destino SÍ es dólar, aplicamos la lógica inversa del Cotizador
+        if (!isCajaDolar(paisOrigen) && isCajaDolar(pais)) {
+          const tcInverso = calcularConversionInversa(paisOrigen, pais, 1, todosPaises, 'detal')
+          displayRate = tcInverso;
+          displayUnit = paisOrigen.codigo;
+          isInverse = true;
+        }
+
         return {
           ...pais,
-          tasaCalculada: tasaFinal
+          tasaCalculada: tc,
+          displayRate,
+          displayUnit,
+          isInverse
         }
       })
 
@@ -240,8 +256,8 @@ export default function GeneradorEstados() {
                 />
               </div>
               <div className="dest-info">
-                <div className="dest-rate">{formatearMonto(pais.tasaCalculada)}</div>
-                <div className="dest-name">{pais.codigo}</div>
+                <div className="dest-rate">{formatearMonto(pais.displayRate)}</div>
+                <div className="dest-name">{pais.isInverse ? `x 1 ${pais.codigo}` : pais.displayUnit}</div>
               </div>
             </div>
           ))}
