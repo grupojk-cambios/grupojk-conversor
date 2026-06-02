@@ -479,11 +479,11 @@ export default function GeneradorEstados() {
                   display: 'grid',
                   gridTemplateColumns: '1.8fr 1fr 1fr',
                   alignItems: 'center',
-                  background: 'rgba(255, 255, 255, 0.02)',
+                  background: 'rgba(2, 11, 24, 0.7)',
                   padding: isSquare ? '0.4em 0.8em' : '0.5em 0.8em',
                   borderRadius: '0.8em',
-                  border: '1px solid rgba(255, 255, 255, 0.03)',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.15)'
                 }}
               >
                 {/* País info */}
@@ -503,27 +503,27 @@ export default function GeneradorEstados() {
                     onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/350/350965.png' }}
                   />
                   <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                    <span style={{ fontSize: '0.85em', fontWeight: 700, color: 'rgba(255,255,255,0.95)' }}>{pais.nombre}</span>
-                    <span style={{ fontSize: '0.65em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{pais.codigo}</span>
+                    <span style={{ fontSize: '0.85em', fontWeight: 700, color: 'rgba(255,255,255,0.95)', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>{pais.nombre}</span>
+                    <span style={{ fontSize: '0.65em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>{pais.codigo}</span>
                   </div>
                 </div>
 
                 {/* Tasa Envío */}
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.95em', fontWeight: 800, color: '#10b981' }}>
+                  <div style={{ fontSize: '0.95em', fontWeight: 800, color: '#10b981', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
                     {formatearMonto(tasaEnvio)}
                   </div>
-                  <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>
+                  <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
                     x 1 USD
                   </div>
                 </div>
 
                 {/* Tasa Recibo */}
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.95em', fontWeight: 800, color: 'var(--primary-color)' }}>
+                  <div style={{ fontSize: '0.95em', fontWeight: 800, color: 'var(--primary-color)', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
                     {formatearMonto(tasaRecibo)}
                   </div>
-                  <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)' }}>
+                  <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
                     x 1 USD
                   </div>
                 </div>
