@@ -42,8 +42,9 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotate(-15deg);
-  width: 130%; /* Cubre mayor porción a lo ancho y alto */
-  opacity: 0.16; /* Visibilidad óptima sin interferir en los números */
+  width: 130%; /* Cubre mayor porción a lo ancho */
+  height: 70%; /* Cubre desde el 15% hasta el 85% en vertical */
+  opacity: 0.3; /* Opacidad aumentada para que sea más visible */
   pointer-events: none;
   z-index: 1;
   display: flex;
@@ -53,9 +54,10 @@
 
 .estado-watermark {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain; /* Ajusta sin deformar el logo */
   filter: grayscale(100%) contrast(200%);
-  opacity: 0.28; /* Mayor intensidad para dificultar edición digital no autorizada */
+  opacity: 0.8; /* Mayor intensidad para dificultar edición digital no autorizada */
 }
 
 /* Header Minimalista (Logo Izquierda) */
