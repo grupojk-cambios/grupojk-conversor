@@ -39,7 +39,7 @@ export default function GeneradorEstados() {
 
   const toggleExpandido = (index) => {
     if (index !== null) {
-      window.history.pushState({ modalAbierto: true }, '')
+      window.history.pushState({ modalAbierto: true }, '', window.location.href)
       setExpandido(index)
     } else {
       if (expandido !== null) {
@@ -104,7 +104,7 @@ export default function GeneradorEstados() {
   const descargarImagen = async (index) => {
     // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
     if (expandido !== index) {
-      setExpandido(index)
+      toggleExpandido(index)
       // Esperar un poco para que el DOM se actualice antes de capturar
       await new Promise(r => setTimeout(r, 300))
     }
@@ -136,7 +136,7 @@ export default function GeneradorEstados() {
   const descargarPizarraImagen = async (index) => {
     // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
     if (expandido !== index) {
-      setExpandido(index)
+      toggleExpandido(index)
       // Esperar un poco para que el DOM se actualice antes de capturar
       await new Promise(r => setTimeout(r, 300))
     }
@@ -383,7 +383,7 @@ export default function GeneradorEstados() {
           background: 'linear-gradient(135deg, #020b18 0%, #01040a 100%)',
           position: 'relative',
           overflow: 'hidden',
-          padding: isSquare ? '2em 1.5em' : '2.5em 1.5em',
+          padding: isSquare ? '1.5em 1.2em' : '1.8em 1.5em',
           display: 'flex',
           flexDirection: 'column',
           border: '1px solid rgba(255, 255, 255, 0.05)',
@@ -405,7 +405,7 @@ export default function GeneradorEstados() {
         </div>
 
         {/* Branding Header */}
-        <div className="estado-header-minimal" style={{ marginBottom: isSquare ? '0.5em' : '1.2em', paddingBottom: isSquare ? '0.6em' : '1em' }}>
+        <div className="estado-header-minimal" style={{ marginBottom: isSquare ? '0.4em' : '0.7em', paddingBottom: isSquare ? '0.5em' : '0.8em' }}>
           <img 
             src="./logo-jk-transparente.png" 
             alt="Logo JK" 
@@ -431,7 +431,7 @@ export default function GeneradorEstados() {
           fontSize: '0.85em',
           fontWeight: 'bold',
           color: 'var(--primary-color)',
-          marginBottom: isSquare ? '0.8em' : '1.2em',
+          marginBottom: isSquare ? '0.5em' : '0.7em',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
@@ -445,7 +445,7 @@ export default function GeneradorEstados() {
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: isSquare ? '0.4em' : '0.6em',
+          gap: isSquare ? '0.3em' : '0.45em',
           flex: 1,
           justifyContent: 'center'
         }}>
@@ -480,7 +480,7 @@ export default function GeneradorEstados() {
                   gridTemplateColumns: '1.8fr 1fr 1fr',
                   alignItems: 'center',
                   background: 'rgba(2, 11, 24, 0.7)',
-                  padding: isSquare ? '0.4em 0.8em' : '0.5em 0.8em',
+                  padding: isSquare ? '0.3em 0.8em' : '0.35em 0.8em',
                   borderRadius: '0.8em',
                   border: '1px solid rgba(255, 255, 255, 0.08)',
                   boxShadow: '0 2px 5px rgba(0,0,0,0.15)'
@@ -534,8 +534,8 @@ export default function GeneradorEstados() {
 
         {/* FOOTER */}
         <div className="estado-footer-minimal" style={{
-          marginTop: isSquare ? '0.6em' : '1.5em',
-          paddingTop: isSquare ? '0.6em' : '1.2em',
+          marginTop: isSquare ? '0.4em' : '0.8em',
+          paddingTop: isSquare ? '0.4em' : '0.8em',
           borderTop: '1px solid rgba(255, 255, 255, 0.05)',
           fontSize: '0.7em',
           color: 'rgba(255, 255, 255, 0.4)',
