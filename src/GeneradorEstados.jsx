@@ -7,9 +7,10 @@ export default function GeneradorEstados() {
   const [todosPaises, setTodosPaises] = useState([])
   const [paisOrigen, setPaisOrigen] = useState(null)
   const [modoGlobal, setModoGlobal] = useState(false)
-  const [formatoGlobal, setFormatoGlobal] = useState('story') // 'story' o 'square'
+  const [formatoGlobal, setFormatoGlobal] = useState('story') // 'story', 'square' o 'text'
   const [chunks, setChunks] = useState([])
   const [expandido, setExpandido] = useState(null)
+  const [copiado, setCopiado] = useState(false)
   const cardRefs = useRef([])
 
   useEffect(() => {
@@ -165,6 +166,53 @@ export default function GeneradorEstados() {
       alert('Hubo un error al descargar la imagen.')
     }
   }
+
+  const generarTextoPizarra = () => {
+    const fechaHoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const paisesLocales = todosPaises.filter(p => !isCajaDolar(p));
+    
+    let texto = `🚛 *GRUPO JK - PIZARRA GLOBAL* 🚛\n`;
+    texto += `📅 *Fecha:* ${fechaHoy}\n\n`;
+    texto += `💵 *BASE USD / USDT*\n\n`;
+    
+    paisesLocales.forEach(pais => {
+      const tasaEnvio = calcularTasaEnvio(pais, 'detal');
+      const tasaRecibo = calcularTasaRecibo(pais, 'detal');
+      
+      let bandera = '';
+      if (pais.codigo === 'COP') bandera = '🇨🇴';
+      else if (pais.codigo === 'VES') bandera = '🇻🇪';
+      else if (pais.codigo === 'ARS') bandera = '🇦🇷';
+      else if (pais.codigo === 'CLP') bandera = '🇨🇱';
+      else if (pais.codigo === 'UYU') bandera = '🇺🇾';
+      else if (pais.codigo === 'PYG') bandera = '🇵🇾';
+      else if (pais.codigo === 'BRL') bandera = '🇧🇷';
+      else if (pais.codigo === 'BOB') bandera = '🇧🇴';
+      else if (pais.codigo === 'PEN') bandera = '🇵🇪';
+      else if (pais.codigo === 'CRC') bandera = '🇨🇷';
+      else if (pais.codigo === 'NIO') bandera = '🇳🇮';
+      else if (pais.codigo === 'HNL') bandera = '🇭🇳';
+      else if (pais.codigo === 'GTQ') bandera = '🇬🇹';
+      else if (pais.codigo === 'DOP') bandera = '🇩🇴';
+      else if (pais.codigo === 'CUP') bandera = '🇨🇺';
+      else if (pais.codigo === 'MXN') bandera = '🇲🇽';
+      else if (pais.codigo === 'EUR') bandera = '🇪🇺';
+      else bandera = '📍';
+      
+      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearMonto(tasaEnvio)}* | 📥 *${formatearMonto(tasaRecibo)}*\n`;
+    });
+    
+    texto += `\n⚠️ *Todos monto mínimo de $20*\n`;
+    texto += `*Tasas referenciales sujetas a cambio*`;
+    
+    return texto;
+  };
+
+  const copiarAlPortapapeles = () => {
+    navigator.clipboard.writeText(generarTextoPizarra());
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   // VISTA 1: SELECCIONAR PAIS DE ORIGEN
   if (!paisOrigen && !modoGlobal) {
@@ -635,78 +683,175 @@ export default function GeneradorEstados() {
             >
               🟩 Cuadrado
             </button>
+            <button 
+              onClick={() => setFormatoGlobal('text')}
+              style={{
+                background: formatoGlobal === 'text' ? 'var(--primary-color)' : 'none',
+                border: 'none',
+                color: formatoGlobal === 'text' ? '#000' : '#fff',
+                padding: '0.5rem 1.2rem',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}
+            >
+              📝 Texto
+            </button>
           </div>
         </div>
 
         <div className="generador-estados-container">
-          {chunks.map((chunk, index) => {
-            const isExpanded = expandido === index;
-            const isSquare = formatoGlobal === 'square';
-            const cardH = isSquare ? 225 : 400; // Alto visual en miniatura
-            const scaleFactor = isSquare ? 0.375 : 0.5; // Escala para ajustar a 225px de ancho visual
+          {formatoGlobal === 'text' ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              width: '100%',
+              maxWidth: '500px',
+              margin: '0 auto 2rem',
+              background: 'linear-gradient(135deg, #020b18 0%, #01040a 100%)',
+              padding: '2rem 1.5rem',
+              borderRadius: '1.5rem',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)'
+            }}>
+              <p style={{ color: 'var(--text-low)', fontSize: '0.85rem', marginBottom: '1.2rem', textAlign: 'center', fontWeight: 500 }}>
+                Copia el texto de abajo para compartirlo directamente en WhatsApp
+              </p>
+              
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '1rem',
+                padding: '1.5rem',
+                width: '100%',
+                color: '#fff',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                fontSize: '0.9rem',
+                lineHeight: '1.5',
+                textAlign: 'left',
+                maxHeight: '380px',
+                overflowY: 'auto',
+                marginBottom: '1.5rem',
+                boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)'
+              }}>
+                {generarTextoPizarra()}
+              </div>
 
-            return (
-              <div key={index} className="estado-card-wrapper" style={{ alignItems: 'center' }}>
-                <p style={{ color: 'var(--text-low)', fontSize: '0.8rem', marginBottom: '-0.5rem' }}>
-                  Haz clic en la imagen para verla en tamaño completo
-                </p>
-                
-                {/* Contenedor del Preview (Miniatura) */}
-                <div 
-                  style={{
-                    width: '225px',
-                    height: `${cardH}px`,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    borderRadius: '1.5rem',
-                    cursor: 'zoom-in',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                  }}
-                  onClick={() => toggleExpandido(index)}
-                >
-                  <div style={{
-                    transform: `scale(${scaleFactor})`,
-                    transformOrigin: 'top left',
-                    width: isSquare ? '600px' : '450px',
-                    height: isSquare ? '600px' : '800px'
-                  }}>
-                    {renderPizarraGlobalCard(chunk, !isExpanded, index)}
-                  </div>
-                </div>
+              <button 
+                onClick={copiarAlPortapapeles}
+                className="btn-primary"
+                style={{
+                  padding: '1rem',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  width: '100%',
+                  background: copiado ? '#10b981' : 'var(--primary-color)',
+                  color: '#000',
+                  transition: 'all 0.3s ease',
+                  border: 'none',
+                  borderRadius: '0.8rem',
+                  cursor: 'pointer'
+                }}
+              >
+                {copiado ? (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>¡Copiado con Éxito! 👍</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copiar Texto Pizarra</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            chunks.map((chunk, index) => {
+              const isExpanded = expandido === index;
+              const isSquare = formatoGlobal === 'square';
+              const cardH = isSquare ? 225 : 400; // Alto visual en miniatura
+              const scaleFactor = isSquare ? 0.375 : 0.5; // Escala para ajustar a 225px de ancho visual
 
-                {/* Botón Descargar */}
-                <button 
-                  onClick={() => descargarPizarraImagen(index)}
-                  className="btn-primary"
-                  style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', width: '225px' }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  Descargar Parte {index + 1}
-                </button>
-
-                {/* Modal Full Screen (Visible cuando el usuario hace clic en el preview) */}
-                {isExpanded && (
-                  <div className="modal-overlay" onClick={() => toggleExpandido(null)}>
-                    <div 
-                      className="modal-content" 
-                      onClick={e => e.stopPropagation()} 
-                      style={{
-                        transform: isSquare ? 'scale(0.85)' : 'scale(0.85)',
-                        transformOrigin: 'center center'
-                      }}
-                    >
-                      {renderPizarraGlobalCard(chunk, isExpanded, index)}
+              return (
+                <div key={index} className="estado-card-wrapper" style={{ alignItems: 'center' }}>
+                  <p style={{ color: 'var(--text-low)', fontSize: '0.8rem', marginBottom: '-0.5rem' }}>
+                    Haz clic en la imagen para verla en tamaño completo
+                  </p>
+                  
+                  {/* Contenedor del Preview (Miniatura) */}
+                  <div 
+                    style={{
+                      width: '225px',
+                      height: `${cardH}px`,
+                      position: 'relative',
+                      overflow: 'hidden',
+                      borderRadius: '1.5rem',
+                      cursor: 'zoom-in',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                    }}
+                    onClick={() => toggleExpandido(index)}
+                  >
+                    <div style={{
+                      transform: `scale(${scaleFactor})`,
+                      transformOrigin: 'top left',
+                      width: isSquare ? '600px' : '450px',
+                      height: isSquare ? '600px' : '800px'
+                    }}>
+                      {renderPizarraGlobalCard(chunk, !isExpanded, index)}
                     </div>
                   </div>
-                )}
-              </div>
-            )
-          })}
+
+                  {/* Botón Descargar */}
+                  <button 
+                    onClick={() => descargarPizarraImagen(index)}
+                    className="btn-primary"
+                    style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', width: '225px' }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Descargar Parte {index + 1}
+                  </button>
+
+                  {/* Modal Full Screen (Visible cuando el usuario hace clic en el preview) */}
+                  {isExpanded && (
+                    <div className="modal-overlay" onClick={() => toggleExpandido(null)}>
+                      <div 
+                        className="modal-content" 
+                        onClick={e => e.stopPropagation()} 
+                        style={{
+                          transform: isSquare ? 'scale(0.85)' : 'scale(0.85)',
+                          transformOrigin: 'center center'
+                        }}
+                      >
+                        {renderPizarraGlobalCard(chunk, isExpanded, index)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
     );
