@@ -395,13 +395,12 @@ export default function GeneradorEstados() {
         }}
       >
         {/* Marca de Agua (Fondo muy visible) */}
-        <div className="watermark-container" style={{ opacity: 0.12 }}>
+        <div className="watermark-container">
           <img 
             src="./logo-jk-transparente.png" 
             alt="Watermark" 
             className="estado-watermark" 
             crossOrigin="anonymous"
-            style={{ width: '90%', height: 'auto', filter: 'grayscale(100%) contrast(200%)', opacity: 0.3 }}
           />
         </div>
 
