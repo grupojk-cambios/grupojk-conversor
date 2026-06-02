@@ -39,23 +39,23 @@
 /* Marca de Agua Muy Visible */
 .watermark-container {
   position: absolute;
-  top: 28%; /* Bajados al 28% */
-  left: 0;
+  top: 50%; 
+  left: 50%;
+  transform: translate(-50%, -50%); /* Centrado perfecto */
   width: 100%; 
-  height: 70%; /* Cubre verticalmente */
+  height: 100%; 
   opacity: 0.45; /* Opacidad fijada al 45% */
   pointer-events: none;
   z-index: 1;
   display: flex;
-  flex-direction: column; /* Apilar logos verticalmente */
-  justify-content: space-evenly; /* Distribuir los logos uniformemente */
+  justify-content: center;
   align-items: center;
 }
 
 .estado-watermark {
-  width: 130%; /* Ancho ajustado para que cubra bien */
+  width: 90%; /* Un solo logo grande centrado */
   height: auto; /* Height auto para que NO se deforme en html2canvas */
-  object-fit: contain; /* Ajusta sin deformar el logo */
+  object-fit: contain; 
   filter: grayscale(100%) contrast(200%);
   opacity: 1; /* Opacidad controlada por el contenedor principal */
 }
