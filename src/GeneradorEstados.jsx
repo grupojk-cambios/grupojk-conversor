@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import html2canvas from 'html2canvas'
-import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets } from './constants'
+import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa } from './constants'
 import './GeneradorEstados.css'
 
 export default function GeneradorEstados() {
