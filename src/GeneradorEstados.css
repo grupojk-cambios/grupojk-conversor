@@ -39,10 +39,10 @@
 /* Marca de Agua Muy Visible */
 .watermark-container {
   position: absolute;
-  top: 15%; /* Inicia en el 15% */
+  top: 22%; /* Bajados un poco más como solicitó el usuario */
   left: 0;
   width: 100%; 
-  height: 70%; /* Cubre desde el 15% hasta el 85% en vertical */
+  height: 70%; /* Cubre verticalmente */
   opacity: 0.3; /* Opacidad aumentada para que sea más visible */
   pointer-events: none;
   z-index: 1;
