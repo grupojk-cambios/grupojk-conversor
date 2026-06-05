@@ -170,14 +170,26 @@ export default function GeneradorEstados() {
   const generarTextoPizarra = () => {
     const fechaHoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const paisesLocales = todosPaises.filter(p => !isCajaDolar(p));
+    const paisReferencia = todosPaises.find(p => p.id === 9);
     
     let texto = `🚛 *GRUPO JK - PIZARRA GLOBAL* 🚛\n`;
     texto += `📅 *Fecha:* ${fechaHoy}\n\n`;
     texto += `💵 *BASE USD / USDT*\n\n`;
     
     paisesLocales.forEach(pais => {
-      const tasaEnvio = calcularTasaEnvio(pais, 'detal');
-      const tasaRecibo = calcularTasaRecibo(pais, 'detal');
+      let tasaEnvio = 0;
+      let tasaRecibo = 0;
+      
+      if (!paisReferencia || pais.id === paisReferencia.id) {
+        tasaEnvio = calcularTasaEnvio(pais, 'detal');
+        tasaRecibo = calcularTasaRecibo(pais, 'detal');
+      } else {
+        const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'detal');
+        tasaEnvio = (1 / tOrigE) * tDestE;
+        
+        const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, 'detal');
+        tasaRecibo = tOrigR;
+      }
       
       let bandera = '';
       if (pais.codigo === 'COP') bandera = '🇨🇴';
@@ -517,8 +529,20 @@ export default function GeneradorEstados() {
           </div>
 
           {chunk.map(pais => {
-            const tasaEnvio = calcularTasaEnvio(pais, 'detal');
-            const tasaRecibo = calcularTasaRecibo(pais, 'detal');
+            const paisReferencia = todosPaises.find(p => p.id === 9);
+            let tasaEnvio = 0;
+            let tasaRecibo = 0;
+            
+            if (!paisReferencia || pais.id === paisReferencia.id) {
+              tasaEnvio = calcularTasaEnvio(pais, 'detal');
+              tasaRecibo = calcularTasaRecibo(pais, 'detal');
+            } else {
+              const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'detal');
+              tasaEnvio = (1 / tOrigE) * tDestE;
+              
+              const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, 'detal');
+              tasaRecibo = tOrigR;
+            }
             
             return (
               <div 
