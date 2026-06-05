@@ -93,7 +93,7 @@ export default function GeneradorEstados() {
   useEffect(() => {
     if (modoGlobal) {
       const paisesLocales = todosPaises.filter(p => !isCajaDolar(p))
-      const size = 8
+      const size = 9
       const newChunks = []
       for (let i = 0; i < paisesLocales.length; i += size) {
         newChunks.push(paisesLocales.slice(i, i + size))
@@ -251,7 +251,7 @@ export default function GeneradorEstados() {
             onClick={() => {
               setModoGlobal(true)
               const paisesLocales = todosPaises.filter(p => !isCajaDolar(p))
-              const size = 8
+              const size = 9
               const newChunks = []
               for (let i = 0; i < paisesLocales.length; i += size) {
                 newChunks.push(paisesLocales.slice(i, i + size))
