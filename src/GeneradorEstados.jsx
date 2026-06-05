@@ -93,7 +93,7 @@ export default function GeneradorEstados() {
   useEffect(() => {
     if (modoGlobal) {
       const paisesLocales = todosPaises.filter(p => !isCajaDolar(p))
-      const size = 9
+      const size = 8
       const newChunks = []
       for (let i = 0; i < paisesLocales.length; i += size) {
         newChunks.push(paisesLocales.slice(i, i + size))
@@ -251,7 +251,7 @@ export default function GeneradorEstados() {
             onClick={() => {
               setModoGlobal(true)
               const paisesLocales = todosPaises.filter(p => !isCajaDolar(p))
-              const size = 9
+              const size = 8
               const newChunks = []
               for (let i = 0; i < paisesLocales.length; i += size) {
                 newChunks.push(paisesLocales.slice(i, i + size))
@@ -420,8 +420,20 @@ export default function GeneradorEstados() {
       </div>
 
       {/* FOOTER */}
-      <div className="estado-footer-minimal">
-        Tasas referenciales sujetas a cambio • Grupo JK
+      <div className="estado-footer-minimal" style={{
+        marginTop: '0.8em',
+        paddingTop: '0.8em',
+        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+        fontSize: '0.7em',
+        color: 'rgba(255, 255, 255, 0.4)',
+        textAlign: 'center',
+        fontWeight: 'bold',
+        letterSpacing: '0.05em'
+      }}>
+        <div>Todos monto mínimo de $20</div>
+        <div style={{ fontSize: '0.8em', color: 'rgba(255,255,255,0.25)', marginTop: '0.2em', fontWeight: 500 }}>
+          Tasas referenciales sujetas a cambio • Grupo JK
+        </div>
       </div>
     </div>
   );
