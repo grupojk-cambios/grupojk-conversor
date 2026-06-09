@@ -1,0 +1,9 @@
+Pais,Metodo,Disponible,Datos,Notas
+Colombia,Bancolombia,Si,"Bancolombia Ahorros 123-456789-00 | Titular: Juan Perez | CC 12.345.678",Reemplazar con datos reales
+Colombia,Nequi,Si,"Nequi 300 1234567 | Titular: Juan Perez",Reemplazar con datos reales
+Venezuela,Pago Movil,Si,"Banesco (0134) | Tel: 0412-1234567 | CI: V-12.345.678 | Titular: Maria Lopez",Reemplazar con datos reales
+Venezuela,Transferencia,Si,"Banco de Venezuela | Cuenta 0102-0000-00-0000000000 | Titular: Maria Lopez | CI V-12345678",Reemplazar con datos reales
+Zelle,Zelle,Si,"Zelle al correo: pagos@jkremesas.com | Titular: JK Remesas LLC",Reemplazar con datos reales
+USDT,Binance,Si,"USDT red TRC20: TXxxxxxxxxxxxxxxxxxxxxxxxxx | o Binance ID: 123456789",Reemplazar con datos reales
+Chile,BancoEstado,No,Temporalmente no disponible,Poner Si cuando este activa
+Peru,Interbank,No,Temporalmente no disponible,Poner Si cuando este activa

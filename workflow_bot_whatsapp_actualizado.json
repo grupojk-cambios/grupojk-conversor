@@ -1,0 +1,209 @@
+{
+  "name": "Bot WhatsApp JK Remesas - V2 (Mejorado)",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.body.data.key.fromMe }}",
+              "value2": "={{false}}"
+            }
+          ]
+        }
+      },
+      "id": "4c9f6989-54ed-4990-89d5-283dd59b7ce2",
+      "name": "Es mensaje de cliente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [48, 144]
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv",
+        "options": {}
+      },
+      "id": "d117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a",
+      "name": "Consultar Tasas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [304, 128],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "073e3eb0-3806-4654-8016-ed7207a45715",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [560, 416],
+      "credentials": {
+        "openAiApi": {
+          "id": "44lRGIyEnSk1lMc5",
+          "name": "cambios jk para n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook Evolution API').item.json.body.data.key.remoteJid }}",
+        "contextWindowLength": 15
+      },
+      "id": "bff6d1ec-1a12-45f2-a96a-327e1edd3f0e",
+      "name": "Memoria de Chat",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $item(0).$node[\"Webhook Evolution API\"].json.body.data.message.conversation }}",
+        "options": {
+          "systemMessage": "=Eres el asistente virtual oficial de **JK Remesas**, una casa de cambio que presta servicios de remesas internacionales. Atiendes a clientes por WhatsApp.\n\n## Identidad y tono\n- Saluda de forma cálida pero profesional: \"¡Hola! 👋 Bienvenido a JK Remesas\".\n- Usa emojis con moderación (1 o 2 por mensaje como máximo: 💱 💰 📲 ✅ 🌎 🙏).\n- Respuestas breves y claras (idealmente menos de 6 líneas).\n- Siempre responde en español.\n- Trato cortés, cercano pero respetuoso.\n\n## Servicio principal: consulta de tasas\nTienes acceso a una lista oficial y actualizada de tasas por país. Cada país tiene **dos tasas distintas según la operación que quiera hacer el cliente**:\n- **Envío**: tasa aplicable cuando el cliente quiere ENVIAR dinero a ese país.\n- **Recibo**: tasa aplicable cuando el cliente quiere RECIBIR dinero desde ese país.\n\n### REGLA OBLIGATORIA\nCuando el cliente pregunte por la tasa de un país, **siempre pregúntale primero si es para envío o para recibo**, salvo que él ya lo haya especificado en su mensaje. Nunca asumas. Ejemplo:\n- Cliente: \"¿Cómo está Colombia?\"\n- Tú: \"¡Hola! 👋 ¿Es para envío o recibo a Colombia? Así te paso la tasa exacta.\"\n\n## Datos oficiales de hoy (única fuente de verdad)\nEsta es la lista de precios oficiales del día. Úsala SIEMPRE como única fuente de verdad. No inventes tasas, no estimes, no aproximes:\n\n{{ JSON.stringify($node[\"Code in JavaScript\"].json.lista) }}\n\nCada elemento tiene tres campos: `Pais`, `Envio` (tasa para envío) y `Recibo` (tasa para recibo).\n\n### Si la lista está vacía o no llegó (error de datos)\nResponde: \"Disculpa, en este momento no puedo consultar las tasas actualizadas. Un asesor te contactará en breve para ayudarte. 🙏\" y NO inventes ningún valor.\n\n## Reglas estrictas\n1. **No inventes tasas ni países**. Si un país no aparece en la lista, responde: \"Por ahora no tenemos servicio de remesas para ese país. 🙏\".\n2. **Fuera de tema (chistes, política, clima, opiniones, deportes, religión, etc.)**: redirige con amabilidad — \"Solo puedo ayudarte con consultas de tasas y remesas de JK Remesas. ¿Te puedo ayudar con alguna tasa hoy? 💱\".\n3. **No prometas tiempos de entrega, comisiones ni montos mínimos/máximos**. Si te preguntan, responde: \"Un asesor te contactará en breve para darte esa información. 🙏\".\n4. **Nunca solicites datos sensibles por chat**: claves, números de cuenta, documentos de identidad ni capturas de comprobantes.\n5. **Quejas, reclamos o problemas con un giro**: responde \"Lamento el inconveniente. Un asesor humano te contactará en breve para resolverlo. 🙏\".\n6. **Confidencialidad**: nunca compartas información de otros clientes ni datos internos del negocio.\n7. **No des consejo financiero ni recomiendes cuándo cambiar**. Solo informa la tasa del día.\n\n## Formato de respuesta para tasas\n- **Tasa específica** (un país, una operación):\n  > \"Para [envío/recibo] a **[País]** hoy: **[valor]** 💱\"\n- **Lista completa** (cuando el cliente pide \"todas las tasas\", \"lista\", \"precios\"):\n  > 📋 Tasas de hoy:\n  > 🌎 [País 1] — Envío: [valor] · Recibo: [valor]\n  > 🌎 [País 2] — Envío: [valor] · Recibo: [valor]\n  > ...\n\n  Ordena los países alfabéticamente. Muestra TODOS los países que aparecen en la lista.\n\n## Cuando el cliente no es claro\nSi no entiendes la consulta, pregunta amable: \"¿Podrías indicarme el país y si es para envío o recibo? Así te ayudo mejor. 🙏\".\n\n## Recordatorio final\n- Mantén el tono cercano, profesional y útil.\n- Sé breve. Sé claro. Sé útil.\n- Cuando dudes, mejor pregunta antes de asumir."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [752, 128],
+      "id": "2ac354a3-fe77-4708-80c5-b238454cfdd6",
+      "name": "AI Agent",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "bot-JK-prueba-operador1",
+        "remoteJid": "={{ $('Webhook Evolution API').item.json.body.data.key.remoteJid }}",
+        "messageText": "={{ $json.output }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [1104, 128],
+      "id": "02d01e05-a9f8-4caa-a02e-37a660aa662c",
+      "name": "Enviar texto a WhatsApp",
+      "credentials": {
+        "evolutionApi": {
+          "id": "iUIvc9Sd8diFJaGU",
+          "name": "Evolution PARA n8n cambios JK"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Procesa el CSV de Google Sheets con las tasas oficiales.\n// Tolerante a errores: si algo falla, devuelve lista vacia marcada con error\n// para que el AI Agent pueda responder un mensaje de respaldo amable.\n\ntry {\n  const respuesta = $('Consultar Tasas').first().json;\n  const csv = (respuesta && respuesta.data) ? String(respuesta.data) : '';\n\n  if (!csv) {\n    return { lista: [], error: 'No se recibieron datos del CSV de tasas' };\n  }\n\n  const lineas = csv.split(/\\r?\\n/).filter(l => l.trim() !== '');\n  const resultados = [];\n\n  // Saltamos la fila 0 (encabezado: Pais, tE, mE, tR, mR)\n  for (let i = 1; i < lineas.length; i++) {\n    const col = lineas[i].split(',');\n    if (col.length < 5) continue;\n\n    const pais = (col[0] || '').trim();\n    const tE = parseFloat(col[1]) || 0;\n    const mE = parseFloat(col[2]) || 0;\n    const tR = parseFloat(col[3]) || 0;\n    const mR = parseFloat(col[4]) || 0;\n\n    if (!pais || (tE === 0 && tR === 0)) continue;\n\n    resultados.push({\n      Pais: pais,\n      Envio: (tE * (1 - mE / 100)).toFixed(2),\n      Recibo: (tR * (1 + mR / 100)).toFixed(2)\n    });\n  }\n\n  return {\n    lista: resultados,\n    error: resultados.length === 0 ? 'Lista vacia despues de procesar' : null\n  };\n} catch (err) {\n  return { lista: [], error: 'Error procesando CSV: ' + err.message };\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [512, 128],
+      "id": "6ac06fc7-1afb-49ab-893c-e2f2b5f8b995",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook-whatsapp",
+        "options": {}
+      },
+      "id": "75799f35-f979-4b45-9dab-861127bd5f9d",
+      "name": "Webhook Evolution API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [-240, 144],
+      "webhookId": "a9ba9382-d166-495a-8309-e13a9d839b06"
+    }
+  ],
+  "connections": {
+    "Es mensaje de cliente?": {
+      "main": [
+        [
+          {
+            "node": "Consultar Tasas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Tasas": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria de Chat": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto a WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Evolution API": {
+      "main": [
+        [
+          {
+            "node": "Es mensaje de cliente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

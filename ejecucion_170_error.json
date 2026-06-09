@@ -1,0 +1,1323 @@
+﻿{
+    "id":  "170",
+    "finished":  false,
+    "mode":  "trigger",
+    "retryOf":  null,
+    "retrySuccessId":  null,
+    "status":  "error",
+    "createdAt":  "2026-06-05T14:01:00.073Z",
+    "startedAt":  "2026-06-05T14:01:00.099Z",
+    "stoppedAt":  "2026-06-05T14:21:20.699Z",
+    "deletedAt":  null,
+    "workflowId":  "PAneIYAVkE9lPUVw",
+    "waitTill":  null,
+    "storedAt":  "db",
+    "data":  {
+                 "version":  1,
+                 "startData":  {
+
+                               },
+                 "resultData":  {
+                                    "error":  {
+                                                  "level":  "warning",
+                                                  "tags":  {
+
+                                                           },
+                                                  "timestamp":  1780669280697,
+                                                  "context":  {
+                                                                  "itemIndex":  0,
+                                                                  "request":  {
+                                                                                  "body":  {
+                                                                                               "type":  "text",
+                                                                                               "content":  "¡Buenos días! 🟢 Ya estamos operativos para sus cambios.",
+                                                                                               "backgroundColor":  "#10b981",
+                                                                                               "font":  1,
+                                                                                               "allContacts":  true
+                                                                                           },
+                                                                                  "headers":  {
+                                                                                                  "apikey":  "4B4A59BF61DC-4013-8107-DFD841C73197",
+                                                                                                  "content-type":  "application/json",
+                                                                                                  "accept":  "application/json,text/html,application/xhtml+xml,application/xml,text/*;q=0.9, image/*;q=0.8, */*;q=0.7"
+                                                                                              },
+                                                                                  "method":  "POST",
+                                                                                  "uri":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                                                  "gzip":  true,
+                                                                                  "rejectUnauthorized":  true,
+                                                                                  "followRedirect":  true,
+                                                                                  "resolveWithFullResponse":  true,
+                                                                                  "sendCredentialsOnCrossOriginRedirect":  true,
+                                                                                  "followAllRedirects":  true,
+                                                                                  "timeout":  300000,
+                                                                                  "encoding":  null,
+                                                                                  "json":  false,
+                                                                                  "useStream":  true
+                                                                              }
+                                                              },
+                                                  "functionality":  "regular",
+                                                  "name":  "NodeApiError",
+                                                  "node":  {
+                                                               "parameters":  {
+                                                                                  "curlImport":  "",
+                                                                                  "method":  "POST",
+                                                                                  "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                                                  "authentication":  "none",
+                                                                                  "provideSslCertificates":  false,
+                                                                                  "sendQuery":  false,
+                                                                                  "sendHeaders":  true,
+                                                                                  "specifyHeaders":  "keypair",
+                                                                                  "headerParameters":  {
+                                                                                                           "parameters":  [
+                                                                                                                              {
+                                                                                                                                  "name":  "apikey",
+                                                                                                                                  "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                                              },
+                                                                                                                              {
+                                                                                                                                  "name":  "Content-Type",
+                                                                                                                                  "value":  "application/json"
+                                                                                                                              }
+                                                                                                                          ]
+                                                                                                       },
+                                                                                  "sendBody":  true,
+                                                                                  "contentType":  "json",
+                                                                                  "specifyBody":  "json",
+                                                                                  "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                                                                  "options":  {
+
+                                                                                              },
+                                                                                  "infoMessage":  ""
+                                                                              },
+                                                               "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                                                               "name":  "Estado Texto (Apertura)",
+                                                               "type":  "n8n-nodes-base.httpRequest",
+                                                               "typeVersion":  4,
+                                                               "position":  [
+                                                                                -160,
+                                                                                464
+                                                                            ],
+                                                               "retryOnFail":  true,
+                                                               "maxTries":  4,
+                                                               "waitBetweenTries":  5000
+                                                           },
+                                                  "messages":  [
+                                                                   "timeout of 300000ms exceeded",
+                                                                   "timeout of 300000ms exceeded"
+                                                               ],
+                                                  "httpCode":  "ECONNABORTED",
+                                                  "message":  "The connection was aborted, perhaps the server is offline",
+                                                  "stack":  "NodeApiError: The connection was aborted, perhaps the server is offline\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file+packages+nodes-base_@aws-sdk+credential-providers@3.808.0_asn1.js@5_8da18263ca0574b0db58d4fefd8173ce/node_modules/n8n-nodes-base/nodes/HttpRequest/V3/HttpRequestV3.node.ts:825:16)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1048:9)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1239:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1687:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2339:11"
+                                              },
+                                    "runData":  {
+                                                    "Schedule Trigger":  [
+                                                                             {
+                                                                                 "startTime":  1780668060183,
+                                                                                 "executionIndex":  0,
+                                                                                 "source":  [
+
+                                                                                            ],
+                                                                                 "hints":  [
+
+                                                                                           ],
+                                                                                 "executionTime":  0,
+                                                                                 "executionStatus":  "success",
+                                                                                 "data":  {
+                                                                                              "main":  [
+                                                                                                           [
+                                                                                                               {
+                                                                                                                   "json":  {
+                                                                                                                                "timestamp":  "2026-06-05T09:01:00.071-05:00",
+                                                                                                                                "Readable date":  "June 5th 2026, 9:01:00 am",
+                                                                                                                                "Readable time":  "9:01:00 am",
+                                                                                                                                "Day of week":  "Friday",
+                                                                                                                                "Year":  "2026",
+                                                                                                                                "Month":  "June",
+                                                                                                                                "Day of month":  "05",
+                                                                                                                                "Hour":  "09",
+                                                                                                                                "Minute":  "01",
+                                                                                                                                "Second":  "00",
+                                                                                                                                "Timezone":  "America/Guayaquil (UTC-05:00)"
+                                                                                                                            },
+                                                                                                                   "pairedItem":  {
+                                                                                                                                      "item":  0
+                                                                                                                                  }
+                                                                                                               }
+                                                                                                           ]
+                                                                                                       ]
+                                                                                          }
+                                                                             }
+                                                                         ],
+                                                    "Lógica Apertura/Cierre":  [
+                                                                                   {
+                                                                                       "startTime":  1780668060183,
+                                                                                       "executionIndex":  1,
+                                                                                       "source":  [
+                                                                                                      {
+                                                                                                          "previousNode":  "Schedule Trigger",
+                                                                                                          "previousNodeOutput":  0,
+                                                                                                          "previousNodeRun":  0
+                                                                                                      }
+                                                                                                  ],
+                                                                                       "hints":  [
+
+                                                                                                 ],
+                                                                                       "executionTime":  478,
+                                                                                       "executionStatus":  "success",
+                                                                                       "data":  {
+                                                                                                    "main":  [
+                                                                                                                 [
+                                                                                                                     {
+                                                                                                                         "json":  {
+                                                                                                                                      "tipo":  "apertura",
+                                                                                                                                      "grupos":  [
+                                                                                                                                                     "593961230380-1588719606@g.us",
+                                                                                                                                                     "120363291497664389@g.us",
+                                                                                                                                                     "593961230380-1588719963@g.us"
+                                                                                                                                                 ],
+                                                                                                                                      "stickerUrl":  "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp"
+                                                                                                                                  },
+                                                                                                                         "pairedItem":  {
+                                                                                                                                            "item":  0
+                                                                                                                                        }
+                                                                                                                     }
+                                                                                                                 ]
+                                                                                                             ]
+                                                                                                }
+                                                                                   }
+                                                                               ],
+                                                    "Es Apertura o Cierre?":  [
+                                                                                  {
+                                                                                      "startTime":  1780668060662,
+                                                                                      "executionIndex":  2,
+                                                                                      "source":  [
+                                                                                                     {
+                                                                                                         "previousNode":  "Lógica Apertura/Cierre",
+                                                                                                         "previousNodeOutput":  0,
+                                                                                                         "previousNodeRun":  0
+                                                                                                     }
+                                                                                                 ],
+                                                                                      "hints":  [
+
+                                                                                                ],
+                                                                                      "executionTime":  1,
+                                                                                      "executionStatus":  "success",
+                                                                                      "data":  {
+                                                                                                   "main":  [
+                                                                                                                [
+                                                                                                                    {
+                                                                                                                        "json":  {
+                                                                                                                                     "tipo":  "apertura",
+                                                                                                                                     "grupos":  [
+                                                                                                                                                    "593961230380-1588719606@g.us",
+                                                                                                                                                    "120363291497664389@g.us",
+                                                                                                                                                    "593961230380-1588719963@g.us"
+                                                                                                                                                ],
+                                                                                                                                     "stickerUrl":  "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp"
+                                                                                                                                 },
+                                                                                                                        "pairedItem":  {
+                                                                                                                                           "item":  0
+                                                                                                                                       }
+                                                                                                                    }
+                                                                                                                ],
+                                                                                                                [
+
+                                                                                                                ],
+                                                                                                                [
+
+                                                                                                                ],
+                                                                                                                [
+
+                                                                                                                ]
+                                                                                                            ]
+                                                                                               }
+                                                                                  }
+                                                                              ],
+                                                    "Separar Grupos (Apertura)":  [
+                                                                                      {
+                                                                                          "startTime":  1780668060664,
+                                                                                          "executionIndex":  3,
+                                                                                          "source":  [
+                                                                                                         {
+                                                                                                             "previousNode":  "Es Apertura o Cierre?",
+                                                                                                             "previousNodeOutput":  0,
+                                                                                                             "previousNodeRun":  0
+                                                                                                         }
+                                                                                                     ],
+                                                                                          "hints":  [
+
+                                                                                                    ],
+                                                                                          "executionTime":  0,
+                                                                                          "executionStatus":  "success",
+                                                                                          "data":  {
+                                                                                                       "main":  [
+                                                                                                                    [
+                                                                                                                        {
+                                                                                                                            "json":  {
+                                                                                                                                         "grupos":  "593961230380-1588719606@g.us"
+                                                                                                                                     },
+                                                                                                                            "pairedItem":  {
+                                                                                                                                               "item":  0
+                                                                                                                                           }
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                            "json":  {
+                                                                                                                                         "grupos":  "120363291497664389@g.us"
+                                                                                                                                     },
+                                                                                                                            "pairedItem":  {
+                                                                                                                                               "item":  0
+                                                                                                                                           }
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                            "json":  {
+                                                                                                                                         "grupos":  "593961230380-1588719963@g.us"
+                                                                                                                                     },
+                                                                                                                            "pairedItem":  {
+                                                                                                                                               "item":  0
+                                                                                                                                           }
+                                                                                                                        }
+                                                                                                                    ]
+                                                                                                                ]
+                                                                                                   }
+                                                                                      }
+                                                                                  ],
+                                                    "Enviar Sticker (Grupos)":  [
+                                                                                    {
+                                                                                        "startTime":  1780668060664,
+                                                                                        "executionIndex":  4,
+                                                                                        "source":  [
+                                                                                                       {
+                                                                                                           "previousNode":  "Separar Grupos (Apertura)",
+                                                                                                           "previousNodeOutput":  0,
+                                                                                                           "previousNodeRun":  0
+                                                                                                       }
+                                                                                                   ],
+                                                                                        "hints":  [
+
+                                                                                                  ],
+                                                                                        "executionTime":  4997,
+                                                                                        "executionStatus":  "success",
+                                                                                        "data":  {
+                                                                                                     "main":  [
+                                                                                                                  [
+                                                                                                                      {
+                                                                                                                          "json":  {
+                                                                                                                                       "key":  {
+                                                                                                                                                   "remoteJid":  "593961230380-1588719606@g.us",
+                                                                                                                                                   "fromMe":  true,
+                                                                                                                                                   "id":  "3EB0208172C71389E556F1"
+                                                                                                                                               },
+                                                                                                                                       "pushName":  "Você",
+                                                                                                                                       "status":  "PENDING",
+                                                                                                                                       "message":  {
+                                                                                                                                                       "stickerMessage":  {
+                                                                                                                                                                              "url":  "https://mmg.whatsapp.net/o1/v/t24/f2/m234/AQNIrqIwAJsu3wOwLhbR0JErNp0QvqG4c_hxw6fCefL8hecvq7EVRP6i1fzeIfL1DIfjdlOFE-C_DrucuQ9z1cQik9eH-F6baBYEdyCdCA?ccb=9-4\u0026oh=01_Q5Aa4wG-djAFiAoStYYNqfsO74qqZm-Ywg7x_xV-TSkUdXzyFA\u0026oe=6A4A3729\u0026_nc_sid=e6ed6c\u0026mms3=true",
+                                                                                                                                                                              "fileSha256":  {
+                                                                                                                                                                                                 "0":  15,
+                                                                                                                                                                                                 "1":  226,
+                                                                                                                                                                                                 "2":  189,
+                                                                                                                                                                                                 "3":  206,
+                                                                                                                                                                                                 "4":  134,
+                                                                                                                                                                                                 "5":  71,
+                                                                                                                                                                                                 "6":  8,
+                                                                                                                                                                                                 "7":  101,
+                                                                                                                                                                                                 "8":  5,
+                                                                                                                                                                                                 "9":  39,
+                                                                                                                                                                                                 "10":  210,
+                                                                                                                                                                                                 "11":  152,
+                                                                                                                                                                                                 "12":  146,
+                                                                                                                                                                                                 "13":  121,
+                                                                                                                                                                                                 "14":  228,
+                                                                                                                                                                                                 "15":  86,
+                                                                                                                                                                                                 "16":  98,
+                                                                                                                                                                                                 "17":  107,
+                                                                                                                                                                                                 "18":  156,
+                                                                                                                                                                                                 "19":  168,
+                                                                                                                                                                                                 "20":  118,
+                                                                                                                                                                                                 "21":  214,
+                                                                                                                                                                                                 "22":  167,
+                                                                                                                                                                                                 "23":  83,
+                                                                                                                                                                                                 "24":  116,
+                                                                                                                                                                                                 "25":  229,
+                                                                                                                                                                                                 "26":  125,
+                                                                                                                                                                                                 "27":  220,
+                                                                                                                                                                                                 "28":  136,
+                                                                                                                                                                                                 "29":  231,
+                                                                                                                                                                                                 "30":  225,
+                                                                                                                                                                                                 "31":  56
+                                                                                                                                                                                             },
+                                                                                                                                                                              "fileEncSha256":  {
+                                                                                                                                                                                                    "0":  81,
+                                                                                                                                                                                                    "1":  230,
+                                                                                                                                                                                                    "2":  104,
+                                                                                                                                                                                                    "3":  114,
+                                                                                                                                                                                                    "4":  175,
+                                                                                                                                                                                                    "5":  101,
+                                                                                                                                                                                                    "6":  56,
+                                                                                                                                                                                                    "7":  194,
+                                                                                                                                                                                                    "8":  7,
+                                                                                                                                                                                                    "9":  36,
+                                                                                                                                                                                                    "10":  98,
+                                                                                                                                                                                                    "11":  98,
+                                                                                                                                                                                                    "12":  82,
+                                                                                                                                                                                                    "13":  49,
+                                                                                                                                                                                                    "14":  173,
+                                                                                                                                                                                                    "15":  5,
+                                                                                                                                                                                                    "16":  35,
+                                                                                                                                                                                                    "17":  38,
+                                                                                                                                                                                                    "18":  97,
+                                                                                                                                                                                                    "19":  67,
+                                                                                                                                                                                                    "20":  137,
+                                                                                                                                                                                                    "21":  50,
+                                                                                                                                                                                                    "22":  49,
+                                                                                                                                                                                                    "23":  202,
+                                                                                                                                                                                                    "24":  131,
+                                                                                                                                                                                                    "25":  115,
+                                                                                                                                                                                                    "26":  252,
+                                                                                                                                                                                                    "27":  103,
+                                                                                                                                                                                                    "28":  87,
+                                                                                                                                                                                                    "29":  2,
+                                                                                                                                                                                                    "30":  9,
+                                                                                                                                                                                                    "31":  132
+                                                                                                                                                                                                },
+                                                                                                                                                                              "mediaKey":  {
+                                                                                                                                                                                               "0":  142,
+                                                                                                                                                                                               "1":  161,
+                                                                                                                                                                                               "2":  93,
+                                                                                                                                                                                               "3":  96,
+                                                                                                                                                                                               "4":  231,
+                                                                                                                                                                                               "5":  29,
+                                                                                                                                                                                               "6":  22,
+                                                                                                                                                                                               "7":  204,
+                                                                                                                                                                                               "8":  133,
+                                                                                                                                                                                               "9":  181,
+                                                                                                                                                                                               "10":  177,
+                                                                                                                                                                                               "11":  139,
+                                                                                                                                                                                               "12":  24,
+                                                                                                                                                                                               "13":  9,
+                                                                                                                                                                                               "14":  24,
+                                                                                                                                                                                               "15":  42,
+                                                                                                                                                                                               "16":  232,
+                                                                                                                                                                                               "17":  187,
+                                                                                                                                                                                               "18":  21,
+                                                                                                                                                                                               "19":  36,
+                                                                                                                                                                                               "20":  218,
+                                                                                                                                                                                               "21":  95,
+                                                                                                                                                                                               "22":  118,
+                                                                                                                                                                                               "23":  65,
+                                                                                                                                                                                               "24":  19,
+                                                                                                                                                                                               "25":  175,
+                                                                                                                                                                                               "26":  218,
+                                                                                                                                                                                               "27":  125,
+                                                                                                                                                                                               "28":  72,
+                                                                                                                                                                                               "29":  154,
+                                                                                                                                                                                               "30":  242,
+                                                                                                                                                                                               "31":  184
+                                                                                                                                                                                           },
+                                                                                                                                                                              "mimetype":  "image/webp",
+                                                                                                                                                                              "directPath":  "/o1/v/t24/f2/m234/AQNIrqIwAJsu3wOwLhbR0JErNp0QvqG4c_hxw6fCefL8hecvq7EVRP6i1fzeIfL1DIfjdlOFE-C_DrucuQ9z1cQik9eH-F6baBYEdyCdCA?ccb=9-4\u0026oh=01_Q5Aa4wG-djAFiAoStYYNqfsO74qqZm-Ywg7x_xV-TSkUdXzyFA\u0026oe=6A4A3729\u0026_nc_sid=e6ed6c",
+                                                                                                                                                                              "fileLength":  {
+                                                                                                                                                                                                 "low":  43542,
+                                                                                                                                                                                                 "high":  0,
+                                                                                                                                                                                                 "unsigned":  true
+                                                                                                                                                                                             },
+                                                                                                                                                                              "mediaKeyTimestamp":  {
+                                                                                                                                                                                                        "low":  1780668063,
+                                                                                                                                                                                                        "high":  0,
+                                                                                                                                                                                                        "unsigned":  false
+                                                                                                                                                                                                    }
+                                                                                                                                                                          }
+                                                                                                                                                   },
+                                                                                                                                       "contextInfo":  null,
+                                                                                                                                       "messageType":  "stickerMessage",
+                                                                                                                                       "messageTimestamp":  1780668063,
+                                                                                                                                       "instanceId":  "9d40bf0b-da21-43c7-8cda-41d7c105b5e1",
+                                                                                                                                       "source":  "web"
+                                                                                                                                   },
+                                                                                                                          "pairedItem":  {
+                                                                                                                                             "item":  0
+                                                                                                                                         }
+                                                                                                                      },
+                                                                                                                      {
+                                                                                                                          "json":  {
+                                                                                                                                       "key":  {
+                                                                                                                                                   "remoteJid":  "120363291497664389@g.us",
+                                                                                                                                                   "fromMe":  true,
+                                                                                                                                                   "id":  "3EB0E06538687FE7D627EF"
+                                                                                                                                               },
+                                                                                                                                       "pushName":  "Você",
+                                                                                                                                       "status":  "PENDING",
+                                                                                                                                       "message":  {
+                                                                                                                                                       "stickerMessage":  {
+                                                                                                                                                                              "url":  "https://mmg.whatsapp.net/o1/v/t24/f2/m233/AQMRMSSQc98JkxvLk_bDkUdImfi-1oFh7LgamBZ637JbE7IKfy69FpY3pA53icL9oV3YUKg_ynhIHU7uvX_-ntpROJwMN_vaPXeXOQ8g9w?ccb=9-4\u0026oh=01_Q5Aa4wH1yGC5FzDaL8ySI8wzqmQSJU2erkg697_KzvkWj0JDkg\u0026oe=6A4A3509\u0026_nc_sid=e6ed6c\u0026mms3=true",
+                                                                                                                                                                              "fileSha256":  {
+                                                                                                                                                                                                 "0":  15,
+                                                                                                                                                                                                 "1":  226,
+                                                                                                                                                                                                 "2":  189,
+                                                                                                                                                                                                 "3":  206,
+                                                                                                                                                                                                 "4":  134,
+                                                                                                                                                                                                 "5":  71,
+                                                                                                                                                                                                 "6":  8,
+                                                                                                                                                                                                 "7":  101,
+                                                                                                                                                                                                 "8":  5,
+                                                                                                                                                                                                 "9":  39,
+                                                                                                                                                                                                 "10":  210,
+                                                                                                                                                                                                 "11":  152,
+                                                                                                                                                                                                 "12":  146,
+                                                                                                                                                                                                 "13":  121,
+                                                                                                                                                                                                 "14":  228,
+                                                                                                                                                                                                 "15":  86,
+                                                                                                                                                                                                 "16":  98,
+                                                                                                                                                                                                 "17":  107,
+                                                                                                                                                                                                 "18":  156,
+                                                                                                                                                                                                 "19":  168,
+                                                                                                                                                                                                 "20":  118,
+                                                                                                                                                                                                 "21":  214,
+                                                                                                                                                                                                 "22":  167,
+                                                                                                                                                                                                 "23":  83,
+                                                                                                                                                                                                 "24":  116,
+                                                                                                                                                                                                 "25":  229,
+                                                                                                                                                                                                 "26":  125,
+                                                                                                                                                                                                 "27":  220,
+                                                                                                                                                                                                 "28":  136,
+                                                                                                                                                                                                 "29":  231,
+                                                                                                                                                                                                 "30":  225,
+                                                                                                                                                                                                 "31":  56
+                                                                                                                                                                                             },
+                                                                                                                                                                              "fileEncSha256":  {
+                                                                                                                                                                                                    "0":  28,
+                                                                                                                                                                                                    "1":  26,
+                                                                                                                                                                                                    "2":  14,
+                                                                                                                                                                                                    "3":  190,
+                                                                                                                                                                                                    "4":  222,
+                                                                                                                                                                                                    "5":  232,
+                                                                                                                                                                                                    "6":  152,
+                                                                                                                                                                                                    "7":  107,
+                                                                                                                                                                                                    "8":  165,
+                                                                                                                                                                                                    "9":  59,
+                                                                                                                                                                                                    "10":  111,
+                                                                                                                                                                                                    "11":  6,
+                                                                                                                                                                                                    "12":  44,
+                                                                                                                                                                                                    "13":  139,
+                                                                                                                                                                                                    "14":  65,
+                                                                                                                                                                                                    "15":  107,
+                                                                                                                                                                                                    "16":  240,
+                                                                                                                                                                                                    "17":  102,
+                                                                                                                                                                                                    "18":  208,
+                                                                                                                                                                                                    "19":  23,
+                                                                                                                                                                                                    "20":  240,
+                                                                                                                                                                                                    "21":  223,
+                                                                                                                                                                                                    "22":  58,
+                                                                                                                                                                                                    "23":  17,
+                                                                                                                                                                                                    "24":  243,
+                                                                                                                                                                                                    "25":  67,
+                                                                                                                                                                                                    "26":  99,
+                                                                                                                                                                                                    "27":  134,
+                                                                                                                                                                                                    "28":  92,
+                                                                                                                                                                                                    "29":  226,
+                                                                                                                                                                                                    "30":  121,
+                                                                                                                                                                                                    "31":  224
+                                                                                                                                                                                                },
+                                                                                                                                                                              "mediaKey":  {
+                                                                                                                                                                                               "0":  12,
+                                                                                                                                                                                               "1":  112,
+                                                                                                                                                                                               "2":  11,
+                                                                                                                                                                                               "3":  59,
+                                                                                                                                                                                               "4":  138,
+                                                                                                                                                                                               "5":  191,
+                                                                                                                                                                                               "6":  65,
+                                                                                                                                                                                               "7":  175,
+                                                                                                                                                                                               "8":  44,
+                                                                                                                                                                                               "9":  230,
+                                                                                                                                                                                               "10":  2,
+                                                                                                                                                                                               "11":  238,
+                                                                                                                                                                                               "12":  52,
+                                                                                                                                                                                               "13":  156,
+                                                                                                                                                                                               "14":  72,
+                                                                                                                                                                                               "15":  116,
+                                                                                                                                                                                               "16":  56,
+                                                                                                                                                                                               "17":  117,
+                                                                                                                                                                                               "18":  234,
+                                                                                                                                                                                               "19":  240,
+                                                                                                                                                                                               "20":  236,
+                                                                                                                                                                                               "21":  248,
+                                                                                                                                                                                               "22":  225,
+                                                                                                                                                                                               "23":  209,
+                                                                                                                                                                                               "24":  82,
+                                                                                                                                                                                               "25":  49,
+                                                                                                                                                                                               "26":  171,
+                                                                                                                                                                                               "27":  182,
+                                                                                                                                                                                               "28":  99,
+                                                                                                                                                                                               "29":  40,
+                                                                                                                                                                                               "30":  220,
+                                                                                                                                                                                               "31":  46
+                                                                                                                                                                                           },
+                                                                                                                                                                              "mimetype":  "image/webp",
+                                                                                                                                                                              "directPath":  "/o1/v/t24/f2/m233/AQMRMSSQc98JkxvLk_bDkUdImfi-1oFh7LgamBZ637JbE7IKfy69FpY3pA53icL9oV3YUKg_ynhIHU7uvX_-ntpROJwMN_vaPXeXOQ8g9w?ccb=9-4\u0026oh=01_Q5Aa4wH1yGC5FzDaL8ySI8wzqmQSJU2erkg697_KzvkWj0JDkg\u0026oe=6A4A3509\u0026_nc_sid=e6ed6c",
+                                                                                                                                                                              "fileLength":  {
+                                                                                                                                                                                                 "low":  43542,
+                                                                                                                                                                                                 "high":  0,
+                                                                                                                                                                                                 "unsigned":  true
+                                                                                                                                                                                             },
+                                                                                                                                                                              "mediaKeyTimestamp":  {
+                                                                                                                                                                                                        "low":  1780668063,
+                                                                                                                                                                                                        "high":  0,
+                                                                                                                                                                                                        "unsigned":  false
+                                                                                                                                                                                                    }
+                                                                                                                                                                          }
+                                                                                                                                                   },
+                                                                                                                                       "contextInfo":  null,
+                                                                                                                                       "messageType":  "stickerMessage",
+                                                                                                                                       "messageTimestamp":  1780668063,
+                                                                                                                                       "instanceId":  "9d40bf0b-da21-43c7-8cda-41d7c105b5e1",
+                                                                                                                                       "source":  "web"
+                                                                                                                                   },
+                                                                                                                          "pairedItem":  {
+                                                                                                                                             "item":  1
+                                                                                                                                         }
+                                                                                                                      },
+                                                                                                                      {
+                                                                                                                          "json":  {
+                                                                                                                                       "key":  {
+                                                                                                                                                   "remoteJid":  "593961230380-1588719963@g.us",
+                                                                                                                                                   "fromMe":  true,
+                                                                                                                                                   "id":  "3EB09B674B48EF88583EC2"
+                                                                                                                                               },
+                                                                                                                                       "pushName":  "Você",
+                                                                                                                                       "status":  "PENDING",
+                                                                                                                                       "message":  {
+                                                                                                                                                       "stickerMessage":  {
+                                                                                                                                                                              "url":  "https://mmg.whatsapp.net/o1/v/t24/f2/m234/AQM3nsQqV6udcsC-eQMv-BpnCUyWMoW-n19ShF_wCDC8YojlYoWCMP-1bt8XDPg6Jql5W0HkeEcJuIzgRxS5sK2DGmZoiG79FKihwPSdTg?ccb=9-4\u0026oh=01_Q5Aa4wHjFJRVAzKE5bENQNuhXljmFPkcs5ZEGfoK8-qhQH_KrA\u0026oe=6A4A60BC\u0026_nc_sid=e6ed6c\u0026mms3=true",
+                                                                                                                                                                              "fileSha256":  {
+                                                                                                                                                                                                 "0":  15,
+                                                                                                                                                                                                 "1":  226,
+                                                                                                                                                                                                 "2":  189,
+                                                                                                                                                                                                 "3":  206,
+                                                                                                                                                                                                 "4":  134,
+                                                                                                                                                                                                 "5":  71,
+                                                                                                                                                                                                 "6":  8,
+                                                                                                                                                                                                 "7":  101,
+                                                                                                                                                                                                 "8":  5,
+                                                                                                                                                                                                 "9":  39,
+                                                                                                                                                                                                 "10":  210,
+                                                                                                                                                                                                 "11":  152,
+                                                                                                                                                                                                 "12":  146,
+                                                                                                                                                                                                 "13":  121,
+                                                                                                                                                                                                 "14":  228,
+                                                                                                                                                                                                 "15":  86,
+                                                                                                                                                                                                 "16":  98,
+                                                                                                                                                                                                 "17":  107,
+                                                                                                                                                                                                 "18":  156,
+                                                                                                                                                                                                 "19":  168,
+                                                                                                                                                                                                 "20":  118,
+                                                                                                                                                                                                 "21":  214,
+                                                                                                                                                                                                 "22":  167,
+                                                                                                                                                                                                 "23":  83,
+                                                                                                                                                                                                 "24":  116,
+                                                                                                                                                                                                 "25":  229,
+                                                                                                                                                                                                 "26":  125,
+                                                                                                                                                                                                 "27":  220,
+                                                                                                                                                                                                 "28":  136,
+                                                                                                                                                                                                 "29":  231,
+                                                                                                                                                                                                 "30":  225,
+                                                                                                                                                                                                 "31":  56
+                                                                                                                                                                                             },
+                                                                                                                                                                              "fileEncSha256":  {
+                                                                                                                                                                                                    "0":  241,
+                                                                                                                                                                                                    "1":  22,
+                                                                                                                                                                                                    "2":  165,
+                                                                                                                                                                                                    "3":  67,
+                                                                                                                                                                                                    "4":  138,
+                                                                                                                                                                                                    "5":  143,
+                                                                                                                                                                                                    "6":  205,
+                                                                                                                                                                                                    "7":  172,
+                                                                                                                                                                                                    "8":  159,
+                                                                                                                                                                                                    "9":  176,
+                                                                                                                                                                                                    "10":  255,
+                                                                                                                                                                                                    "11":  36,
+                                                                                                                                                                                                    "12":  86,
+                                                                                                                                                                                                    "13":  75,
+                                                                                                                                                                                                    "14":  246,
+                                                                                                                                                                                                    "15":  212,
+                                                                                                                                                                                                    "16":  181,
+                                                                                                                                                                                                    "17":  209,
+                                                                                                                                                                                                    "18":  87,
+                                                                                                                                                                                                    "19":  45,
+                                                                                                                                                                                                    "20":  47,
+                                                                                                                                                                                                    "21":  53,
+                                                                                                                                                                                                    "22":  26,
+                                                                                                                                                                                                    "23":  33,
+                                                                                                                                                                                                    "24":  223,
+                                                                                                                                                                                                    "25":  3,
+                                                                                                                                                                                                    "26":  20,
+                                                                                                                                                                                                    "27":  82,
+                                                                                                                                                                                                    "28":  223,
+                                                                                                                                                                                                    "29":  126,
+                                                                                                                                                                                                    "30":  68,
+                                                                                                                                                                                                    "31":  187
+                                                                                                                                                                                                },
+                                                                                                                                                                              "mediaKey":  {
+                                                                                                                                                                                               "0":  92,
+                                                                                                                                                                                               "1":  62,
+                                                                                                                                                                                               "2":  39,
+                                                                                                                                                                                               "3":  229,
+                                                                                                                                                                                               "4":  102,
+                                                                                                                                                                                               "5":  170,
+                                                                                                                                                                                               "6":  118,
+                                                                                                                                                                                               "7":  56,
+                                                                                                                                                                                               "8":  193,
+                                                                                                                                                                                               "9":  122,
+                                                                                                                                                                                               "10":  80,
+                                                                                                                                                                                               "11":  229,
+                                                                                                                                                                                               "12":  199,
+                                                                                                                                                                                               "13":  86,
+                                                                                                                                                                                               "14":  236,
+                                                                                                                                                                                               "15":  94,
+                                                                                                                                                                                               "16":  223,
+                                                                                                                                                                                               "17":  247,
+                                                                                                                                                                                               "18":  79,
+                                                                                                                                                                                               "19":  74,
+                                                                                                                                                                                               "20":  201,
+                                                                                                                                                                                               "21":  47,
+                                                                                                                                                                                               "22":  228,
+                                                                                                                                                                                               "23":  213,
+                                                                                                                                                                                               "24":  121,
+                                                                                                                                                                                               "25":  127,
+                                                                                                                                                                                               "26":  124,
+                                                                                                                                                                                               "27":  49,
+                                                                                                                                                                                               "28":  100,
+                                                                                                                                                                                               "29":  176,
+                                                                                                                                                                                               "30":  139,
+                                                                                                                                                                                               "31":  159
+                                                                                                                                                                                           },
+                                                                                                                                                                              "mimetype":  "image/webp",
+                                                                                                                                                                              "directPath":  "/o1/v/t24/f2/m234/AQM3nsQqV6udcsC-eQMv-BpnCUyWMoW-n19ShF_wCDC8YojlYoWCMP-1bt8XDPg6Jql5W0HkeEcJuIzgRxS5sK2DGmZoiG79FKihwPSdTg?ccb=9-4\u0026oh=01_Q5Aa4wHjFJRVAzKE5bENQNuhXljmFPkcs5ZEGfoK8-qhQH_KrA\u0026oe=6A4A60BC\u0026_nc_sid=e6ed6c",
+                                                                                                                                                                              "fileLength":  {
+                                                                                                                                                                                                 "low":  43542,
+                                                                                                                                                                                                 "high":  0,
+                                                                                                                                                                                                 "unsigned":  true
+                                                                                                                                                                                             },
+                                                                                                                                                                              "mediaKeyTimestamp":  {
+                                                                                                                                                                                                        "low":  1780668063,
+                                                                                                                                                                                                        "high":  0,
+                                                                                                                                                                                                        "unsigned":  false
+                                                                                                                                                                                                    }
+                                                                                                                                                                          }
+                                                                                                                                                   },
+                                                                                                                                       "contextInfo":  null,
+                                                                                                                                       "messageType":  "stickerMessage",
+                                                                                                                                       "messageTimestamp":  1780668063,
+                                                                                                                                       "instanceId":  "9d40bf0b-da21-43c7-8cda-41d7c105b5e1",
+                                                                                                                                       "source":  "web"
+                                                                                                                                   },
+                                                                                                                          "pairedItem":  {
+                                                                                                                                             "item":  2
+                                                                                                                                         }
+                                                                                                                      }
+                                                                                                                  ]
+                                                                                                              ]
+                                                                                                 }
+                                                                                    }
+                                                                                ],
+                                                    "Estado Texto (Apertura)":  [
+                                                                                    {
+                                                                                        "startTime":  1780668065661,
+                                                                                        "executionIndex":  5,
+                                                                                        "source":  [
+                                                                                                       {
+                                                                                                           "previousNode":  "Es Apertura o Cierre?",
+                                                                                                           "previousNodeOutput":  0,
+                                                                                                           "previousNodeRun":  0
+                                                                                                       }
+                                                                                                   ],
+                                                                                        "hints":  [
+
+                                                                                                  ],
+                                                                                        "executionTime":  1215036,
+                                                                                        "executionStatus":  "error",
+                                                                                        "error":  {
+                                                                                                      "level":  "warning",
+                                                                                                      "tags":  {
+
+                                                                                                               },
+                                                                                                      "timestamp":  1780669280697,
+                                                                                                      "context":  {
+                                                                                                                      "itemIndex":  0,
+                                                                                                                      "request":  {
+                                                                                                                                      "body":  {
+                                                                                                                                                   "type":  "text",
+                                                                                                                                                   "content":  "¡Buenos días! 🟢 Ya estamos operativos para sus cambios.",
+                                                                                                                                                   "backgroundColor":  "#10b981",
+                                                                                                                                                   "font":  1,
+                                                                                                                                                   "allContacts":  true
+                                                                                                                                               },
+                                                                                                                                      "headers":  {
+                                                                                                                                                      "apikey":  "4B4A59BF61DC-4013-8107-DFD841C73197",
+                                                                                                                                                      "content-type":  "application/json",
+                                                                                                                                                      "accept":  "application/json,text/html,application/xhtml+xml,application/xml,text/*;q=0.9, image/*;q=0.8, */*;q=0.7"
+                                                                                                                                                  },
+                                                                                                                                      "method":  "POST",
+                                                                                                                                      "uri":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                                                                                                      "gzip":  true,
+                                                                                                                                      "rejectUnauthorized":  true,
+                                                                                                                                      "followRedirect":  true,
+                                                                                                                                      "resolveWithFullResponse":  true,
+                                                                                                                                      "sendCredentialsOnCrossOriginRedirect":  true,
+                                                                                                                                      "followAllRedirects":  true,
+                                                                                                                                      "timeout":  300000,
+                                                                                                                                      "encoding":  null,
+                                                                                                                                      "json":  false,
+                                                                                                                                      "useStream":  true
+                                                                                                                                  }
+                                                                                                                  },
+                                                                                                      "functionality":  "regular",
+                                                                                                      "name":  "NodeApiError",
+                                                                                                      "node":  {
+                                                                                                                   "parameters":  {
+                                                                                                                                      "curlImport":  "",
+                                                                                                                                      "method":  "POST",
+                                                                                                                                      "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                                                                                                      "authentication":  "none",
+                                                                                                                                      "provideSslCertificates":  false,
+                                                                                                                                      "sendQuery":  false,
+                                                                                                                                      "sendHeaders":  true,
+                                                                                                                                      "specifyHeaders":  "keypair",
+                                                                                                                                      "headerParameters":  {
+                                                                                                                                                               "parameters":  [
+                                                                                                                                                                                  {
+                                                                                                                                                                                      "name":  "apikey",
+                                                                                                                                                                                      "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                                                                                                  },
+                                                                                                                                                                                  {
+                                                                                                                                                                                      "name":  "Content-Type",
+                                                                                                                                                                                      "value":  "application/json"
+                                                                                                                                                                                  }
+                                                                                                                                                                              ]
+                                                                                                                                                           },
+                                                                                                                                      "sendBody":  true,
+                                                                                                                                      "contentType":  "json",
+                                                                                                                                      "specifyBody":  "json",
+                                                                                                                                      "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                                                                                                                      "options":  {
+
+                                                                                                                                                  },
+                                                                                                                                      "infoMessage":  ""
+                                                                                                                                  },
+                                                                                                                   "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                                                                                                                   "name":  "Estado Texto (Apertura)",
+                                                                                                                   "type":  "n8n-nodes-base.httpRequest",
+                                                                                                                   "typeVersion":  4,
+                                                                                                                   "position":  [
+                                                                                                                                    -160,
+                                                                                                                                    464
+                                                                                                                                ],
+                                                                                                                   "retryOnFail":  true,
+                                                                                                                   "maxTries":  4,
+                                                                                                                   "waitBetweenTries":  5000
+                                                                                                               },
+                                                                                                      "messages":  [
+                                                                                                                       "timeout of 300000ms exceeded",
+                                                                                                                       "timeout of 300000ms exceeded"
+                                                                                                                   ],
+                                                                                                      "httpCode":  "ECONNABORTED",
+                                                                                                      "message":  "The connection was aborted, perhaps the server is offline",
+                                                                                                      "stack":  "NodeApiError: The connection was aborted, perhaps the server is offline\n    at ExecuteContext.execute (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file+packages+nodes-base_@aws-sdk+credential-providers@3.808.0_asn1.js@5_8da18263ca0574b0db58d4fefd8173ce/node_modules/n8n-nodes-base/nodes/HttpRequest/V3/HttpRequestV3.node.ts:825:16)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1048:9)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1239:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1687:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_d301200d8c5446bebb311523c3c1b485/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2339:11"
+                                                                                                  }
+                                                                                    }
+                                                                                ]
+                                                },
+                                    "lastNodeExecuted":  "Estado Texto (Apertura)"
+                                },
+                 "executionData":  {
+                                       "contextData":  {
+
+                                                       },
+                                       "nodeExecutionStack":  [
+                                                                  {
+                                                                      "node":  {
+                                                                                   "parameters":  {
+                                                                                                      "curlImport":  "",
+                                                                                                      "method":  "POST",
+                                                                                                      "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                                                                      "authentication":  "none",
+                                                                                                      "provideSslCertificates":  false,
+                                                                                                      "sendQuery":  false,
+                                                                                                      "sendHeaders":  true,
+                                                                                                      "specifyHeaders":  "keypair",
+                                                                                                      "headerParameters":  {
+                                                                                                                               "parameters":  [
+                                                                                                                                                  {
+                                                                                                                                                      "name":  "apikey",
+                                                                                                                                                      "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                                                                  },
+                                                                                                                                                  {
+                                                                                                                                                      "name":  "Content-Type",
+                                                                                                                                                      "value":  "application/json"
+                                                                                                                                                  }
+                                                                                                                                              ]
+                                                                                                                           },
+                                                                                                      "sendBody":  true,
+                                                                                                      "contentType":  "json",
+                                                                                                      "specifyBody":  "json",
+                                                                                                      "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                                                                                      "options":  {
+
+                                                                                                                  },
+                                                                                                      "infoMessage":  ""
+                                                                                                  },
+                                                                                   "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                                                                                   "name":  "Estado Texto (Apertura)",
+                                                                                   "type":  "n8n-nodes-base.httpRequest",
+                                                                                   "typeVersion":  4,
+                                                                                   "position":  [
+                                                                                                    -160,
+                                                                                                    464
+                                                                                                ],
+                                                                                   "retryOnFail":  true,
+                                                                                   "maxTries":  4,
+                                                                                   "waitBetweenTries":  5000
+                                                                               },
+                                                                      "data":  {
+                                                                                   "main":  [
+                                                                                                [
+                                                                                                    {
+                                                                                                        "json":  {
+                                                                                                                     "tipo":  "apertura",
+                                                                                                                     "grupos":  [
+                                                                                                                                    "593961230380-1588719606@g.us",
+                                                                                                                                    "120363291497664389@g.us",
+                                                                                                                                    "593961230380-1588719963@g.us"
+                                                                                                                                ],
+                                                                                                                     "stickerUrl":  "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp"
+                                                                                                                 },
+                                                                                                        "pairedItem":  {
+                                                                                                                           "item":  0
+                                                                                                                       }
+                                                                                                    }
+                                                                                                ]
+                                                                                            ]
+                                                                               },
+                                                                      "source":  {
+                                                                                     "main":  [
+                                                                                                  {
+                                                                                                      "previousNode":  "Es Apertura o Cierre?",
+                                                                                                      "previousNodeOutput":  0,
+                                                                                                      "previousNodeRun":  0
+                                                                                                  }
+                                                                                              ]
+                                                                                 }
+                                                                  }
+                                                              ],
+                                       "metadata":  {
+
+                                                    },
+                                       "waitingExecution":  {
+
+                                                            },
+                                       "waitingExecutionSource":  {
+
+                                                                  },
+                                       "runtimeData":  {
+                                                           "version":  1,
+                                                           "establishedAt":  1780668060180,
+                                                           "source":  "trigger",
+                                                           "redaction":  {
+                                                                             "version":  1,
+                                                                             "policy":  "none"
+                                                                         },
+                                                           "triggerNode":  {
+                                                                               "name":  "Schedule Trigger",
+                                                                               "type":  "n8n-nodes-base.scheduleTrigger"
+                                                                           }
+                                                       }
+                                   },
+                 "resumeToken":  "8fee7fef0e6f78ad7ad44cf37cacf79022363f47701d6e7560af5f2e7a4a1e0f"
+             },
+    "workflowData":  {
+                         "id":  "PAneIYAVkE9lPUVw",
+                         "name":  "Apertura y cierre automatico CAMBIOSJK",
+                         "active":  true,
+                         "activeVersionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+                         "isArchived":  false,
+                         "createdAt":  "2026-05-29T02:33:19.807Z",
+                         "updatedAt":  "2026-06-04T00:28:26.696Z",
+                         "nodes":  [
+                                       {
+                                           "parameters":  {
+                                                              "notice":  "",
+                                                              "rule":  {
+                                                                           "interval":  [
+                                                                                            {
+                                                                                                "field":  "cronExpression",
+                                                                                                "notice":  "",
+                                                                                                "expression":  "0 1 9,18 * * 1-6"
+                                                                                            },
+                                                                                            {
+                                                                                                "field":  "cronExpression",
+                                                                                                "notice":  "",
+                                                                                                "expression":  "0 0 10,14 * * 0"
+                                                                                            }
+                                                                                        ]
+                                                                       }
+                                                          },
+                                           "id":  "4b0b0c39-2967-40f8-8ce6-5ef584b26879",
+                                           "name":  "Schedule Trigger",
+                                           "type":  "n8n-nodes-base.scheduleTrigger",
+                                           "typeVersion":  1.1,
+                                           "position":  [
+                                                            -1168,
+                                                            512
+                                                        ]
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "mode":  "runOnceForAllItems",
+                                                              "language":  "javaScript",
+                                                              "jsCode":  "const hour = $now.hour;\n\nconst grupos = [\n  \u0027593961230380-1588719606@g.us\u0027,\n  \u0027120363291497664389@g.us\u0027,\n  \u0027593961230380-1588719963@g.us\u0027\n];\n\nif (hour \u003c 12) {\n  return {\n    tipo: \u0027apertura\u0027,\n    grupos: grupos,\n    stickerUrl: \u0027https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp\u0027\n  };\n} else {\n  return {\n    tipo: \u0027cierre\u0027,\n    grupos: grupos,\n    imageUrl: \u0027https://raw.githubusercontent.com/grupojk-cambios/grupojk-conversor/main/public/logos/imagen-cierre.jpg\u0027,\n    texto: \u0027¡Buenas tardes! Hasta mañana\u0027\n  };\n}",
+                                                              "notice":  ""
+                                                          },
+                                           "id":  "f7491209-2e2f-4f7d-bd0c-5d131e12e25b",
+                                           "name":  "Lógica Apertura/Cierre",
+                                           "type":  "n8n-nodes-base.code",
+                                           "typeVersion":  2,
+                                           "position":  [
+                                                            -960,
+                                                            512
+                                                        ]
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "mode":  "rules",
+                                                              "dataType":  "string",
+                                                              "value1":  "={{ $json.tipo }}",
+                                                              "rules":  {
+                                                                            "rules":  [
+                                                                                          {
+                                                                                              "operation":  "equal",
+                                                                                              "value2":  "apertura",
+                                                                                              "output":  0
+                                                                                          },
+                                                                                          {
+                                                                                              "operation":  "equal",
+                                                                                              "value2":  "cierre",
+                                                                                              "output":  1
+                                                                                          }
+                                                                                      ]
+                                                                        },
+                                                              "fallbackOutput":  -1
+                                                          },
+                                           "id":  "a1b7cab0-94c7-48e3-8bdd-8b79bc0a0663",
+                                           "name":  "Es Apertura o Cierre?",
+                                           "type":  "n8n-nodes-base.switch",
+                                           "typeVersion":  1,
+                                           "position":  [
+                                                            -768,
+                                                            480
+                                                        ]
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "resource":  "itemList",
+                                                              "operation":  "splitOutItems",
+                                                              "fieldToSplitOut":  "grupos",
+                                                              "include":  "noOtherFields",
+                                                              "options":  {
+
+                                                                          }
+                                                          },
+                                           "id":  "71218422-2856-49dc-bc7c-51b12141678f",
+                                           "name":  "Separar Grupos (Apertura)",
+                                           "type":  "n8n-nodes-base.itemLists",
+                                           "typeVersion":  3,
+                                           "position":  [
+                                                            -320,
+                                                            240
+                                                        ]
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "curlImport":  "",
+                                                              "method":  "POST",
+                                                              "url":  "http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                              "authentication":  "none",
+                                                              "provideSslCertificates":  false,
+                                                              "sendQuery":  false,
+                                                              "sendHeaders":  true,
+                                                              "specifyHeaders":  "keypair",
+                                                              "headerParameters":  {
+                                                                                       "parameters":  [
+                                                                                                          {
+                                                                                                              "name":  "apikey",
+                                                                                                              "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "Content-Type",
+                                                                                                              "value":  "application/json"
+                                                                                                          }
+                                                                                                      ]
+                                                                                   },
+                                                              "sendBody":  true,
+                                                              "contentType":  "json",
+                                                              "specifyBody":  "json",
+                                                              "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"sticker\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).item.json.stickerUrl }}\"\n}",
+                                                              "options":  {
+
+                                                                          },
+                                                              "infoMessage":  ""
+                                                          },
+                                           "id":  "b2a2de31-9b78-4e6e-a127-504aefb7426e",
+                                           "name":  "Enviar Sticker (Grupos)",
+                                           "type":  "n8n-nodes-base.httpRequest",
+                                           "typeVersion":  4,
+                                           "position":  [
+                                                            -16,
+                                                            240
+                                                        ],
+                                           "retryOnFail":  true,
+                                           "maxTries":  4,
+                                           "waitBetweenTries":  5000
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "curlImport":  "",
+                                                              "method":  "POST",
+                                                              "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                              "authentication":  "none",
+                                                              "provideSslCertificates":  false,
+                                                              "sendQuery":  false,
+                                                              "sendHeaders":  true,
+                                                              "specifyHeaders":  "keypair",
+                                                              "headerParameters":  {
+                                                                                       "parameters":  [
+                                                                                                          {
+                                                                                                              "name":  "apikey",
+                                                                                                              "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "Content-Type",
+                                                                                                              "value":  "application/json"
+                                                                                                          }
+                                                                                                      ]
+                                                                                   },
+                                                              "sendBody":  true,
+                                                              "contentType":  "json",
+                                                              "specifyBody":  "json",
+                                                              "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                                              "options":  {
+
+                                                                          },
+                                                              "infoMessage":  ""
+                                                          },
+                                           "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                                           "name":  "Estado Texto (Apertura)",
+                                           "type":  "n8n-nodes-base.httpRequest",
+                                           "typeVersion":  4,
+                                           "position":  [
+                                                            -160,
+                                                            464
+                                                        ],
+                                           "retryOnFail":  true,
+                                           "maxTries":  4,
+                                           "waitBetweenTries":  5000
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "resource":  "itemList",
+                                                              "operation":  "splitOutItems",
+                                                              "fieldToSplitOut":  "grupos",
+                                                              "include":  "noOtherFields",
+                                                              "options":  {
+
+                                                                          }
+                                                          },
+                                           "id":  "e25f5dc1-9a54-4a97-b2fd-2c5256251881",
+                                           "name":  "Separar Grupos (Cierre)",
+                                           "type":  "n8n-nodes-base.itemLists",
+                                           "typeVersion":  3,
+                                           "position":  [
+                                                            -288,
+                                                            656
+                                                        ]
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "curlImport":  "",
+                                                              "method":  "POST",
+                                                              "url":  "http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                              "authentication":  "none",
+                                                              "provideSslCertificates":  false,
+                                                              "sendQuery":  false,
+                                                              "sendHeaders":  true,
+                                                              "specifyHeaders":  "keypair",
+                                                              "headerParameters":  {
+                                                                                       "parameters":  [
+                                                                                                          {
+                                                                                                              "name":  "apikey",
+                                                                                                              "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "Content-Type",
+                                                                                                              "value":  "application/json"
+                                                                                                          }
+                                                                                                      ]
+                                                                                   },
+                                                              "sendBody":  true,
+                                                              "contentType":  "json",
+                                                              "specifyBody":  "json",
+                                                              "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"mediatype\": \"image\",\n  \"mimetype\": \"image/jpeg\",\n  \"media\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\"\n}",
+                                                              "options":  {
+
+                                                                          },
+                                                              "infoMessage":  ""
+                                                          },
+                                           "id":  "38b274f1-34b2-49cc-b41e-5b47984a4909",
+                                           "name":  "Enviar Imagen (Grupos)",
+                                           "type":  "n8n-nodes-base.httpRequest",
+                                           "typeVersion":  4,
+                                           "position":  [
+                                                            64,
+                                                            656
+                                                        ],
+                                           "retryOnFail":  true,
+                                           "maxTries":  4,
+                                           "waitBetweenTries":  5000
+                                       },
+                                       {
+                                           "parameters":  {
+                                                              "curlImport":  "",
+                                                              "method":  "POST",
+                                                              "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                              "authentication":  "none",
+                                                              "provideSslCertificates":  false,
+                                                              "sendQuery":  false,
+                                                              "sendHeaders":  true,
+                                                              "specifyHeaders":  "keypair",
+                                                              "headerParameters":  {
+                                                                                       "parameters":  [
+                                                                                                          {
+                                                                                                              "name":  "apikey",
+                                                                                                              "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                          },
+                                                                                                          {
+                                                                                                              "name":  "Content-Type",
+                                                                                                              "value":  "application/json"
+                                                                                                          }
+                                                                                                      ]
+                                                                                   },
+                                                              "sendBody":  true,
+                                                              "contentType":  "json",
+                                                              "specifyBody":  "json",
+                                                              "jsonBody":  "={\n  \"type\": \"image\",\n  \"content\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\",\n  \"allContacts\": true\n}",
+                                                              "options":  {
+
+                                                                          },
+                                                              "infoMessage":  ""
+                                                          },
+                                           "id":  "9bc6929a-bc23-4d92-8ea2-76ebd0569a75",
+                                           "name":  "Estado Imagen (Cierre)",
+                                           "type":  "n8n-nodes-base.httpRequest",
+                                           "typeVersion":  4,
+                                           "position":  [
+                                                            -144,
+                                                            912
+                                                        ],
+                                           "retryOnFail":  true,
+                                           "maxTries":  4,
+                                           "waitBetweenTries":  5000
+                                       }
+                                   ],
+                         "connections":  {
+                                             "Schedule Trigger":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Lógica Apertura/Cierre",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                             "Lógica Apertura/Cierre":  {
+                                                                            "main":  [
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Es Apertura o Cierre?",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ]
+                                                                                     ]
+                                                                        },
+                                             "Es Apertura o Cierre?":  {
+                                                                           "main":  [
+                                                                                        [
+                                                                                            {
+                                                                                                "node":  "Separar Grupos (Apertura)",
+                                                                                                "type":  "main",
+                                                                                                "index":  0
+                                                                                            },
+                                                                                            {
+                                                                                                "node":  "Estado Texto (Apertura)",
+                                                                                                "type":  "main",
+                                                                                                "index":  0
+                                                                                            }
+                                                                                        ],
+                                                                                        [
+                                                                                            {
+                                                                                                "node":  "Separar Grupos (Cierre)",
+                                                                                                "type":  "main",
+                                                                                                "index":  0
+                                                                                            },
+                                                                                            {
+                                                                                                "node":  "Estado Imagen (Cierre)",
+                                                                                                "type":  "main",
+                                                                                                "index":  0
+                                                                                            }
+                                                                                        ]
+                                                                                    ]
+                                                                       },
+                                             "Separar Grupos (Apertura)":  {
+                                                                               "main":  [
+                                                                                            [
+                                                                                                {
+                                                                                                    "node":  "Enviar Sticker (Grupos)",
+                                                                                                    "type":  "main",
+                                                                                                    "index":  0
+                                                                                                }
+                                                                                            ]
+                                                                                        ]
+                                                                           },
+                                             "Separar Grupos (Cierre)":  {
+                                                                             "main":  [
+                                                                                          [
+                                                                                              {
+                                                                                                  "node":  "Enviar Imagen (Grupos)",
+                                                                                                  "type":  "main",
+                                                                                                  "index":  0
+                                                                                              }
+                                                                                          ]
+                                                                                      ]
+                                                                         }
+                                         },
+                         "settings":  {
+                                          "executionOrder":  "v1",
+                                          "binaryMode":  "separate",
+                                          "timeSavedMode":  "fixed",
+                                          "timezone":  "America/Guayaquil",
+                                          "callerPolicy":  "workflowsFromSameOwner",
+                                          "availableInMCP":  false
+                                      },
+                         "staticData":  {
+                                            "node:Schedule Trigger":  {
+                                                                          "recurrenceRules":  [
+
+                                                                                              ]
+                                                                      }
+                                        },
+                         "pinData":  {
+
+                                     }
+                     },
+    "workflowVersionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+    "customData":  {
+
+                   }
+}

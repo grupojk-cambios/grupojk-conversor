@@ -1,0 +1,844 @@
+﻿{
+    "name":  "Bot WhatsApp JK Remesas - V2 (Mejorado)",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "path":  "webhook-whatsapp",
+                                         "options":  {
+
+                                                     },
+                                         "httpMethod":  "POST"
+                                     },
+                      "id":  "75799f35-f979-4b45-9dab-861127bd5f9d",
+                      "name":  "Webhook Evolution API",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -380,
+                                       128
+                                   ],
+                      "webhookId":  "a9ba9382-d166-495a-8309-e13a9d839b06"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value2":  "={{false}}",
+                                                                                "value1":  "={{ $json.body.data.key.fromMe }}"
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "4c9f6989-54ed-4990-89d5-283dd59b7ce2",
+                      "name":  "Es mensaje de cliente?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -200,
+                                       128
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Prepara los datos para el debounce con Redis. El texto ya viene unificado (de texto directo o de audio transcrito).\nlet jid=\u0027\u0027, texto=\u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; } catch(e){}\ntry { texto = $json.texto || \u0027\u0027; } catch(e){}\nconst miTs = String(Date.now()) + \u0027-\u0027 + Math.random().toString(36).slice(2,8);\nreturn [{ json: { jid, texto: texto || \u0027\u0027, miTs, keyBuf: \u0027buf:\u0027+jid, keyTok: \u0027tok:\u0027+jid } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       140,
+                                       128
+                                   ],
+                      "id":  "c1a2b3c4-1111-4a11-9111-prep00000001",
+                      "name":  "Prep Debounce"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "aud-cond-1",
+                                                                                   "leftValue":  "={{ $json.body.data.messageType }}",
+                                                                                   "rightValue":  "audioMessage",
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "string"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "d0a1b2c3-e4f5-4060-9788-esaudio00001",
+                      "name":  "Es Audio?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -60,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Extrae el texto de un mensaje normal (texto, respuesta citada, o pie de imagen/video).\nlet t=\u0027\u0027;\ntry {\n  const m = $json.body.data.message || {};\n  t = m.conversation\n    || (m.extendedTextMessage \u0026\u0026 m.extendedTextMessage.text)\n    || (m.imageMessage \u0026\u0026 m.imageMessage.caption)\n    || (m.videoMessage \u0026\u0026 m.videoMessage.caption)\n    || \u0027\u0027;\n} catch(e){}\nreturn [{ json: { texto: t } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -60,
+                                       220
+                                   ],
+                      "id":  "e1f2a3b4-c5d6-4071-9899-txtdirecto01",
+                      "name":  "Texto Directo"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $json.body.data.key.id }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "f2a3b4c5-d6e7-4082-9900-getbase64001",
+                      "name":  "Descargar Audio",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       120,
+                                       -60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "FKESFx8q5vHdJoM4",
+                                                                 "name":  "Evolution apikey header para operador 1"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Convierte el base64 del audio (de Evolution) en un archivo binario para Whisper.\nconst b64 = $json.base64;\nif(!b64) return [{ json: { texto: \u0027\u0027 } }];\nreturn [{ json: { mimetype: $json.mimetype || \u0027\u0027 }, binary: { data: { data: b64, mimeType: \u0027audio/ogg\u0027, fileName: \u0027audio.ogg\u0027 } } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       300,
+                                       -60
+                                   ],
+                      "id":  "a3b4c5d6-e7f8-4093-9a11-tobinario001",
+                      "name":  "Audio a Binario"
+                  },
+                  {
+                      "parameters":  {
+                                         "binaryPropertyName":  "data",
+                                         "operation":  "transcribe",
+                                         "resource":  "audio",
+                                         "options":  {
+                                                         "language":  "es"
+                                                     }
+                                     },
+                      "id":  "b4c5d6e7-f8a9-4004-9b22-transcribe01",
+                      "name":  "Transcribir Audio",
+                      "type":  "@n8n/n8n-nodes-langchain.openAi",
+                      "typeVersion":  1.8,
+                      "position":  [
+                                       480,
+                                       -60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Toma la transcripcion de Whisper como texto del mensaje.\nlet t=\u0027\u0027;\ntry { t = $(\u0027Transcribir Audio\u0027).item.json.text || \u0027\u0027; } catch(e){}\nt = String(t).trim();\nif(!t) t = \u0027El cliente envio una nota de voz que no se pudo entender. Pidele amablemente que la repita o escriba.\u0027;\nreturn [{ json: { texto: t } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       -60
+                                   ],
+                      "id":  "c5d6e7f8-a9b0-4015-9c33-txtaudio0001",
+                      "name":  "Texto de Audio"
+                  },
+                  {
+                      "parameters":  {
+                                         "list":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyBuf }}",
+                                         "operation":  "push",
+                                         "tail":  true,
+                                         "messageData":  "={{ $(\u0027Prep Debounce\u0027).item.json.texto }}"
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       160,
+                                       128
+                                   ],
+                      "id":  "c2a2b3c4-2222-4a22-9222-rpush0000001",
+                      "name":  "Redis Guardar Msg",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $(\u0027Prep Debounce\u0027).item.json.miTs }}",
+                                         "expire":  true,
+                                         "ttl":  120,
+                                         "keyType":  "string",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyTok }}",
+                                         "operation":  "set"
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       340,
+                                       128
+                                   ],
+                      "id":  "c3a2b3c4-3333-4a33-9333-rset00000001",
+                      "name":  "Redis Marcar Token",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "unit":  "seconds",
+                                         "amount":  30
+                                     },
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       520,
+                                       128
+                                   ],
+                      "id":  "d2b3c4d5-4444-4a44-9444-wait00000001",
+                      "name":  "Esperar 30s",
+                      "webhookId":  "e7c1a2b3-5555-4a55-9555-waithook0001"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyTok }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "tokenActual",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       700,
+                                       128
+                                   ],
+                      "id":  "c4a2b3c4-6666-4a66-9666-rget00000001",
+                      "name":  "Redis Leer Token",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Tras esperar 30s: solo continua si mi token sigue siendo el ultimo en Redis.\nconst miTs = $(\u0027Prep Debounce\u0027).item.json.miTs;\nlet actual = $json.tokenActual;\nif (actual === undefined || actual === null) { try { actual = $(\u0027Redis Leer Token\u0027).item.json.tokenActual; } catch(e){} }\nif (String(actual) !== String(miTs)) {\n  return []; // llego un mensaje mas nuevo: esta ejecucion NO responde\n}\nreturn [{ json: { jid: $(\u0027Prep Debounce\u0027).item.json.jid } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       880,
+                                       128
+                                   ],
+                      "id":  "f3c4d5e6-7777-4a77-9777-filtrar00001",
+                      "name":  "Filtrar Ultimo"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyBuf }}",
+                                         "keyType":  "list",
+                                         "propertyName":  "mensajes",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1060,
+                                       128
+                                   ],
+                      "id":  "c5a2b3c4-8888-4a88-9888-rgetlist0001",
+                      "name":  "Redis Leer Mensajes",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyBuf }}",
+                                         "operation":  "delete"
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1240,
+                                       128
+                                   ],
+                      "id":  "c6a2b3c4-9999-4a99-9999-rdel00000001",
+                      "name":  "Redis Borrar Buffer",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Junta todos los mensajes leidos de Redis en un solo texto.\nlet arr = [];\ntry { arr = $(\u0027Redis Leer Mensajes\u0027).item.json.mensajes; } catch(e){}\nif (!Array.isArray(arr)) arr = (arr === undefined || arr === null) ? [] : [arr];\nconst combinado = arr.join(\u0027\\n\u0027).trim() || \u0027(sin texto)\u0027;\nreturn [{ json: { mensajeCombinado: combinado } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1420,
+                                       128
+                                   ],
+                      "id":  "a7b8c9d0-aaaa-4aaa-9aaa-combinar0001",
+                      "name":  "Combinar"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "url":  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv"
+                                     },
+                      "id":  "d117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a",
+                      "name":  "Consultar Tasas",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1600,
+                                       128
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  1500,
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "url":  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?gid=908170655\u0026single=true\u0026output=csv"
+                                     },
+                      "id":  "e2f3a4b5-c6d7-4e88-9f00-cuentas00001",
+                      "name":  "Consultar Cuentas",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1690,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  1500,
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// === JK Remesas - Procesamiento de tasas (espejo de la app JK Conversor) ===\nfunction parseCSV(text){\n  const lineas = text.split(/\\r?\\n/).filter(l =\u003e l.trim().length\u003e0);\n  const parseLine = (linea)=\u003e{ const row=[]; let inQ=false; let cur=\u0027\u0027; for(const c of linea){ if(c===\u0027\"\u0027) inQ=!inQ; else if(c===\u0027,\u0027 \u0026\u0026 !inQ){ row.push(cur); cur=\u0027\u0027; } else cur+=c; } row.push(cur); return row.map(s=\u003es.trim()); };\n  return lineas.map(parseLine);\n}\nfunction num(s){ if(s===undefined||s===null||s===\u0027\u0027) return 0; let v=String(s).replace(/\\s/g,\u0027\u0027).replace(\u0027,\u0027, \u0027.\u0027); const n=parseFloat(v); return isNaN(n)?0:n; }\n\nconst httpItem = $(\u0027Consultar Tasas\u0027).first();\nconst csv = (httpItem \u0026\u0026 httpItem.json \u0026\u0026 httpItem.json.data) ? String(httpItem.json.data) : \u0027\u0027;\n\nconst APP_URL = \u0027https://grupojk-cambios.github.io/grupojk-conversor/\u0027;\n\n// ====== LISTA DE MAYORISTAS (EDITAR AQUI) ======\n// Numeros de WhatsApp mayoristas (solo digitos, con codigo de pais).\n// Ejemplo: const MAYORISTAS = [\u0027584121234567\u0027, \u0027593961230380\u0027];\nconst MAYORISTAS = [];\n// ================================================\n\nlet jid = \u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; } catch(e) { jid = \u0027\u0027; }\nconst senderDigits = String(jid).replace(/\\D/g,\u0027\u0027);\nconst esMayorista = MAYORISTAS.some(n =\u003e { const d=String(n).replace(/\\D/g,\u0027\u0027); return d \u0026\u0026 (senderDigits===d || senderDigits.endsWith(d)); });\nconst modo = esMayorista ? \u0027mayor\u0027 : \u0027detal\u0027;\n\nif(!csv){\n  return [{ json: { lista:[], modo, esMayorista, appUrl:APP_URL, hayEfectivoVe:false, totalPaises:0, error:\u0027No se recibieron datos de tasas\u0027 } }];\n}\n\nconst filas = parseCSV(csv);\nconst head = (filas[0]||[]).map(h=\u003eString(h||\u0027\u0027).toUpperCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027));\nconst idx = {\n  factorEUR: head.findIndex(h=\u003eh.includes(\u0027FACTOR EUR\u0027)||h.includes(\u0027VALOR EUR\u0027)),\n  factorUSDT: head.findIndex(h=\u003eh.includes(\u0027FACTOR USDT\u0027)||h.includes(\u0027VALOR USDT\u0027)),\n  cod: head.findIndex(h=\u003eh.includes(\u0027CODIGO\u0027)||h.includes(\u0027BANCO\u0027)),\n  moneda: head.findIndex(h=\u003eh.includes(\u0027NOMBRE\u0027)||h.includes(\u0027MONEDA\u0027)),\n  mEMayor: head.findIndex(h=\u003eh.includes(\u0027MARGEN ENVIO MAYOR\u0027)),\n  mRMayor: head.findIndex(h=\u003eh.includes(\u0027MARGEN RECIBO MAYOR\u0027)),\n};\nconst paises=[];\nfor(let i=1;i\u003cfilas.length;i++){\n  const row=filas[i]; const nombre=(row[0]||\u0027\u0027).trim(); if(!nombre) continue;\n  const tE=num(row[1]); const mE=(row[2]!==undefined\u0026\u0026row[2]!==\u0027\u0027)?num(row[2]):6;\n  const tR=num(row[3]); const mR=(row[4]!==undefined\u0026\u0026row[4]!==\u0027\u0027)?num(row[4]):6;\n  if(tE===0 \u0026\u0026 tR===0) continue;\n  const codigo = idx.cod!==-1 \u0026\u0026 row[idx.cod] ? row[idx.cod].toUpperCase() : nombre.substring(0,3).toUpperCase();\n  paises.push({ nombre, codigo, moneda: idx.moneda!==-1 \u0026\u0026 row[idx.moneda] ? row[idx.moneda] : \u0027Divisa local\u0027, tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?num(row[idx.mEMayor]):0, margenReciboMayor: idx.mRMayor!==-1?num(row[idx.mRMayor]):0, factorEUR: idx.factorEUR!==-1?num(row[idx.factorEUR]):0, factorUSDT: idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0 });\n}\n\n// Guardar datos crudos para la calculadora (mismo dato que el prompt)\ntry { const sd=$getWorkflowStaticData(\u0027global\u0027); sd.paisesData = paises; } catch(e){}\n\nfunction mEnv(p){ return modo===\u0027mayor\u0027\u0026\u0026p.margenEnvioMayor\u003e0?p.margenEnvioMayor:(p.margenEnvio||0); }\nfunction mRec(p){ return modo===\u0027mayor\u0027\u0026\u0026p.margenReciboMayor\u003e0?p.margenReciboMayor:(p.margenRecibo||0); }\nfunction tEnv(p){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p)/100):0; }\nfunction tRec(p){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p)/100):0; }\nfunction esDolar(p){ const c=(p.codigo||\u0027\u0027).toUpperCase(); const n=(p.nombre||\u0027\u0027).toUpperCase(); return [\u0027USD\u0027,\u0027USDT\u0027].includes(c)||n.includes(\u0027USDT\u0027)||n.includes(\u0027ZELLE\u0027)||n.includes(\u0027EFECTIVO VEN\u0027); }\n\nconst lista = paises\n  .filter(p =\u003e !/^efectivo venezuela-/i.test(p.nombre))\n  .map(p =\u003e ({ Pais:p.nombre, Codigo:p.codigo, Moneda:p.moneda, Envio: tEnv(p)? Number(tEnv(p).toFixed(2)):\u0027N/D\u0027, Recibo: tRec(p)? Number(tRec(p).toFixed(2)):\u0027N/D\u0027, EsDolar: esDolar(p) }));\n\nconst hayEfectivoVe = paises.some(p=\u003e/^efectivo venezuela/i.test(p.nombre));\n\n// ===== CUENTAS con ROTACION DIARIA (1 cuenta por pais por dia) =====\nlet cuentasCsv = \u0027\u0027;\ntry { cuentasCsv = String($(\u0027Consultar Cuentas\u0027).first().json.data || \u0027\u0027); } catch(e){}\nconst cuentasTodas = [];\nif (cuentasCsv) {\n  const filasC = parseCSV(cuentasCsv);\n  // Encabezado: Pais, Metodo, Disponible, Datos, Notas. El ORDEN de filas = orden de rotacion.\n  for (let i=1; i\u003cfilasC.length; i++) {\n    const row = filasC[i];\n    const pais = (row[0]||\u0027\u0027).trim();\n    const datos = (row[3]||\u0027\u0027).trim();\n    if (!pais || !datos) continue;\n    if (!/^s/i.test((row[2]||\u0027\u0027).trim())) continue; // solo Disponible = Si\n    cuentasTodas.push({ Pais: pais, Metodo: (row[1]||\u0027\u0027).trim(), Datos: datos });\n  }\n}\n// Agrupar por pais preservando el orden de filas\nconst porPais = {};\nfor (const c of cuentasTodas) {\n  const k = c.Pais.toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).trim();\n  (porPais[k] = porPais[k] || []).push(c);\n}\n// Indice del dia segun hora de Ecuador (UTC-5): cambia a la medianoche de Ecuador\nconst diaIndex = Math.floor((Date.now() - 5*3600000) / 86400000);\nconst cuentas = [];\nfor (const k in porPais) {\n  const arr = porPais[k];\n  const idx = ((diaIndex % arr.length) + arr.length) % arr.length; // ciclico 0,1,2,...\n  cuentas.push(arr[idx]);\n}\n\nreturn [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length\u003e0, diaIndex, error: paises.length? null : \u0027Lista vacia\u0027 } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1860,
+                                       128
+                                   ],
+                      "id":  "6ac06fc7-1afb-49ab-893c-e2f2b5f8b995",
+                      "name":  "Code in JavaScript"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "options":  {
+                                                         "systemMessage":  "=Eres asistente de *JK Remesas* por WhatsApp. RESPONDE EN MAXIMO 2-3 LINEAS, directo y humano. 1-2 emojis maximo. NO repitas frases de cortesia.\n\nEl cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea). Leelos todos y responde UNA sola vez, corto.\n\nTarifa de este cliente: {{ $node[\"Code in JavaScript\"].json.modo }} (detal=publico, mayor=mayorista). Nunca menciones lo mayorista a un cliente detal.\n\nTasas de hoy (Envio/Recibo ya con margen; \"N/D\" = no disponible):\n{{ JSON.stringify($node[\"Code in JavaScript\"].json.lista) }}\n\nCUENTAS para pagar/depositar (solo estas existen; usa el campo \"Datos\" tal cual al enviarla):\n{{ JSON.stringify($node[\"Code in JavaScript\"].json.cuentas) }}\n\nREGLAS:\n- MONTO a convertir, cruce entre paises, o dolares/USDT/euros (EsDolar:true): USA la herramienta calculadora_remesas (pais_origen, pais_destino, monto, direccion \"directa\"/\"inversa\", modo \"{{ $node[\"Code in JavaScript\"].json.modo }}\"). NUNCA calcules tu; da el numero que devuelve la herramienta.\n- Solo piden tasa de un pais sin monto: di Envio o Recibo en 1 linea. Si no sabes si quiere enviar o recibir, preguntalo en pocas palabras.\n- Disponibilidad: si una moneda esta en \"N/D\" o no aparece: \"Por ahora no manejamos ese servicio.\" No inventes.\n- Preguntan por CUENTA / datos para pagar / donde deposito / a donde transfiero: revisa la lista CUENTAS de abajo. Si hay una para ese pais/metodo, envia su campo \"Datos\" tal cual (puedes elegir la mas adecuada o preguntar el metodo si hay varias). Si NO hay ninguna para ese pais: \"Por ahora no tengo esa cuenta a la mano, un asesor te la pasa enseguida.\"\n- Fuera de tema: \"Solo remesas de JK.\"\n- Quejas o problema con un giro: \"Un asesor te contacta enseguida.\"\n- Nunca pidas claves, cuentas ni documentos. No des consejo financiero.\n- Ver todas las tasas: {{ $node[\"Code in JavaScript\"].json.appUrl }}\n{{ $node[\"Code in JavaScript\"].json.hayEfectivoVe ? \u0027- Efectivo Venezuela: pregunta estado/ciudad.\u0027 : \u0027\u0027 }}\n\nPROHIBIDO repetir en cada mensaje cosas como \"estoy aqui\", \"disponible\", \"para ayudarte\", \"cualquier consulta\", \"no dudes en\". Responde lo justo y para. Suena como una persona, no como un bot."
+                                                     },
+                                         "text":  "={{ $(\u0027Combinar\u0027).item.json.mensajeCombinado }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  3.1,
+                      "position":  [
+                                       1960,
+                                       128
+                                   ],
+                      "id":  "2ac354a3-fe77-4708-80c5-b238454cfdd6",
+                      "name":  "AI Agent",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "bot-JK-prueba-operador1",
+                                         "messageText":  "={{ $json.output }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}"
+                                     },
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2320,
+                                       128
+                                   ],
+                      "id":  "02d01e05-a9f8-4caa-a02e-37a660aa662c",
+                      "name":  "Enviar texto a WhatsApp",
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000,
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Si la respuesta del bot indica que se necesita un asesor, arma la alerta. Si no, no hace nada.\nconst out = String($json.output || \u0027\u0027);\nif (!/asesor/i.test(out)) { return []; } // no es escalamiento -\u003e no notificar\nlet jid = \u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; } catch(e){}\nconst numero = String(jid).replace(/\\D/g,\u0027\u0027);\nlet msg = \u0027\u0027;\ntry { msg = $(\u0027Combinar\u0027).item.json.mensajeCombinado || \u0027\u0027; } catch(e){}\nconst texto = \u0027*Cliente necesita atencion*\\n\\nNumero: +\u0027 + numero + \u0027\\nhttps://wa.me/\u0027 + numero + \u0027\\n\\nCliente escribio:\\n\u0027 + msg + \u0027\\n\\nBot respondio:\\n\u0027 + out;\nreturn [{ json: { alerta: texto, numeroCliente: numero } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2200,
+                                       320
+                                   ],
+                      "id":  "aa11bb22-cc33-4d44-9e55-detasesor001",
+                      "name":  "Detectar Asesor"
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "bot-JK-prueba-operador1",
+                                         "messageText":  "={{ $json.alerta }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "593961230380@s.whatsapp.net"
+                                     },
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2420,
+                                       320
+                                   ],
+                      "id":  "bb22cc33-dd44-4e55-9f66-notasesor001",
+                      "name":  "Notificar Asesor",
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000,
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "temperature":  0.3
+                                                     },
+                                         "model":  "gpt-4o-mini"
+                                     },
+                      "id":  "073e3eb0-3806-4654-8016-ed7207a45715",
+                      "name":  "OpenAI Model",
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1820,
+                                       400
+                                   ],
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "sessionKey":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}",
+                                         "sessionIdType":  "customKey",
+                                         "contextWindowLength":  15
+                                     },
+                      "id":  "bff6d1ec-1a12-45f2-a96a-327e1edd3f0e",
+                      "name":  "Memoria de Chat",
+                      "type":  "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       2040,
+                                       400
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "calculadora_remesas",
+                                         "description":  "Convierte montos de dinero entre paises/monedas con las tasas oficiales del dia de JK Remesas. Usala para cualquier conversion de monto, para cruces entre dos paises, o cuando intervengan dolares, USDT o euros. Devuelve el resultado exacto.",
+                                         "schemaType":  "manual",
+                                         "specifyInputSchema":  true,
+                                         "inputSchema":  "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"pais_origen\": { \"type\": \"string\", \"description\": \"Pais o moneda DESDE donde sale el dinero, tal como lo dijo el cliente (ej: Chile, Zelle, USDT, Europa, Colombia).\" },\n    \"pais_destino\": { \"type\": \"string\", \"description\": \"Pais o moneda HACIA donde llega el dinero (ej: Colombia, Venezuela, Chile).\" },\n    \"monto\": { \"type\": \"number\", \"description\": \"Cantidad numerica a convertir.\" },\n    \"direccion\": { \"type\": \"string\", \"enum\": [\"directa\", \"inversa\"], \"description\": \"directa = el cliente ENVIA \u0027monto\u0027 en la moneda de origen y quiere saber cuanto llega. inversa = el cliente quiere que LLEGUEN \u0027monto\u0027 a destino y saber cuanto debe enviar.\" },\n    \"modo\": { \"type\": \"string\", \"enum\": [\"detal\", \"mayor\"], \"description\": \"Tipo de tarifa. Usa SIEMPRE el valor indicado en el system prompt para este cliente. Por defecto detal.\" }\n  },\n  \"required\": [\"pais_origen\", \"pais_destino\", \"monto\"]\n}",
+                                         "language":  "javaScript",
+                                         "jsCode":  "// === Calculadora de remesas JK (motor identico a la app) ===\nfunction _safe(fn){ try { return fn(); } catch(e){ return undefined; } }\n\nlet _a = {};\nconst _q = _safe(()=\u003equery);\nif (_q \u0026\u0026 typeof _q === \u0027object\u0027) _a = _q;\nconst inOrigen   = (_a.pais_origen  !== undefined) ? _a.pais_origen  : _safe(()=\u003epais_origen);\nconst inDestino  = (_a.pais_destino !== undefined) ? _a.pais_destino : _safe(()=\u003epais_destino);\nconst inMonto    = (_a.monto        !== undefined) ? _a.monto        : _safe(()=\u003emonto);\nconst inDir      = (_a.direccion    !== undefined) ? _a.direccion    : _safe(()=\u003edireccion);\nconst inModo     = (_a.modo         !== undefined) ? _a.modo         : _safe(()=\u003emodo);\n\nconst origenQ  = String(inOrigen||\u0027\u0027).trim();\nconst destinoQ = String(inDestino||\u0027\u0027).trim();\nconst montoN   = Number(inMonto)||0;\nconst direccion= (String(inDir||\u0027directa\u0027).toLowerCase()===\u0027inversa\u0027)?\u0027inversa\u0027:\u0027directa\u0027;\nconst modoN    = (String(inModo||\u0027detal\u0027).toLowerCase()===\u0027mayor\u0027)?\u0027mayor\u0027:\u0027detal\u0027;\n\nfunction parseCSV(text){\n  const lineas = text.split(/\\r?\\n/).filter(l =\u003e l.trim().length\u003e0);\n  const parseLine = (linea)=\u003e{ const row=[]; let inQ=false; let cur=\u0027\u0027; for(const c of linea){ if(c===\u0027\"\u0027) inQ=!inQ; else if(c===\u0027,\u0027 \u0026\u0026 !inQ){ row.push(cur); cur=\u0027\u0027; } else cur+=c; } row.push(cur); return row.map(s=\u003es.trim()); };\n  return lineas.map(parseLine);\n}\nfunction num(s){ if(s===undefined||s===null||s===\u0027\u0027) return 0; let v=String(s).replace(/\\s/g,\u0027\u0027).replace(\u0027,\u0027, \u0027.\u0027); const n=parseFloat(v); return isNaN(n)?0:n; }\nfunction norm(s){ return (s||\u0027\u0027).toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).replace(/[^a-z0-9 ]/g,\u0027\u0027).trim(); }\nfunction construirPaises(text){\n  const filas = parseCSV(text); if(!filas.length) return [];\n  const head=(filas[0]||[]).map(h=\u003eString(h||\u0027\u0027).toUpperCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027));\n  const idx={ factorEUR:head.findIndex(h=\u003eh.includes(\u0027FACTOR EUR\u0027)||h.includes(\u0027VALOR EUR\u0027)), factorUSDT:head.findIndex(h=\u003eh.includes(\u0027FACTOR USDT\u0027)||h.includes(\u0027VALOR USDT\u0027)), cod:head.findIndex(h=\u003eh.includes(\u0027CODIGO\u0027)||h.includes(\u0027BANCO\u0027)), moneda:head.findIndex(h=\u003eh.includes(\u0027NOMBRE\u0027)||h.includes(\u0027MONEDA\u0027)), mEMayor:head.findIndex(h=\u003eh.includes(\u0027MARGEN ENVIO MAYOR\u0027)), mRMayor:head.findIndex(h=\u003eh.includes(\u0027MARGEN RECIBO MAYOR\u0027)) };\n  const paises=[];\n  for(let i=1;i\u003cfilas.length;i++){ const row=filas[i]; const nombre=(row[0]||\u0027\u0027).trim(); if(!nombre) continue; const tE=num(row[1]); const mE=(row[2]!==undefined\u0026\u0026row[2]!==\u0027\u0027)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined\u0026\u0026row[4]!==\u0027\u0027)?num(row[4]):6; if(tE===0\u0026\u0026tR===0) continue; const codigo=idx.cod!==-1\u0026\u0026row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase(); paises.push({ nombre, codigo, moneda: idx.moneda!==-1\u0026\u0026row[idx.moneda]?row[idx.moneda]:\u0027Divisa local\u0027, tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?num(row[idx.mEMayor]):0, margenReciboMayor: idx.mRMayor!==-1?num(row[idx.mRMayor]):0, factorEUR: idx.factorEUR!==-1?num(row[idx.factorEUR]):0, factorUSDT: idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0 }); }\n  return paises;\n}\nfunction isCajaDolar(p){ const c=(p.codigo||\u0027\u0027).toUpperCase(); const n=(p.nombre||\u0027\u0027).toUpperCase(); return [\u0027USD\u0027,\u0027USDT\u0027].includes(c)||n.includes(\u0027USDT\u0027)||n.includes(\u0027ZELLE\u0027)||n.includes(\u0027EFECTIVO VEN\u0027); }\nfunction mEnv(p,modo){ return modo===\u0027mayor\u0027\u0026\u0026p.margenEnvioMayor\u003e0?p.margenEnvioMayor:(p.margenEnvio||0); }\nfunction mRec(p,modo){ return modo===\u0027mayor\u0027\u0026\u0026p.margenReciboMayor\u003e0?p.margenReciboMayor:(p.margenRecibo||0); }\nfunction tEnv(p,modo){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p,modo)/100):0; }\nfunction tRec(p,modo){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p,modo)/100):0; }\nfunction obtenerTasasProcesadas(origen,destino,modo){\n  let tasaOrigenParaDolares=tRec(origen,modo);\n  let tasaDestinoDesdeDolares=tEnv(destino,modo);\n  const BASES=[\u0027EUR\u0027,\u0027USDT\u0027,\u0027GBP\u0027,\u0027EU\u0027]; const FUERTES=[\u0027EUR\u0027,\u0027GBP\u0027,\u0027EU\u0027];\n  const oc=(origen.codigo||\u0027\u0027).toUpperCase(); const dc=(destino.codigo||\u0027\u0027).toUpperCase();\n  let factorAplicado=false;\n  if(BASES.includes(oc) \u0026\u0026 !isCajaDolar(destino) \u0026\u0026 !BASES.includes(dc)){ const f=parseFloat(destino[\u0027factor\u0027+oc]); if(f\u003e0\u0026\u0026!isNaN(f)){ tasaOrigenParaDolares=1/f; factorAplicado=true; } }\n  else if(!BASES.includes(oc) \u0026\u0026 !isCajaDolar(origen) \u0026\u0026 BASES.includes(dc)){ const f=parseFloat(origen[\u0027factor\u0027+dc]); if(f\u003e0\u0026\u0026!isNaN(f)){ tasaDestinoDesdeDolares=1/f; factorAplicado=true; } }\n  if(!factorAplicado){\n    const oF=FUERTES.includes(oc), dF=FUERTES.includes(dc), oD=isCajaDolar(origen), dD=isCajaDolar(destino);\n    if(oF||dF){\n      if(oF \u0026\u0026 !oD) tasaOrigenParaDolares=1/Math.max(tasaOrigenParaDolares,0.001);\n      if(oF \u0026\u0026 dD) tasaDestinoDesdeDolares=1;\n      if(oD \u0026\u0026 dF) tasaOrigenParaDolares=1;\n    } else {\n      if(oD \u0026\u0026 !dD){ const mO=mRec(origen,modo), mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }\n      else if(oD \u0026\u0026 dD){ tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; const mD=mEnv(destino,modo); tasaDestinoDesdeDolares=tBaseD*(1-mD/100); }\n      else if(!oD \u0026\u0026 dD){ const mO=mRec(origen,modo), mD=mEnv(destino,modo); const tBaseO=origen.tasaProveedorRecibo||0; tasaOrigenParaDolares=tBaseO*(1+(mO+mD)/100); tasaDestinoDesdeDolares=1; }\n    }\n  }\n  if(tasaOrigenParaDolares===0) tasaOrigenParaDolares=1;\n  return { tasaOrigenParaDolares, tasaDestinoDesdeDolares };\n}\nfunction calcularConversion(origen,destino,monto,modo){ const r=obtenerTasasProcesadas(origen,destino,modo); return (monto/r.tasaOrigenParaDolares)*r.tasaDestinoDesdeDolares; }\nfunction calcularConversionInversa(origen,destino,montoRecibir,modo){ const r=obtenerTasasProcesadas(origen,destino,modo); if(r.tasaDestinoDesdeDolares===0) return 0; const tBaseD=destino.tasaProveedorEnvio||0; if(tBaseD\u003e0 \u0026\u0026 r.tasaDestinoDesdeDolares\u003ctBaseD){ const md=(tBaseD-r.tasaDestinoDesdeDolares)/tBaseD; return (montoRecibir/tBaseD)*(1+md)*r.tasaOrigenParaDolares; } return (montoRecibir/r.tasaDestinoDesdeDolares)*r.tasaOrigenParaDolares; }\nfunction findPais(paises,q){ const nq=norm(q); if(!nq) return null; let p=paises.find(x=\u003enorm(x.nombre)===nq); if(p) return p; const alias={ euros:\u0027europa\u0027, eur:\u0027europa\u0027, tether:\u0027usdt\u0027 }; if(alias[nq]){ p=paises.find(x=\u003enorm(x.nombre)===norm(alias[nq])); if(p) return p; } p=paises.find(x=\u003enorm(x.nombre).includes(nq)||nq.includes(norm(x.nombre))); return p||null; }\n\nfunction compute(paises){\n  if(!paises || !paises.length) return JSON.stringify({ ok:false, error:\u0027No pude cargar las tasas en este momento. Pide disculpas y di que un asesor ayudara.\u0027 });\n  const o = findPais(paises, origenQ); const d = findPais(paises, destinoQ);\n  if(!o) return JSON.stringify({ ok:false, error:\u0027No encontre el pais/moneda de ORIGEN: \u0027+origenQ+\u0027. Pide al cliente que lo aclare.\u0027 });\n  if(!d) return JSON.stringify({ ok:false, error:\u0027No encontre el pais/moneda de DESTINO: \u0027+destinoQ+\u0027. Pide al cliente que lo aclare.\u0027 });\n  if(!(montoN\u003e0)) return JSON.stringify({ ok:false, error:\u0027Falta el monto a convertir o no es valido.\u0027 });\n  const cross = calcularConversion(o,d,1,modoN);\n  let resultado, explicacion;\n  if(direccion===\u0027inversa\u0027){\n    resultado = calcularConversionInversa(o,d,montoN,modoN);\n    explicacion = \u0027Para que el destinatario reciba \u0027+montoN+\u0027 \u0027+d.codigo+\u0027 en \u0027+d.nombre+\u0027, el cliente debe enviar aprox. \u0027+resultado.toFixed(2)+\u0027 \u0027+o.codigo+\u0027 desde \u0027+o.nombre+\u0027.\u0027;\n  } else {\n    resultado = calcularConversion(o,d,montoN,modoN);\n    explicacion = \u0027Enviando \u0027+montoN+\u0027 \u0027+o.codigo+\u0027 (\u0027+o.nombre+\u0027) el destinatario recibe \u0027+resultado.toFixed(2)+\u0027 \u0027+d.codigo+\u0027 (\u0027+d.nombre+\u0027).\u0027;\n  }\n  return JSON.stringify({ ok:true, modo:modoN, direccion, origen:o.nombre, monedaOrigen:o.moneda, codigoOrigen:o.codigo, destino:d.nombre, monedaDestino:d.moneda, codigoDestino:d.codigo, monto:montoN, resultado:Number(resultado.toFixed(2)), tasaCruzada:Number(cross.toFixed(6)), explicacion });\n}\n\n// 1) Camino rapido y seguro: datos ya cargados por el nodo principal (sincrono)\nlet _data = _safe(()=\u003e{ if(typeof $getWorkflowStaticData===\u0027function\u0027){ const sd=$getWorkflowStaticData(\u0027global\u0027); if(sd \u0026\u0026 Array.isArray(sd.paisesData) \u0026\u0026 sd.paisesData.length) return sd.paisesData; } return undefined; });\nif(_data \u0026\u0026 _data.length) return compute(_data);\n\n// 2) Respaldo: descargar el CSV (asincrono) solo si no hubo datos en memoria\nif(typeof fetch !== \u0027function\u0027) return JSON.stringify({ ok:false, error:\u0027No pude acceder a las tasas. Pide disculpas y di que un asesor ayudara.\u0027 });\nconst _url=\u0027https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv\u0027;\nreturn (async () =\u003e { try { const res = await fetch(_url + \u0027\u0026nocache=\u0027 + Date.now()); const text = await res.text(); return compute(construirPaises(text)); } catch(e){ return JSON.stringify({ ok:false, error:\u0027No pude descargar las tasas: \u0027+e.message }); } })();"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolCode",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       2200,
+                                       400
+                                   ],
+                      "id":  "b1f2c3d4-0000-4a00-9000-aabbccddeeff",
+                      "name":  "Calculadora de Conversion"
+                  }
+              ],
+    "connections":  {
+                        "Webhook Evolution API":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Es mensaje de cliente?",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Es mensaje de cliente?":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Es Audio?",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Es Audio?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "node":  "Descargar Audio",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "node":  "Texto Directo",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Descargar Audio":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Audio a Binario",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Audio a Binario":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Transcribir Audio",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Transcribir Audio":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Texto de Audio",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Texto de Audio":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Prep Debounce",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Texto Directo":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Prep Debounce",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Prep Debounce":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Redis Guardar Msg",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Redis Guardar Msg":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Redis Marcar Token",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Redis Marcar Token":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Esperar 30s",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Esperar 30s":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Redis Leer Token",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Redis Leer Token":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Filtrar Ultimo",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Filtrar Ultimo":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Redis Leer Mensajes",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Redis Leer Mensajes":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Redis Borrar Buffer",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Redis Borrar Buffer":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Combinar",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Combinar":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Consultar Tasas",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Consultar Tasas":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Consultar Cuentas",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Consultar Cuentas":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Code in JavaScript",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Code in JavaScript":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "AI Agent",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "OpenAI Model":  {
+                                             "ai_languageModel":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "AI Agent",
+                                                                              "type":  "ai_languageModel",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                         },
+                        "Memoria de Chat":  {
+                                                "ai_memory":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "AI Agent",
+                                                                          "type":  "ai_memory",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                            },
+                        "Calculadora de Conversion":  {
+                                                          "ai_tool":  [
+                                                                          [
+                                                                              {
+                                                                                  "node":  "AI Agent",
+                                                                                  "type":  "ai_tool",
+                                                                                  "index":  0
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                      },
+                        "AI Agent":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Enviar texto a WhatsApp",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          },
+                                                          {
+                                                              "node":  "Detectar Asesor",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Detectar Asesor":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Notificar Asesor",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

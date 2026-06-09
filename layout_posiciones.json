@@ -1,0 +1,154 @@
+﻿{
+    "Es Imagen?":  [
+                       -608,
+                       -288
+                   ],
+    "Enviar texto a WhatsApp":  [
+                                    1712,
+                                    0
+                                ],
+    "Code in JavaScript":  [
+                               640,
+                               240
+                           ],
+    "Calculadora de Conversion":  [
+                                      1040,
+                                      608
+                                  ],
+    "Redis Leer Mensajes":  [
+                                1360,
+                                -256
+                            ],
+    "Redis Guardar Imagen":  [
+                                 176,
+                                 128
+                             ],
+    "Texto Directo":  [
+                          -336,
+                          -272
+                      ],
+    "Descargar Audio":  [
+                            352,
+                            -608
+                        ],
+    "Filtrar Ultimo":  [
+                           1168,
+                           -256
+                       ],
+    "Redis Guardar Msg":  [
+                              464,
+                              -256
+                          ],
+    "Re-descargar Imagen":  [
+                                2032,
+                                240
+                            ],
+    "Transcribir Audio":  [
+                              688,
+                              -608
+                          ],
+    "Redis Marcar Token":  [
+                               640,
+                               -256
+                           ],
+    "Redis Borrar Buffer":  [
+                                1536,
+                                -256
+                            ],
+    "Enviar Imagen Grupo":  [
+                                2224,
+                                240
+                            ],
+    "Redis Leer Token":  [
+                             992,
+                             -256
+                         ],
+    "Enviar Sticker Cliente":  [
+                                   2400,
+                                   240
+                               ],
+    "Consultar Cuentas":  [
+                              2064,
+                              -256
+                          ],
+    "Texto de Audio":  [
+                           864,
+                           -608
+                       ],
+    "Redis Leer ID Imagen":  [
+                                 1856,
+                                 240
+                             ],
+    "Es mensaje de cliente?":  [
+                                   -224,
+                                   -576
+                               ],
+    "Detectar Aprobación":  [
+                                1680,
+                                240
+                            ],
+    "Es Audio?":  [
+                      0,
+                      -592
+                  ],
+    "Audio a Binario":  [
+                            512,
+                            -608
+                        ],
+    "Consultar Tasas":  [
+                            1888,
+                            -256
+                        ],
+    "Notificar Asesor":  [
+                             1776,
+                             560
+                         ],
+    "Webhook Evolution API":  [
+                                  -416,
+                                  -576
+                              ],
+    "Texto de Imagen":  [
+                            0,
+                            128
+                        ],
+    "Detectar Asesor":  [
+                            1552,
+                            560
+                        ],
+    "Descargar Imagen":  [
+                             -544,
+                             128
+                         ],
+    "Leer Imagen":  [
+                        -192,
+                        128
+                    ],
+    "OpenAI Model":  [
+                         592,
+                         544
+                     ],
+    "Prep Debounce":  [
+                          272,
+                          -256
+                      ],
+    "AI Agent":  [
+                     960,
+                     240
+                 ],
+    "Combinar":  [
+                     1712,
+                     -256
+                 ],
+    "Memoria de Chat":  [
+                            816,
+                            592
+                        ],
+    "Esperar 30s":  [
+                        816,
+                        -256
+                    ],
+    "Imagen a Binario":  [
+                             -368,
+                             128
+                         ]
+}

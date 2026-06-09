@@ -1,0 +1,710 @@
+﻿{
+    "updatedAt":  "2026-06-04T00:28:26.696Z",
+    "createdAt":  "2026-05-29T02:33:19.807Z",
+    "id":  "PAneIYAVkE9lPUVw",
+    "name":  "Apertura y cierre automatico CAMBIOSJK",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "0 1 9,18 * * 1-6"
+                                                                       },
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "0 0 10,14 * * 0"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "4b0b0c39-2967-40f8-8ce6-5ef584b26879",
+                      "name":  "Schedule Trigger",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1168,
+                                       512
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const hour = $now.hour;\n\nconst grupos = [\n  \u0027593961230380-1588719606@g.us\u0027,\n  \u0027120363291497664389@g.us\u0027,\n  \u0027593961230380-1588719963@g.us\u0027\n];\n\nif (hour \u003c 12) {\n  return {\n    tipo: \u0027apertura\u0027,\n    grupos: grupos,\n    stickerUrl: \u0027https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp\u0027\n  };\n} else {\n  return {\n    tipo: \u0027cierre\u0027,\n    grupos: grupos,\n    imageUrl: \u0027https://raw.githubusercontent.com/grupojk-cambios/grupojk-conversor/main/public/logos/imagen-cierre.jpg\u0027,\n    texto: \u0027¡Buenas tardes! Hasta mañana\u0027\n  };\n}"
+                                     },
+                      "id":  "f7491209-2e2f-4f7d-bd0c-5d131e12e25b",
+                      "name":  "Lógica Apertura/Cierre",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -960,
+                                       512
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "dataType":  "string",
+                                         "value1":  "={{ $json.tipo }}",
+                                         "rules":  {
+                                                       "rules":  [
+                                                                     {
+                                                                         "value2":  "apertura"
+                                                                     },
+                                                                     {
+                                                                         "value2":  "cierre",
+                                                                         "output":  1
+                                                                     }
+                                                                 ]
+                                                   }
+                                     },
+                      "id":  "a1b7cab0-94c7-48e3-8bdd-8b79bc0a0663",
+                      "name":  "Es Apertura o Cierre?",
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -768,
+                                       480
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "fieldToSplitOut":  "grupos",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "71218422-2856-49dc-bc7c-51b12141678f",
+                      "name":  "Separar Grupos (Apertura)",
+                      "type":  "n8n-nodes-base.itemLists",
+                      "typeVersion":  3,
+                      "position":  [
+                                       -320,
+                                       240
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"sticker\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).item.json.stickerUrl }}\"\n}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b2a2de31-9b78-4e6e-a127-504aefb7426e",
+                      "name":  "Enviar Sticker (Grupos)",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       -16,
+                                       240
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                      "name":  "Estado Texto (Apertura)",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       -160,
+                                       464
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000
+                  },
+                  {
+                      "parameters":  {
+                                         "fieldToSplitOut":  "grupos",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "e25f5dc1-9a54-4a97-b2fd-2c5256251881",
+                      "name":  "Separar Grupos (Cierre)",
+                      "type":  "n8n-nodes-base.itemLists",
+                      "typeVersion":  3,
+                      "position":  [
+                                       -288,
+                                       656
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"mediatype\": \"image\",\n  \"mimetype\": \"image/jpeg\",\n  \"media\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\"\n}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "38b274f1-34b2-49cc-b41e-5b47984a4909",
+                      "name":  "Enviar Imagen (Grupos)",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       64,
+                                       656
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={\n  \"type\": \"image\",\n  \"content\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\",\n  \"allContacts\": true\n}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "9bc6929a-bc23-4d92-8ea2-76ebd0569a75",
+                      "name":  "Estado Imagen (Cierre)",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       -144,
+                                       912
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  4,
+                      "waitBetweenTries":  5000
+                  }
+              ],
+    "connections":  {
+                        "Schedule Trigger":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Lógica Apertura/Cierre",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Lógica Apertura/Cierre":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Es Apertura o Cierre?",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Es Apertura o Cierre?":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Separar Grupos (Apertura)",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       },
+                                                                       {
+                                                                           "node":  "Estado Texto (Apertura)",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ],
+                                                                   [
+                                                                       {
+                                                                           "node":  "Separar Grupos (Cierre)",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       },
+                                                                       {
+                                                                           "node":  "Estado Imagen (Cierre)",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Separar Grupos (Apertura)":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Enviar Sticker (Grupos)",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Separar Grupos (Cierre)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Enviar Imagen (Grupos)",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "timeSavedMode":  "fixed",
+                     "timezone":  "America/Guayaquil",
+                     "callerPolicy":  "workflowsFromSameOwner",
+                     "availableInMCP":  false
+                 },
+    "staticData":  {
+                       "node:Schedule Trigger":  {
+                                                     "recurrenceRules":  [
+
+                                                                         ]
+                                                 }
+                   },
+    "meta":  null,
+    "pinData":  {
+
+                },
+    "versionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+    "activeVersionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+    "versionCounter":  43,
+    "triggerCount":  1,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-05-29T02:33:19.810Z",
+                       "createdAt":  "2026-05-29T02:33:19.810Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "PAneIYAVkE9lPUVw",
+                       "projectId":  "NTLoyeFtUuUqEC82",
+                       "project":  {
+                                       "updatedAt":  "2026-05-04T22:41:54.222Z",
+                                       "createdAt":  "2026-05-04T22:34:42.656Z",
+                                       "id":  "NTLoyeFtUuUqEC82",
+                                       "name":  "Kelvin Rene Araujo \u003ccambiosjkvenezuela@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "1988e065-578c-4391-a604-19c2852fb301"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-06-04T00:28:26.697Z",
+                          "createdAt":  "2026-06-04T00:28:26.697Z",
+                          "versionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+                          "workflowId":  "PAneIYAVkE9lPUVw",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "rule":  {
+                                                                            "interval":  [
+                                                                                             {
+                                                                                                 "field":  "cronExpression",
+                                                                                                 "expression":  "0 1 9,18 * * 1-6"
+                                                                                             },
+                                                                                             {
+                                                                                                 "field":  "cronExpression",
+                                                                                                 "expression":  "0 0 10,14 * * 0"
+                                                                                             }
+                                                                                         ]
+                                                                        }
+                                                           },
+                                            "id":  "4b0b0c39-2967-40f8-8ce6-5ef584b26879",
+                                            "name":  "Schedule Trigger",
+                                            "type":  "n8n-nodes-base.scheduleTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             -1168,
+                                                             512
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const hour = $now.hour;\n\nconst grupos = [\n  \u0027593961230380-1588719606@g.us\u0027,\n  \u0027120363291497664389@g.us\u0027,\n  \u0027593961230380-1588719963@g.us\u0027\n];\n\nif (hour \u003c 12) {\n  return {\n    tipo: \u0027apertura\u0027,\n    grupos: grupos,\n    stickerUrl: \u0027https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-apertura.webp\u0027\n  };\n} else {\n  return {\n    tipo: \u0027cierre\u0027,\n    grupos: grupos,\n    imageUrl: \u0027https://raw.githubusercontent.com/grupojk-cambios/grupojk-conversor/main/public/logos/imagen-cierre.jpg\u0027,\n    texto: \u0027¡Buenas tardes! Hasta mañana\u0027\n  };\n}"
+                                                           },
+                                            "id":  "f7491209-2e2f-4f7d-bd0c-5d131e12e25b",
+                                            "name":  "Lógica Apertura/Cierre",
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             -960,
+                                                             512
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "dataType":  "string",
+                                                               "value1":  "={{ $json.tipo }}",
+                                                               "rules":  {
+                                                                             "rules":  [
+                                                                                           {
+                                                                                               "value2":  "apertura"
+                                                                                           },
+                                                                                           {
+                                                                                               "value2":  "cierre",
+                                                                                               "output":  1
+                                                                                           }
+                                                                                       ]
+                                                                         }
+                                                           },
+                                            "id":  "a1b7cab0-94c7-48e3-8bdd-8b79bc0a0663",
+                                            "name":  "Es Apertura o Cierre?",
+                                            "type":  "n8n-nodes-base.switch",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -768,
+                                                             480
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "fieldToSplitOut":  "grupos",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "71218422-2856-49dc-bc7c-51b12141678f",
+                                            "name":  "Separar Grupos (Apertura)",
+                                            "type":  "n8n-nodes-base.itemLists",
+                                            "typeVersion":  3,
+                                            "position":  [
+                                                             -320,
+                                                             240
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"sticker\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).item.json.stickerUrl }}\"\n}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "b2a2de31-9b78-4e6e-a127-504aefb7426e",
+                                            "name":  "Enviar Sticker (Grupos)",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4,
+                                            "position":  [
+                                                             -16,
+                                                             240
+                                                         ],
+                                            "retryOnFail":  true,
+                                            "maxTries":  4,
+                                            "waitBetweenTries":  5000
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "{\n  \"type\": \"text\",\n  \"content\": \"¡Buenos días! 🟢 Ya estamos operativos para sus cambios.\",\n  \"backgroundColor\": \"#10b981\",\n  \"font\": 1,\n  \"allContacts\": true\n}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "b3ed2f4d-5db7-49fb-8f3b-820084cfc974",
+                                            "name":  "Estado Texto (Apertura)",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4,
+                                            "position":  [
+                                                             -160,
+                                                             464
+                                                         ],
+                                            "retryOnFail":  true,
+                                            "maxTries":  4,
+                                            "waitBetweenTries":  5000
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "fieldToSplitOut":  "grupos",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "e25f5dc1-9a54-4a97-b2fd-2c5256251881",
+                                            "name":  "Separar Grupos (Cierre)",
+                                            "type":  "n8n-nodes-base.itemLists",
+                                            "typeVersion":  3,
+                                            "position":  [
+                                                             -288,
+                                                             656
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={\n  \"number\": \"{{ $json.grupos }}\",\n  \"mediatype\": \"image\",\n  \"mimetype\": \"image/jpeg\",\n  \"media\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\"\n}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "38b274f1-34b2-49cc-b41e-5b47984a4909",
+                                            "name":  "Enviar Imagen (Grupos)",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4,
+                                            "position":  [
+                                                             64,
+                                                             656
+                                                         ],
+                                            "retryOnFail":  true,
+                                            "maxTries":  4,
+                                            "waitBetweenTries":  5000
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://evolution-api:8080/message/sendStatus/BOT%20CAMBIOS%20JK%20Kelvin",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "4B4A59BF61DC-4013-8107-DFD841C73197"
+                                                                                                           },
+                                                                                                           {
+                                                                                                               "name":  "Content-Type",
+                                                                                                               "value":  "application/json"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "specifyBody":  "json",
+                                                               "jsonBody":  "={\n  \"type\": \"image\",\n  \"content\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Lógica Apertura/Cierre\u0027).first().json.texto }}\",\n  \"allContacts\": true\n}",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "9bc6929a-bc23-4d92-8ea2-76ebd0569a75",
+                                            "name":  "Estado Imagen (Cierre)",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4,
+                                            "position":  [
+                                                             -144,
+                                                             912
+                                                         ],
+                                            "retryOnFail":  true,
+                                            "maxTries":  4,
+                                            "waitBetweenTries":  5000
+                                        }
+                                    ],
+                          "connections":  {
+                                              "Schedule Trigger":  {
+                                                                       "main":  [
+                                                                                    [
+                                                                                        {
+                                                                                            "node":  "Lógica Apertura/Cierre",
+                                                                                            "type":  "main",
+                                                                                            "index":  0
+                                                                                        }
+                                                                                    ]
+                                                                                ]
+                                                                   },
+                                              "Lógica Apertura/Cierre":  {
+                                                                             "main":  [
+                                                                                          [
+                                                                                              {
+                                                                                                  "node":  "Es Apertura o Cierre?",
+                                                                                                  "type":  "main",
+                                                                                                  "index":  0
+                                                                                              }
+                                                                                          ]
+                                                                                      ]
+                                                                         },
+                                              "Es Apertura o Cierre?":  {
+                                                                            "main":  [
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Separar Grupos (Apertura)",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "node":  "Estado Texto (Apertura)",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ],
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Separar Grupos (Cierre)",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "node":  "Estado Imagen (Cierre)",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ]
+                                                                                     ]
+                                                                        },
+                                              "Separar Grupos (Apertura)":  {
+                                                                                "main":  [
+                                                                                             [
+                                                                                                 {
+                                                                                                     "node":  "Enviar Sticker (Grupos)",
+                                                                                                     "type":  "main",
+                                                                                                     "index":  0
+                                                                                                 }
+                                                                                             ]
+                                                                                         ]
+                                                                            },
+                                              "Separar Grupos (Cierre)":  {
+                                                                              "main":  [
+                                                                                           [
+                                                                                               {
+                                                                                                   "node":  "Enviar Imagen (Grupos)",
+                                                                                                   "type":  "main",
+                                                                                                   "index":  0
+                                                                                               }
+                                                                                           ]
+                                                                                       ]
+                                                                          }
+                                          },
+                          "authors":  "Kelvin Rene Araujo",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-06-04T00:28:26.882Z",
+                                                             "id":  40,
+                                                             "workflowId":  "PAneIYAVkE9lPUVw",
+                                                             "versionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+                                                             "event":  "activated",
+                                                             "userId":  "1988e065-578c-4391-a604-19c2852fb301"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-06-04T00:28:26.855Z",
+                                                             "id":  39,
+                                                             "workflowId":  "PAneIYAVkE9lPUVw",
+                                                             "versionId":  "56b24b42-4d3f-438c-afa3-5b25f1395e3a",
+                                                             "event":  "deactivated",
+                                                             "userId":  "1988e065-578c-4391-a604-19c2852fb301"
+                                                         }
+                                                     ]
+                      }
+}

@@ -1,0 +1,518 @@
+﻿{
+    "updatedAt":  "2026-05-28T02:36:55.759Z",
+    "createdAt":  "2026-05-05T00:46:25.334Z",
+    "id":  "NWmStkbNexV7s5xY",
+    "name":  "Bot WhatsApp JK Remesas - V2 (Mejorado)",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value1":  "={{ $json.body.data.key.fromMe }}",
+                                                                                "value2":  "={{false}}"
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "4c9f6989-54ed-4990-89d5-283dd59b7ce2",
+                      "name":  "Es mensaje de cliente?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       48,
+                                       144
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "d117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a",
+                      "name":  "Consultar Tasas",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       304,
+                                       128
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  "gpt-4o-mini",
+                                         "options":  {
+                                                         "temperature":  0.2
+                                                     }
+                                     },
+                      "id":  "073e3eb0-3806-4654-8016-ed7207a45715",
+                      "name":  "OpenAI Model",
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       560,
+                                       416
+                                   ],
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "contextWindowLength":  15
+                                     },
+                      "id":  "bff6d1ec-1a12-45f2-a96a-327e1edd3f0e",
+                      "name":  "Memoria de Chat",
+                      "type":  "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       400
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "={{ $item(0).$node[\"Webhook Evolution API\"].json.body.data.message.conversation }}",
+                                         "options":  {
+                                                         "systemMessage":  "=Usa estos precios oficiales: {{ JSON.stringify($node[\"Code in JavaScript\"].json.lista) }}"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  3.1,
+                      "position":  [
+                                       752,
+                                       128
+                                   ],
+                      "id":  "2ac354a3-fe77-4708-80c5-b238454cfdd6",
+                      "name":  "AI Agent",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "messages-api",
+                                         "instanceName":  "bot-JK-prueba-operador1",
+                                         "remoteJid":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}",
+                                         "messageText":  "={{ $json.output }}",
+                                         "options_message":  {
+
+                                                             }
+                                     },
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1104,
+                                       128
+                                   ],
+                      "id":  "02d01e05-a9f8-4caa-a02e-37a660aa662c",
+                      "name":  "Enviar texto a WhatsApp",
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const csv = $node[\"Consultar Tasas\"].json.data;\nconst lineas = csv.split(\u0027\\r\\n\u0027);\nconst resultados = [];\n\nfor (let i = 1; i \u003c lineas.length; i++) {\n  const col = lineas[i].split(\u0027,\u0027);\n  if (col.length \u003c 5) continue;\n\n  const tE = parseFloat(col[1]) || 0;\n  const mE = parseFloat(col[2]) || 0;\n  const tR = parseFloat(col[3]) || 0;\n  const mR = parseFloat(col[4]) || 0;\n\n  resultados.push({\n    Pais: col[0],\n    \"Envio\": (tE * (1 - mE / 100)).toFixed(2),\n    \"Recibo\": (tR * (1 + mR / 100)).toFixed(2)\n  });\n}\n\nreturn { lista: resultados }; \n"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       512,
+                                       128
+                                   ],
+                      "id":  "6ac06fc7-1afb-49ab-893c-e2f2b5f8b995",
+                      "name":  "Code in JavaScript"
+                  },
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "webhook-whatsapp",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "75799f35-f979-4b45-9dab-861127bd5f9d",
+                      "name":  "Webhook Evolution API",
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -240,
+                                       144
+                                   ],
+                      "webhookId":  "a9ba9382-d166-495a-8309-e13a9d839b06"
+                  }
+              ],
+    "connections":  {
+                        "Es mensaje de cliente?":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Consultar Tasas",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Consultar Tasas":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Code in JavaScript",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "OpenAI Model":  {
+                                             "ai_languageModel":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "AI Agent",
+                                                                              "type":  "ai_languageModel",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                         },
+                        "Memoria de Chat":  {
+                                                "ai_memory":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "AI Agent",
+                                                                          "type":  "ai_memory",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                            },
+                        "AI Agent":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Enviar texto a WhatsApp",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Code in JavaScript":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "AI Agent",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Webhook Evolution API":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Es mensaje de cliente?",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate"
+                 },
+    "staticData":  null,
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "pinData":  {
+
+                },
+    "versionId":  "1ac8b0f3-4707-4979-82d7-442d649f2aa4",
+    "activeVersionId":  "1ac8b0f3-4707-4979-82d7-442d649f2aa4",
+    "versionCounter":  114,
+    "triggerCount":  1,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-05-05T00:46:25.363Z",
+                       "createdAt":  "2026-05-05T00:46:25.363Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "NWmStkbNexV7s5xY",
+                       "projectId":  "NTLoyeFtUuUqEC82",
+                       "project":  {
+                                       "updatedAt":  "2026-05-04T22:41:54.222Z",
+                                       "createdAt":  "2026-05-04T22:34:42.656Z",
+                                       "id":  "NTLoyeFtUuUqEC82",
+                                       "name":  "Kelvin Rene Araujo \u003ccambiosjkvenezuela@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "1988e065-578c-4391-a604-19c2852fb301"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-05-05T03:29:07.000Z",
+                          "createdAt":  "2026-05-05T03:25:12.407Z",
+                          "versionId":  "1ac8b0f3-4707-4979-82d7-442d649f2aa4",
+                          "workflowId":  "NWmStkbNexV7s5xY",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "boolean":  [
+                                                                                                  {
+                                                                                                      "value1":  "={{ $json.body.data.key.fromMe }}",
+                                                                                                      "value2":  "={{false}}"
+                                                                                                  }
+                                                                                              ]
+                                                                              }
+                                                           },
+                                            "id":  "4c9f6989-54ed-4990-89d5-283dd59b7ce2",
+                                            "name":  "Es mensaje de cliente?",
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             48,
+                                                             144
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "url":  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "d117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a",
+                                            "name":  "Consultar Tasas",
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4,
+                                            "position":  [
+                                                             304,
+                                                             128
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "model":  "gpt-4o-mini",
+                                                               "options":  {
+                                                                               "temperature":  0.2
+                                                                           }
+                                                           },
+                                            "id":  "073e3eb0-3806-4654-8016-ed7207a45715",
+                                            "name":  "OpenAI Model",
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             560,
+                                                             416
+                                                         ],
+                                            "credentials":  {
+                                                                "openAiApi":  {
+                                                                                  "id":  "44lRGIyEnSk1lMc5",
+                                                                                  "name":  "cambios jk para n8n"
+                                                                              }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "contextWindowLength":  15
+                                                           },
+                                            "id":  "bff6d1ec-1a12-45f2-a96a-327e1edd3f0e",
+                                            "name":  "Memoria de Chat",
+                                            "type":  "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             880,
+                                                             400
+                                                         ]
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "promptType":  "define",
+                                                               "text":  "={{ $item(0).$node[\"Webhook Evolution API\"].json.body.data.message.conversation }}",
+                                                               "options":  {
+                                                                               "systemMessage":  "=Usa estos precios oficiales: {{ JSON.stringify($node[\"Code in JavaScript\"].json.lista) }}"
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.agent",
+                                            "typeVersion":  3.1,
+                                            "position":  [
+                                                             752,
+                                                             128
+                                                         ],
+                                            "id":  "2ac354a3-fe77-4708-80c5-b238454cfdd6",
+                                            "name":  "AI Agent",
+                                            "executeOnce":  true
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "resource":  "messages-api",
+                                                               "instanceName":  "bot-JK-prueba-operador1",
+                                                               "remoteJid":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}",
+                                                               "messageText":  "={{ $json.output }}",
+                                                               "options_message":  {
+
+                                                                                   }
+                                                           },
+                                            "type":  "n8n-nodes-evolution-api.evolutionApi",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             1104,
+                                                             128
+                                                         ],
+                                            "id":  "02d01e05-a9f8-4caa-a02e-37a660aa662c",
+                                            "name":  "Enviar texto a WhatsApp",
+                                            "credentials":  {
+                                                                "evolutionApi":  {
+                                                                                     "id":  "iUIvc9Sd8diFJaGU",
+                                                                                     "name":  "Evolution PARA n8n cambios JK"
+                                                                                 }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "jsCode":  "const csv = $node[\"Consultar Tasas\"].json.data;\nconst lineas = csv.split(\u0027\\r\\n\u0027);\nconst resultados = [];\n\nfor (let i = 1; i \u003c lineas.length; i++) {\n  const col = lineas[i].split(\u0027,\u0027);\n  if (col.length \u003c 5) continue;\n\n  const tE = parseFloat(col[1]) || 0;\n  const mE = parseFloat(col[2]) || 0;\n  const tR = parseFloat(col[3]) || 0;\n  const mR = parseFloat(col[4]) || 0;\n\n  resultados.push({\n    Pais: col[0],\n    \"Envio\": (tE * (1 - mE / 100)).toFixed(2),\n    \"Recibo\": (tR * (1 + mR / 100)).toFixed(2)\n  });\n}\n\nreturn { lista: resultados }; \n"
+                                                           },
+                                            "type":  "n8n-nodes-base.code",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             512,
+                                                             128
+                                                         ],
+                                            "id":  "6ac06fc7-1afb-49ab-893c-e2f2b5f8b995",
+                                            "name":  "Code in JavaScript"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "httpMethod":  "POST",
+                                                               "path":  "webhook-whatsapp",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "id":  "75799f35-f979-4b45-9dab-861127bd5f9d",
+                                            "name":  "Webhook Evolution API",
+                                            "type":  "n8n-nodes-base.webhook",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -240,
+                                                             144
+                                                         ],
+                                            "webhookId":  "a9ba9382-d166-495a-8309-e13a9d839b06"
+                                        }
+                                    ],
+                          "connections":  {
+                                              "Es mensaje de cliente?":  {
+                                                                             "main":  [
+                                                                                          [
+                                                                                              {
+                                                                                                  "node":  "Consultar Tasas",
+                                                                                                  "type":  "main",
+                                                                                                  "index":  0
+                                                                                              }
+                                                                                          ]
+                                                                                      ]
+                                                                         },
+                                              "Consultar Tasas":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Code in JavaScript",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "OpenAI Model":  {
+                                                                   "ai_languageModel":  [
+                                                                                            [
+                                                                                                {
+                                                                                                    "node":  "AI Agent",
+                                                                                                    "type":  "ai_languageModel",
+                                                                                                    "index":  0
+                                                                                                }
+                                                                                            ]
+                                                                                        ]
+                                                               },
+                                              "Memoria de Chat":  {
+                                                                      "ai_memory":  [
+                                                                                        [
+                                                                                            {
+                                                                                                "node":  "AI Agent",
+                                                                                                "type":  "ai_memory",
+                                                                                                "index":  0
+                                                                                            }
+                                                                                        ]
+                                                                                    ]
+                                                                  },
+                                              "AI Agent":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "Enviar texto a WhatsApp",
+                                                                                    "type":  "main",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                                              "Code in JavaScript":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "AI Agent",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     },
+                                              "Webhook Evolution API":  {
+                                                                            "main":  [
+                                                                                         [
+                                                                                             {
+                                                                                                 "node":  "Es mensaje de cliente?",
+                                                                                                 "type":  "main",
+                                                                                                 "index":  0
+                                                                                             }
+                                                                                         ]
+                                                                                     ]
+                                                                        }
+                                          },
+                          "authors":  "Kelvin Rene Araujo",
+                          "name":  "Version 0.01",
+                          "description":  "",
+                          "autosaved":  true,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-05-05T03:29:07.902Z",
+                                                             "id":  1,
+                                                             "workflowId":  "NWmStkbNexV7s5xY",
+                                                             "versionId":  "1ac8b0f3-4707-4979-82d7-442d649f2aa4",
+                                                             "event":  "activated",
+                                                             "userId":  "1988e065-578c-4391-a604-19c2852fb301"
+                                                         }
+                                                     ]
+                      }
+}
