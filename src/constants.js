@@ -36,7 +36,7 @@ export function calcularTasaEnvio(pais, modo = 'detal') {
   // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
   let rawMargen;
-  if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && parseFloat(pais.margenEnvioMayor) > 0) {
+  if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && pais.margenEnvioMayor !== null && !isNaN(parseFloat(pais.margenEnvioMayor))) {
     rawMargen = pais.margenEnvioMayor;
   } else {
     rawMargen = pais.margenEnvio !== undefined ? pais.margenEnvio : (pais.margen || 0);
@@ -57,7 +57,7 @@ export function calcularTasaRecibo(pais, modo = 'detal') {
   // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
   let rawMargen;
-  if (modo === 'mayor' && pais.margenReciboMayor !== undefined && parseFloat(pais.margenReciboMayor) > 0) {
+  if (modo === 'mayor' && pais.margenReciboMayor !== undefined && pais.margenReciboMayor !== null && !isNaN(parseFloat(pais.margenReciboMayor))) {
     rawMargen = pais.margenReciboMayor;
   } else {
     rawMargen = pais.margenRecibo !== undefined ? pais.margenRecibo : (pais.margen || 0);
@@ -254,24 +254,24 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
       if (origDolar && !destDolar) {
         // ESCENARIO A: USD -> Moneda Local (Zelle -> Colombia)
         // Sumamos el margen de recibo del origen al margen de envío del destino
-        const mO = (modo === 'mayor' && parseFloat(origen.margenReciboMayor) > 0) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        const mD = (modo === 'mayor' && parseFloat(destino.margenEnvioMayor) > 0) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
+        const mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
+        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
         tasaOrigenParaDolares = 1;
         const tBaseD = parseFloat(destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 0));
         tasaDestinoDesdeDolares = tBaseD * (1 - (mO + mD) / 100);
       } else if (origDolar && destDolar) {
         // ESCENARIO B: USD -> USD (E.g. Zelle -> Panamá, USDT -> Efectivo Venezuela)
         // Ahora suma el margen de recibo del origen y el margen de envío del destino
-        const mO = (modo === 'mayor' && parseFloat(origen.margenReciboMayor) > 0) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        const mD = (modo === 'mayor' && parseFloat(destino.margenEnvioMayor) > 0) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
+        const mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
+        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
         tasaOrigenParaDolares = 1;
         const tBaseD = parseFloat(destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 0));
         tasaDestinoDesdeDolares = tBaseD * (1 - (mO + mD) / 100);
       } else if (!origDolar && destDolar) {
         // Caso inverso (Local -> USD)
         // Sumamos el margen de recibo del origen al margen de envío del destino
-        const mO = (modo === 'mayor' && parseFloat(origen.margenReciboMayor) > 0) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        const mD = (modo === 'mayor' && parseFloat(destino.margenEnvioMayor) > 0) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
+        const mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
+        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
         const tBaseO = parseFloat(origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 0));
         tasaOrigenParaDolares = tBaseO * (1 + (mO + mD) / 100);
         tasaDestinoDesdeDolares = 1;
@@ -457,6 +457,14 @@ export async function sincronizarGoogleSheets() {
           return isNaN(val) ? 0 : val;
         };
 
+        const parseValNullable = (str) => {
+          if (str === undefined || str === null || str.trim() === '') return null;
+          let s = str.replace(/\s/g, ''); // quitar espacios
+          s = s.replace(',', '.'); // reemplazar posible uso europeo a estándar
+          const val = parseFloat(s);
+          return isNaN(val) ? null : val;
+        };
+
         const tE = row.length >= 2 ? parseVal(row[1]) : 0;
         const mE = row.length >= 3 ? parseVal(row[2]) : 6;
         const tR = row.length >= 4 ? parseVal(row[3]) : 0;
@@ -493,8 +501,8 @@ export async function sincronizarGoogleSheets() {
           margenRecibo: mR,
           factorEUR: valFactorEUR || (base ? base.factorEUR || 0 : 0),
           factorUSDT: valFactorUSDT || (base ? base.factorUSDT || 0 : 0),
-          margenEnvioMayor: idxMargenEnvioMayor !== -1 && row.length > idxMargenEnvioMayor ? parseVal(row[idxMargenEnvioMayor]) : 0,
-          margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseVal(row[idxMargenReciboMayor]) : 0,
+          margenEnvioMayor: idxMargenEnvioMayor !== -1 && row.length > idxMargenEnvioMayor ? parseValNullable(row[idxMargenEnvioMayor]) : null,
+          margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseValNullable(row[idxMargenReciboMayor]) : null,
           ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : ''
         });
       }
