@@ -11,6 +11,7 @@ export default function GeneradorEstados() {
   const [chunks, setChunks] = useState([])
   const [expandido, setExpandido] = useState(null)
   const [copiado, setCopiado] = useState(false)
+  const [modoCalculo, setModoCalculo] = useState('detal') // 'detal' | 'mayor'
   const cardRefs = useRef([])
 
   useEffect(() => {
@@ -56,7 +57,7 @@ export default function GeneradorEstados() {
 
       // Calcular la tasa enviar para cada país desde el Origen
       const paisesConTasa = paisesDestino.map(pais => {
-        const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisOrigen, pais, todosPaises, 'detal')
+        const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisOrigen, pais, todosPaises, modoCalculo)
         const tc = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
         
         let displayRate = tc;
@@ -65,7 +66,7 @@ export default function GeneradorEstados() {
 
         // Si el origen NO es dólar y el destino SÍ es dólar, aplicamos la lógica inversa del Cotizador
         if (!isCajaDolar(paisOrigen) && isCajaDolar(pais)) {
-          const tcInverso = calcularConversionInversa(paisOrigen, pais, 1, todosPaises, 'detal')
+          const tcInverso = calcularConversionInversa(paisOrigen, pais, 1, todosPaises, modoCalculo)
           displayRate = tcInverso;
           displayUnit = paisOrigen.codigo;
           isInverse = true;
@@ -88,7 +89,7 @@ export default function GeneradorEstados() {
       }
       setChunks(newChunks)
     }
-  }, [paisOrigen, todosPaises])
+  }, [paisOrigen, todosPaises, modoCalculo])
 
   useEffect(() => {
     if (modoGlobal) {
@@ -100,7 +101,7 @@ export default function GeneradorEstados() {
       }
       setChunks(newChunks)
     }
-  }, [modoGlobal, todosPaises])
+  }, [modoGlobal, todosPaises, modoCalculo])
 
   const descargarImagen = async (index) => {
     // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
@@ -181,13 +182,13 @@ export default function GeneradorEstados() {
       let tasaRecibo = 0;
       
       if (!paisReferencia || pais.id === paisReferencia.id) {
-        tasaEnvio = calcularTasaEnvio(pais, 'detal');
-        tasaRecibo = calcularTasaRecibo(pais, 'detal');
+        tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+        tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
       } else {
-        const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'detal');
+        const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
         tasaEnvio = (1 / tOrigE) * tDestE;
         
-        const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, 'detal');
+        const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
         tasaRecibo = tOrigR;
       }
       
@@ -234,9 +235,59 @@ export default function GeneradorEstados() {
           <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', color: 'var(--primary-color)' }}>
             📍 Selecciona el País Origen
           </h2>
-          <p style={{ color: 'var(--text-low)' }}>
+          <p style={{ color: 'var(--text-low)', marginBottom: '1.5rem' }}>
             Elige qué país estará en el centro del árbol como moneda base.
           </p>
+
+          {/* Pill Switcher para Modos (Detal / Mayor) */}
+          <div style={{
+            display: 'inline-flex',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '100px',
+            padding: '4px',
+            gap: '4px',
+            marginBottom: '1rem'
+          }}>
+            <button 
+              onClick={() => setModoCalculo('detal')}
+              style={{
+                background: modoCalculo === 'detal' ? 'var(--primary-color)' : 'none',
+                border: 'none',
+                color: modoCalculo === 'detal' ? '#000' : '#fff',
+                padding: '0.5rem 1.5rem',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              🛍️ Detal
+            </button>
+            <button 
+              onClick={() => setModoCalculo('mayor')}
+              style={{
+                background: modoCalculo === 'mayor' ? 'var(--primary-color)' : 'none',
+                border: 'none',
+                color: modoCalculo === 'mayor' ? '#000' : '#fff',
+                padding: '0.5rem 1.5rem',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '0.85rem',
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              💼 Mayorista
+            </button>
+          </div>
         </div>
 
         <div style={{
@@ -546,13 +597,13 @@ export default function GeneradorEstados() {
             let tasaRecibo = 0;
             
             if (!paisReferencia || pais.id === paisReferencia.id) {
-              tasaEnvio = calcularTasaEnvio(pais, 'detal');
-              tasaRecibo = calcularTasaRecibo(pais, 'detal');
+              tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+              tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
             } else {
-              const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'detal');
+              const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
               tasaEnvio = (1 / tOrigE) * tDestE;
               
-              const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, 'detal');
+              const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
               tasaRecibo = tOrigR;
             }
             
@@ -672,15 +723,66 @@ export default function GeneradorEstados() {
             ← Volver al Inicio
           </button>
 
-          {/* Pill Switcher para Formatos */}
-          <div style={{
-            display: 'flex',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '100px',
-            padding: '4px',
-            gap: '4px'
-          }}>
+          {/* Selectores */}
+          <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+            {/* Pill Switcher para Modos (Detal / Mayor) */}
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '100px',
+              padding: '4px',
+              gap: '4px'
+            }}>
+              <button 
+                onClick={() => setModoCalculo('detal')}
+                style={{
+                  background: modoCalculo === 'detal' ? 'var(--primary-color)' : 'none',
+                  border: 'none',
+                  color: modoCalculo === 'detal' ? '#000' : '#fff',
+                  padding: '0.5rem 1.2rem',
+                  borderRadius: '100px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}
+              >
+                🛍️ Detal
+              </button>
+              <button 
+                onClick={() => setModoCalculo('mayor')}
+                style={{
+                  background: modoCalculo === 'mayor' ? 'var(--primary-color)' : 'none',
+                  border: 'none',
+                  color: modoCalculo === 'mayor' ? '#000' : '#fff',
+                  padding: '0.5rem 1.2rem',
+                  borderRadius: '100px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}
+              >
+                💼 Mayor
+              </button>
+            </div>
+
+            {/* Pill Switcher para Formatos */}
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '100px',
+              padding: '4px',
+              gap: '4px'
+            }}>
             <button 
               onClick={() => setFormatoGlobal('story')}
               style={{
@@ -740,6 +842,7 @@ export default function GeneradorEstados() {
             </button>
           </div>
         </div>
+      </div>
 
         <div className="generador-estados-container">
           {formatoGlobal === 'text' ? (
@@ -897,13 +1000,72 @@ export default function GeneradorEstados() {
   return (
     <div style={{ color: 'white' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', maxWidth: '800px', margin: '0 auto 2rem auto' }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '2rem', 
+        maxWidth: '800px', 
+        margin: '0 auto 2rem auto',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
         <button 
           onClick={() => setPaisOrigen(null)}
-          style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}
+          style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600 }}
         >
           ← Cambiar Origen
         </button>
+
+        {/* Pill Switcher para Modos (Detal / Mayor) */}
+        <div style={{
+          display: 'flex',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '100px',
+          padding: '4px',
+          gap: '4px'
+        }}>
+          <button 
+            onClick={() => setModoCalculo('detal')}
+            style={{
+              background: modoCalculo === 'detal' ? 'var(--primary-color)' : 'none',
+              border: 'none',
+              color: modoCalculo === 'detal' ? '#000' : '#fff',
+              padding: '0.5rem 1.2rem',
+              borderRadius: '100px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '0.85rem',
+              transition: 'all 0.3s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+          >
+            🛍️ Detal
+          </button>
+          <button 
+            onClick={() => setModoCalculo('mayor')}
+            style={{
+              background: modoCalculo === 'mayor' ? 'var(--primary-color)' : 'none',
+              border: 'none',
+              color: modoCalculo === 'mayor' ? '#000' : '#fff',
+              padding: '0.5rem 1.2rem',
+              borderRadius: '100px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '0.85rem',
+              transition: 'all 0.3s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem'
+            }}
+          >
+            💼 Mayor
+          </button>
+        </div>
+
         <div style={{ textAlign: 'right' }}>
           <span style={{ color: 'var(--text-low)', fontSize: '0.9rem' }}>Base Actual:</span>
           <div style={{ fontWeight: 'bold', color: 'var(--primary-color)' }}>{paisOrigen.nombre} ({paisOrigen.codigo})</div>
