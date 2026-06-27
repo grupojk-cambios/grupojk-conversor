@@ -617,6 +617,27 @@ export default function Cotizador({ modo = 'detal' }) {
               {explicacion()}
             </p>
 
+            {/* TASA APLICADA DENTRO DEL RESUMEN */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.2rem' }}>
+              <div style={{ 
+                display: 'inline-flex',
+                flexDirection: 'column', 
+                alignItems: 'center',
+                padding: '0.6rem 2rem',
+                background: 'rgba(16,185,129,0.12)',
+                border: '1px solid rgba(16,185,129,0.4)',
+                borderRadius: '1.2rem',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                width: '100%',
+                maxWidth: '320px'
+              }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.12rem', marginBottom: '0.2rem' }}>Tasa Aplicada</span>
+                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
+                   {tasaDisplay.base} = {formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} <span style={{ fontSize: '0.6em', color: 'var(--secondary-color)' }}>{tasaDisplay.unidad}</span>
+                </div>
+              </div>
+            </div>
+
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '1rem', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.2rem' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
@@ -654,74 +675,7 @@ export default function Cotizador({ modo = 'detal' }) {
                 </div>
             </div>
 
-            <div style={{ borderTop: '1px solid rgba(16,185,129,0.15)', paddingTop: '1rem' }}>
-              <p style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.1rem', marginBottom: '0.8rem', fontWeight: 600 }}>
-                Realizar este cambio con:
-              </p>
-              
-              <div style={{ display: 'flex', gap: '0.6rem' }}>
-                <button
-                  onClick={() => handleGenerarCotizacion('593961230380', 'Kelvin')}
-                  disabled={procesandoEnlace}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.4rem',
-                    background: procesandoEnlace ? '#1d9348' : '#25D366',
-                    cursor: procesandoEnlace ? 'wait' : 'pointer',
-                    color: 'white',
-                    padding: '0.8rem 0.4rem',
-                    borderRadius: '0.8rem',
-                    border: 'none',
-                    textDecoration: 'none',
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
-                    transition: 'transform 0.2s',
-                    opacity: procesandoEnlace ? 0.7 : 1
-                  }}
-                  onMouseOver={e => !procesandoEnlace && (e.currentTarget.style.transform = 'scale(1.03)')}
-                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                    <svg width="20" height="20" viewBox="0 0 448 512" fill="currentColor">
-                      <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-5.5-2.8-23.4-8.6-44.6-27.6-16.5-14.7-27.6-32.8-30.8-38.4-3.2-5.6-.3-8.6 2.5-11.4 2.5-2.5 5.5-6.5 8.3-9.7 2.8-3.2 3.7-5.6 5.5-9.2 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 13.3 5.7 23.7 9.2 31.7 11.7 13.3 4.2 25.4 3.6 35 2.2 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
-                    </svg> Kelvin {procesandoEnlace && "..."}
-                </button>
-
-                <button
-                  onClick={() => handleGenerarCotizacion('593998053300', 'Dario')}
-                  disabled={procesandoEnlace}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.4rem',
-                    background: procesandoEnlace ? '#1d9348' : '#25D366',
-                    cursor: procesandoEnlace ? 'wait' : 'pointer',
-                    color: 'white',
-                    padding: '0.8rem 0.4rem',
-                    borderRadius: '0.8rem',
-                    border: 'none',
-                    textDecoration: 'none',
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
-                    transition: 'transform 0.2s',
-                    opacity: procesandoEnlace ? 0.7 : 1
-                  }}
-                  onMouseOver={e => !procesandoEnlace && (e.currentTarget.style.transform = 'scale(1.03)')}
-                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <svg width="20" height="20" viewBox="0 0 448 512" fill="currentColor">
-                    <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-5.5-2.8-23.4-8.6-44.6-27.6-16.5-14.7-27.6-32.8-30.8-38.4-3.2-5.6-.3-8.6 2.5-11.4 2.5-2.5 5.5-6.5 8.3-9.7 2.8-3.2 3.7-5.6 5.5-9.2 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 13.3 5.7 23.7 9.2 31.7 11.7 13.3 4.2 25.4 3.6 35 2.2 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
-                  </svg> Dario {procesandoEnlace && "..."}
-                </button>
-              </div>
             </div>
-          </div>
         )}
 
         {/* MENSAJE DE NO DISPONIBLE EN LÍNEA TIPO BANNER */}
@@ -874,23 +828,72 @@ export default function Cotizador({ modo = 'detal' }) {
           </div>
         )}
 
-        {/* TASA APLICADA DESTACADA */}
+        {/* CONTACTAR WHATSAPP AL FINAL */}
         {origen && destino && isDisponible && monto && (
           <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-            <div style={{ 
-              display: 'inline-flex',
-              flexDirection: 'column', 
-              alignItems: 'center',
-              padding: '0.8rem 2.5rem',
-              background: 'rgba(16,185,129,0.12)',
-              border: '1px solid rgba(16,185,129,0.4)',
-              borderRadius: '1.5rem',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.3)'
-            }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.15rem', marginBottom: '0.2rem' }}>Tasa Aplicada</span>
-              <div style={{ fontSize: 'clamp(1.4rem, 4vw, 2rem)', fontWeight: 900, color: 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
-                 {tasaDisplay.base} = {formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} <span style={{ fontSize: '0.6em', color: 'var(--secondary-color)' }}>{tasaDisplay.unidad}</span>
-              </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.1rem', marginBottom: '0.8rem', fontWeight: 600 }}>
+              Realizar este cambio con:
+            </p>
+            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', maxWidth: '480px', margin: '0 auto' }}>
+              <button
+                onClick={() => handleGenerarCotizacion('593961230380', 'Kelvin')}
+                disabled={procesandoEnlace}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  background: procesandoEnlace ? '#1d9348' : '#25D366',
+                  cursor: procesandoEnlace ? 'wait' : 'pointer',
+                  color: 'white',
+                  padding: '0.8rem 0.4rem',
+                  borderRadius: '0.8rem',
+                  border: 'none',
+                  textDecoration: 'none',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
+                  transition: 'transform 0.2s',
+                  opacity: procesandoEnlace ? 0.7 : 1
+                }}
+                onMouseOver={e => !procesandoEnlace && (e.currentTarget.style.transform = 'scale(1.03)')}
+                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                  <svg width="20" height="20" viewBox="0 0 448 512" fill="currentColor">
+                    <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-5.5-2.8-23.4-8.6-44.6-27.6-16.5-14.7-27.6-32.8-30.8-38.4-3.2-5.6-.3-8.6 2.5-11.4 2.5-2.5 5.5-6.5 8.3-9.7 2.8-3.2 3.7-5.6 5.5-9.2 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 13.3 5.7 23.7 9.2 31.7 11.7 13.3 4.2 25.4 3.6 35 2.2 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
+                  </svg> Kelvin {procesandoEnlace && "..."}
+              </button>
+
+              <button
+                onClick={() => handleGenerarCotizacion('593998053300', 'Dario')}
+                disabled={procesandoEnlace}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  background: procesandoEnlace ? '#1d9348' : '#25D366',
+                  cursor: procesandoEnlace ? 'wait' : 'pointer',
+                  color: 'white',
+                  padding: '0.8rem 0.4rem',
+                  borderRadius: '0.8rem',
+                  border: 'none',
+                  textDecoration: 'none',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.15)',
+                  transition: 'transform 0.2s',
+                  opacity: procesandoEnlace ? 0.7 : 1
+                }}
+                onMouseOver={e => !procesandoEnlace && (e.currentTarget.style.transform = 'scale(1.03)')}
+                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <svg width="20" height="20" viewBox="0 0 448 512" fill="currentColor">
+                  <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-5.5-2.8-23.4-8.6-44.6-27.6-16.5-14.7-27.6-32.8-30.8-38.4-3.2-5.6-.3-8.6 2.5-11.4 2.5-2.5 5.5-6.5 8.3-9.7 2.8-3.2 3.7-5.6 5.5-9.2 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 13.3 5.7 23.7 9.2 31.7 11.7 13.3 4.2 25.4 3.6 35 2.2 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/>
+                </svg> Dario {procesandoEnlace && "..."}
+              </button>
             </div>
           </div>
         )}
