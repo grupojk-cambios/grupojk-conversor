@@ -288,26 +288,35 @@ export default function AdminPanel({ onLogout }) {
                     {/* Detalles del Cliente */}
                     <td style={tableCellStyle}>
                       <div style={{ fontWeight: 600 }}>{t.nombre_cliente} {t.apellido_cliente}</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
+                      
+                      {t.vendedor && (
+                        <div style={{ 
+                          fontSize: '0.65rem', 
+                          fontWeight: 700,
+                          color: 'white',
+                          background: t.vendedor === 'Kelvin' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                          border: `1px solid ${t.vendedor === 'Kelvin' ? '#10b981' : '#3b82f6'}`,
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '0.4rem',
+                          display: 'inline-block',
+                          marginTop: '0.3rem',
+                          textAlign: 'center',
+                          width: '100%'
+                        }}>
+                          👤 Contactó a: {t.vendedor}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
                         <a 
-                          href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=Hola%20${t.nombre_cliente}%2C%20le%20saluda%20Kelvin%20de%20JK%20CONVERSOR%20sobre%20su%20operaci%C3%B3n%20%23${t.codigo}`} 
+                          href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=${encodeURIComponent(`Hola ${t.nombre_cliente}, le saluda ${t.vendedor || 'el equipo'} de JK CONVERSOR sobre su operación #${t.codigo}`)}`} 
                           target="_blank" rel="noreferrer" 
-                          style={{ textDecoration: 'none', color: 'white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, justifyContent: 'center' }}
+                          style={{ textDecoration: 'none', color: 'white', background: '#25D366', padding: '0.4rem 0.6rem', borderRadius: '0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, justifyContent: 'center', boxShadow: '0 2px 8px rgba(37, 211, 102, 0.2)' }}
                         >
-                          🟢 Kelvin
-                        </a>
-                        <a 
-                          href={`https://wa.me/${t.whatsapp_cliente.replace(/\+/g, '').replace(/ /g, '')}?text=Hola%20${t.nombre_cliente}%2C%20le%20saluda%20Dario%20de%20JK%20CONVERSOR%20sobre%20su%20operaci%C3%B3n%20%23${t.codigo}`} 
-                          target="_blank" rel="noreferrer" 
-                          style={{ textDecoration: 'none', color: 'white', background: '#25D366', padding: '0.3rem 0.6rem', borderRadius: '0.4rem', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, justifyContent: 'center' }}
-                        >
-                          🟢 Dario
+                          💬 Chatear con Cliente
                         </a>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-low)', textAlign: 'center', marginTop: '0.2rem' }}>
                           WhatsApp: {t.whatsapp_cliente}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'white', textAlign: 'center', fontWeight: 700, marginTop: '0.1rem', textTransform: 'uppercase' }}>
-                          {t.nombre_cliente} {t.apellido_cliente}
                         </div>
                       </div>
                     </td>

@@ -18,13 +18,29 @@ export default function Auth({ onLogin, tipo = 'detal' }) {
 
     try {
       if (isRegister) {
+        // Limpiar el número de espacios
+        const whatsappLimpio = whatsapp.replace(/\s+/g, '')
+
+        // Validación de formato obligatoria
+        if (!whatsappLimpio.startsWith('+')) {
+          throw new Error('El número de WhatsApp debe empezar con el código de país (ej: +593)')
+        }
+
+        if (whatsappLimpio.length < 11) {
+          throw new Error('El número de WhatsApp parece estar incompleto. Asegúrate de incluir el código de país y el número completo.')
+        }
+
+        if (!/^\+?[0-9]+$/.test(whatsappLimpio)) {
+          throw new Error('El WhatsApp solo debe contener números y el signo +')
+        }
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               nombre: nombre,
-              whatsapp: whatsapp,
+              whatsapp: whatsappLimpio,
               tipo: tipo
             }
           }

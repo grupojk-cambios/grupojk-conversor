@@ -447,7 +447,8 @@ export default function Cotizador({ modo = 'detal' }) {
         moneda_destino: destino.codigo,
         monto_recibir: parseFloat(parsearMonto(montoRecibir)),
         tasa_pactada: tasaDisplay.valor,
-        tipo_cliente: modo === 'mayor' ? 'Mayorista' : 'Estándar'
+        tipo_cliente: modo === 'mayor' ? 'Mayorista' : 'Estándar',
+        vendedor: nombreVendedor
       }])
       
       if(error) console.error("Error al guardar transacción:", error);
