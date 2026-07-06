@@ -546,7 +546,18 @@ function App() {
       {/* Main Content */}
       <main style={{ flex: 1 }}>
         {/* DETAL */}
-        {ruta === 'inicio' && <Dashboard onNavegar={navegar} modo="detal" />}
+        {ruta === 'inicio' && (
+          <Dashboard 
+            onNavegar={navegar} 
+            modo="detal" 
+            profile={profile} 
+            onSwitchMode={(nuevo) => {
+              sessionStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
+            }}
+          />
+        )}
         {ruta === 'cotizador' && <Cotizador modo="detal" />}
         {ruta === 'tasas' && <ListaPaises modo="detal" />}
         {ruta === 'mis-operaciones' && <MisOperaciones modo="detal" />}
@@ -579,7 +590,18 @@ function App() {
         )}
         
         {/* MAYOR */}
-        {ruta === 'mayor-inicio' && mayorAuth && <Dashboard onNavegar={navegar} modo="mayor" />}
+        {ruta === 'mayor-inicio' && mayorAuth && (
+          <Dashboard 
+            onNavegar={navegar} 
+            modo="mayor" 
+            profile={profile} 
+            onSwitchMode={(nuevo) => {
+              sessionStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
+            }}
+          />
+        )}
         {ruta === 'mayor-cotizador' && mayorAuth && <Cotizador modo="mayor" />}
         {ruta === 'mayor-tasas' && mayorAuth && <ListaPaises modo="mayor" />}
         {ruta === 'mayor-mis-operaciones' && mayorAuth && <MisOperaciones modo="mayor" />}
