@@ -200,6 +200,15 @@ export default function Cotizador({ modo = 'detal' }) {
   const [evEstadoSeleccionado, setEvEstadoSeleccionado] = useState(null)
   const [evSelectTarget, setEvSelectTarget] = useState('destino') // 'origen' | 'destino'
   
+  const [copiadoTipo, setCopiadoTipo] = useState(null) // 'enviar' | 'recibir' | null
+
+  const handleCopiar = (valor, tipo) => {
+    if (!valor) return
+    navigator.clipboard.writeText(valor)
+    setCopiadoTipo(tipo)
+    setTimeout(() => setCopiadoTipo(null), 2000)
+  }
+  
   const [procesandoEnlace, setProcesandoEnlace] = useState(false)
 
   const esMayor = modo === 'mayor'
@@ -527,6 +536,46 @@ export default function Cotizador({ modo = 'detal' }) {
                 placeholder={isEfectivoVen(destino) ? "Bloqueado" : "0"}
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
               />
+              {monto && (
+                <button
+                  type="button"
+                  onClick={() => handleCopiar(monto, 'enviar')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: copiadoTipo === 'enviar' ? '#10b981' : 'var(--text-low)',
+                    cursor: 'pointer',
+                    padding: '0.8rem',
+                    marginRight: '0.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                    borderRadius: '0.5rem',
+                    flexShrink: 0,
+                    position: 'relative',
+                    zIndex: 5
+                  }}
+                  onMouseEnter={e => {
+                    if (copiadoTipo !== 'enviar') e.currentTarget.style.color = 'var(--primary-color)';
+                  }}
+                  onMouseLeave={e => {
+                    if (copiadoTipo !== 'enviar') e.currentTarget.style.color = 'var(--text-low)';
+                  }}
+                  title="Copiar monto"
+                >
+                  {copiadoTipo === 'enviar' ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
@@ -596,6 +645,46 @@ export default function Cotizador({ modo = 'detal' }) {
                 placeholder="0"
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', padding: '1rem', fontSize: isMobile ? '1.3rem' : '1.5rem', fontWeight: 700, color: 'white', width: '100%' }}
               />
+              {montoRecibir && (
+                <button
+                  type="button"
+                  onClick={() => handleCopiar(montoRecibir, 'recibir')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: copiadoTipo === 'recibir' ? '#10b981' : 'var(--text-low)',
+                    cursor: 'pointer',
+                    padding: '0.8rem',
+                    marginRight: '0.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                    borderRadius: '0.5rem',
+                    flexShrink: 0,
+                    position: 'relative',
+                    zIndex: 5
+                  }}
+                  onMouseEnter={e => {
+                    if (copiadoTipo !== 'recibir') e.currentTarget.style.color = 'var(--primary-color)';
+                  }}
+                  onMouseLeave={e => {
+                    if (copiadoTipo !== 'recibir') e.currentTarget.style.color = 'var(--text-low)';
+                  }}
+                  title="Copiar monto"
+                >
+                  {copiadoTipo === 'recibir' ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
