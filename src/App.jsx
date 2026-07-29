@@ -354,6 +354,7 @@ function App() {
 
   // Branding dinámico
   const brandName = modoMayor ? 'Grupo JK Mayor' : 'CAMBIOS JK'
+  const bypassMayorAuth = mayorAuth || (profile?.role === 'admin')
 
   if (!sheetsReady) {
     return (
@@ -366,8 +367,8 @@ function App() {
     )
   }
 
-  // Si intenta acceder a rutas mayor sin estar autenticado → login de acceso mayor
-  if (modoMayor && !mayorAuth && ruta !== 'mayor') {
+  // Si intenta acceder a rutas mayor sin estar autenticado → login de acceso mayor (los admins de Supabase hacen bypass)
+  if (modoMayor && !bypassMayorAuth && ruta !== 'mayor') {
     // Guardar la ruta original si es específica
     if (ruta.startsWith('mayor-')) {
       sessionStorage.setItem('jk_intended_route', ruta)
@@ -378,10 +379,10 @@ function App() {
   }
 
   // Ruta exacta "mayor" = login (password gate)
-  if (ruta === 'mayor' && !mayorAuth) {
+  if (ruta === 'mayor' && !bypassMayorAuth) {
     return <LoginMayor onLogin={handleMayorLogin} />
   }
-  if (ruta === 'mayor' && mayorAuth) {
+  if (ruta === 'mayor' && bypassMayorAuth) {
     const intended = sessionStorage.getItem('jk_intended_route')
     if (intended) {
       sessionStorage.removeItem('jk_intended_route')
@@ -607,7 +608,7 @@ function App() {
         )}
         
         {/* MAYOR */}
-        {ruta === 'mayor-inicio' && mayorAuth && (
+        {ruta === 'mayor-inicio' && bypassMayorAuth && (
           <Dashboard 
             onNavegar={navegar} 
             modo="mayor" 
@@ -619,7 +620,7 @@ function App() {
             }}
           />
         )}
-        {ruta === 'mayor-cotizador' && mayorAuth && (
+        {ruta === 'mayor-cotizador' && bypassMayorAuth && (
           <Cotizador 
             modo="mayor" 
             profile={profile} 
@@ -630,8 +631,8 @@ function App() {
             }}
           />
         )}
-        {ruta === 'mayor-tasas' && mayorAuth && <ListaPaises modo="mayor" />}
-        {ruta === 'mayor-mis-operaciones' && mayorAuth && <MisOperaciones modo="mayor" />}
+        {ruta === 'mayor-tasas' && bypassMayorAuth && <ListaPaises modo="mayor" />}
+        {ruta === 'mayor-mis-operaciones' && bypassMayorAuth && <MisOperaciones modo="mayor" />}
 
         {/* ADMIN */}
         {ruta === 'admin-jk' && (

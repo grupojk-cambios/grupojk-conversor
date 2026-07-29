@@ -30,69 +30,6 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
       <div className="dashboard-hero">
         <div className="dashboard-hero-glow" />
         
-        {/* Selector de Modo (Solo para Admins de Supabase) */}
-        {profile?.role === 'admin' && (
-          <div style={{ 
-            maxWidth: '440px', 
-            margin: '0 auto 1.5rem', 
-            background: 'rgba(255,255,255,0.03)', 
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '1rem', 
-            padding: '0.5rem 1rem', 
-            textAlign: 'center',
-            position: 'relative',
-            zIndex: 10,
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)'
-          }}>
-            <p style={{ display: 'block', color: 'white', fontSize: '0.75rem', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05rem', fontWeight: 800 }}>
-              🛠️ Configuración de Interfaz (Admin)
-            </p>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-              <button 
-                onClick={() => onSwitchMode && onSwitchMode('detal')}
-                style={{
-                  padding: '0.45rem',
-                  borderRadius: '0.6rem',
-                  border: '1px solid ' + (modo === 'detal' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
-                  background: modo === 'detal' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                  color: modo === 'detal' ? 'var(--primary-color)' : 'white',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.3rem'
-                }}
-              >
-                <span>🏠</span> MODO DETAL
-              </button>
-              
-              <button 
-                onClick={() => onSwitchMode && onSwitchMode('mayor')}
-                style={{
-                  padding: '0.45rem',
-                  borderRadius: '0.6rem',
-                  border: '1px solid ' + (modo === 'mayor' ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'),
-                  background: modo === 'mayor' ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                  color: modo === 'mayor' ? 'var(--primary-color)' : 'white',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.3rem'
-                }}
-              >
-                <span>💼</span> MODO MAYOR
-              </button>
-            </div>
-          </div>
-        )}
 
         <div style={{ 
           width: '7.5rem', height: '7.5rem', margin: '0 auto 1.5rem', 
