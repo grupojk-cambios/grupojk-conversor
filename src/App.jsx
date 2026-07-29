@@ -196,12 +196,21 @@ function App() {
             setShowWhatsAppModal(true)
           }
         } else {
-          // Si no existe, crearlo basándose en el modo activo o metadata
+          // Si no existe, crearlo basándose en el modo activo, metadata, o ruta intencionada
           const { data: newUser } = await supabase.auth.getUser()
           const metadata = newUser.user?.user_metadata
           
-          // Prioridad absoluta a la metadata del registro
-          const modoReal = metadata?.tipo === 'mayor' || modoMayor ? 'mayor' : 'detal'
+          const googleTipo = localStorage.getItem('jk_google_signup_tipo')
+          const intendedRoute = sessionStorage.getItem('jk_intended_route')
+          const modoReal = (
+            metadata?.tipo === 'mayor' ||
+            googleTipo === 'mayor' ||
+            modoMayor ||
+            localStorage.getItem('jk_active_mode') === 'mayor' ||
+            (intendedRoute && intendedRoute.startsWith('mayor')) ||
+            ruta.startsWith('mayor')
+          ) ? 'mayor' : 'detal'
+
           const tablaDestino = modoReal === 'mayor' ? 'perfiles_mayor' : 'perfiles_detal'
 
           const { data: created } = await supabase
@@ -217,8 +226,10 @@ function App() {
             .single()
             
           if (created) {
+            localStorage.removeItem('jk_google_signup_tipo')
             setProfile(created)
             setModoMayor(modoReal === 'mayor')
+            localStorage.setItem('jk_active_mode', modoReal)
             if (!created.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
               setShowWhatsAppModal(true)
             }
@@ -280,6 +291,10 @@ function App() {
       if (ruta !== 'inicio' && ruta !== 'login') {
         sessionStorage.setItem('jk_intended_route', ruta)
       }
+      if (ruta.startsWith('mayor')) {
+        setModoMayor(true)
+        localStorage.setItem('jk_active_mode', 'mayor')
+      }
       navegar('login')
     }
     // Si ya hay usuario y está en login, mandarlo al inicio o a la ruta guardada
@@ -294,12 +309,18 @@ function App() {
     }
   }, [user, ruta, sheetsReady, modoMayor])
 
-  // Enrutamiento básico con hash
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#/', '')
+      const isMayorRoute = hash.startsWith('mayor')
+      const modoActivo = localStorage.getItem('jk_active_mode')
+
+      if (isMayorRoute || modoActivo === 'mayor') {
+        setModoMayor(true)
+        localStorage.setItem('jk_active_mode', 'mayor')
+      }
+
       if (!hash) {
-        const modoActivo = localStorage.getItem('jk_active_mode')
         if (modoActivo === 'mayor') {
           navegar('mayor-inicio')
           return
@@ -334,6 +355,9 @@ function App() {
 
   const handleMayorLogin = () => {
     setMayorAuth(true)
+    setModoMayor(true)
+    localStorage.setItem('jk_active_mode', 'mayor')
+    sessionStorage.setItem('jk_mayor_auth', 'true')
     const intended = sessionStorage.getItem('jk_intended_route')
     if (intended && user) {
       sessionStorage.removeItem('jk_intended_route')
@@ -367,12 +391,16 @@ function App() {
     )
   }
 
+  const isMayorIntent = modoMayor || ruta.startsWith('mayor') || localStorage.getItem('jk_active_mode') === 'mayor'
+
   // Si intenta acceder a rutas mayor sin estar autenticado → login de acceso mayor (los admins de Supabase hacen bypass)
-  if (modoMayor && !bypassMayorAuth && ruta !== 'mayor') {
+  if (isMayorIntent && !bypassMayorAuth && ruta !== 'mayor') {
     // Guardar la ruta original si es específica
     if (ruta.startsWith('mayor-')) {
       sessionStorage.setItem('jk_intended_route', ruta)
     }
+    setModoMayor(true)
+    localStorage.setItem('jk_active_mode', 'mayor')
     // Redirigir a login mayor (password gate)
     window.location.hash = '#/mayor'
     return <LoginMayor onLogin={handleMayorLogin} />
