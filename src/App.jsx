@@ -565,7 +565,17 @@ function App() {
             }}
           />
         )}
-        {ruta === 'cotizador' && <Cotizador modo="detal" />}
+        {ruta === 'cotizador' && (
+          <Cotizador 
+            modo="detal" 
+            profile={profile} 
+            onSwitchMode={(nuevo) => {
+              localStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-cotizador' : 'cotizador')
+            }}
+          />
+        )}
         {ruta === 'tasas' && <ListaPaises modo="detal" />}
         {ruta === 'mis-operaciones' && <MisOperaciones modo="detal" />}
         {ruta === 'perfil' && user && (
@@ -609,7 +619,17 @@ function App() {
             }}
           />
         )}
-        {ruta === 'mayor-cotizador' && mayorAuth && <Cotizador modo="mayor" />}
+        {ruta === 'mayor-cotizador' && mayorAuth && (
+          <Cotizador 
+            modo="mayor" 
+            profile={profile} 
+            onSwitchMode={(nuevo) => {
+              localStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-cotizador' : 'cotizador')
+            }}
+          />
+        )}
         {ruta === 'mayor-tasas' && mayorAuth && <ListaPaises modo="mayor" />}
         {ruta === 'mayor-mis-operaciones' && mayorAuth && <MisOperaciones modo="mayor" />}
 
