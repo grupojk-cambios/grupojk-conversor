@@ -113,15 +113,15 @@ function App() {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
 
   // Detectar modo persistente
-  const [modoMayor, setModoMayor] = useState(sessionStorage.getItem('jk_active_mode') === 'mayor' || ruta.startsWith('mayor'))
+  const [modoMayor, setModoMayor] = useState(localStorage.getItem('jk_active_mode') === 'mayor' || ruta.startsWith('mayor'))
 
   useEffect(() => {
     if (ruta.startsWith('mayor')) {
-      sessionStorage.setItem('jk_active_mode', 'mayor')
+      localStorage.setItem('jk_active_mode', 'mayor')
       setModoMayor(true)
     } else if (ruta === 'inicio' || ruta === 'cotizador' || ruta === 'tasas') {
       // Solo volver a detal si estamos en rutas puras de detal
-      sessionStorage.setItem('jk_active_mode', 'detal')
+      localStorage.setItem('jk_active_mode', 'detal')
       setModoMayor(false)
     }
   }, [ruta])
@@ -176,15 +176,15 @@ function App() {
           // Forzar el modo según la tabla donde se encontró
           const esMayor = tablaPertenece === 'perfiles_mayor'
           const esAdmin = perfilEncontrado.role === 'admin'
-          const modoActivo = sessionStorage.getItem('jk_active_mode')
-          
+          const modoActivo = localStorage.getItem('jk_active_mode')
+           
           if (esAdmin && modoActivo) {
             // Si es admin y ya eligió un modo, respetarlo
             setModoMayor(modoActivo === 'mayor')
           } else {
             // Para usuarios normales o admins sin elección previa, forzar modo de tabla
             setModoMayor(esMayor)
-            sessionStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
+            localStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
           }
 
           if (perfilEncontrado.role === 'admin') {
@@ -289,16 +289,23 @@ function App() {
         sessionStorage.removeItem('jk_intended_route')
         navegar(intended)
       } else {
-        navegar('inicio')
+        navegar(modoMayor ? 'mayor-inicio' : 'inicio')
       }
     }
-  }, [user, ruta, sheetsReady])
+  }, [user, ruta, sheetsReady, modoMayor])
 
   // Enrutamiento básico con hash
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace('#/', '') || 'inicio'
-      setRuta(hash)
+      const hash = window.location.hash.replace('#/', '')
+      if (!hash) {
+        const modoActivo = localStorage.getItem('jk_active_mode')
+        if (modoActivo === 'mayor') {
+          navegar('mayor-inicio')
+          return
+        }
+      }
+      setRuta(hash || 'inicio')
     }
     
     window.addEventListener('hashchange', handleHashChange)
@@ -319,7 +326,7 @@ function App() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     sessionStorage.removeItem('jk_admin_auth')
-    sessionStorage.removeItem('jk_active_mode')
+    localStorage.removeItem('jk_active_mode')
     setAuth(false)
     setModoMayor(false)
     navegar('inicio')
@@ -339,7 +346,7 @@ function App() {
   const handleMayorLogout = async () => {
     await supabase.auth.signOut()
     sessionStorage.removeItem('jk_mayor_auth')
-    sessionStorage.removeItem('jk_active_mode')
+    localStorage.removeItem('jk_active_mode')
     setMayorAuth(false)
     setModoMayor(false)
     navegar('inicio')
@@ -552,7 +559,7 @@ function App() {
             modo="detal" 
             profile={profile} 
             onSwitchMode={(nuevo) => {
-              sessionStorage.setItem('jk_active_mode', nuevo)
+              localStorage.setItem('jk_active_mode', nuevo)
               setModoMayor(nuevo === 'mayor')
               navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
             }}
@@ -568,7 +575,7 @@ function App() {
             modo={modoMayor ? 'mayor' : 'detal'} 
             onLogout={modoMayor ? handleMayorLogout : handleLogout}
             onSwitchMode={(nuevo) => {
-              sessionStorage.setItem('jk_active_mode', nuevo)
+              localStorage.setItem('jk_active_mode', nuevo)
               setModoMayor(nuevo === 'mayor')
               navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
             }}
@@ -596,7 +603,7 @@ function App() {
             modo="mayor" 
             profile={profile} 
             onSwitchMode={(nuevo) => {
-              sessionStorage.setItem('jk_active_mode', nuevo)
+              localStorage.setItem('jk_active_mode', nuevo)
               setModoMayor(nuevo === 'mayor')
               navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
             }}

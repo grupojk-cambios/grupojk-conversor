@@ -4,18 +4,26 @@ $ErrorActionPreference = "Stop"
 $mainCode = @'
 // === JK Remesas - Procesamiento de tasas (espejo de la app JK Conversor) ===
 function parseCSV(text){
-  const lineas = text.split(/\r?\n/).filter(l => l.trim().length>0);
-  const parseLine = (linea)=>{ const row=[]; let inQ=false; let cur=''; for(const c of linea){ if(c==='"') inQ=!inQ; else if(c===',' && !inQ){ row.push(cur); cur=''; } else cur+=c; } row.push(cur); return row.map(s=>s.trim()); };
-  return lineas.map(parseLine);
+  // Parser robusto: respeta comillas y celdas MULTI-LINEA (ej. cuentas con banco/numero/titular en renglones).
+  const Q = '"';
+  const rows=[]; let row=[]; let cur=''; let inQ=false;
+  for (let i=0; i<text.length; i++){
+    const c = text[i];
+    if (inQ){ if (c===Q){ if (text[i+1]===Q){ cur+=Q; i++; } else inQ=false; } else cur+=c; }
+    else { if (c===Q) inQ=true; else if (c===',') { row.push(cur); cur=''; } else if (c==='\r') { } else if (c==='\n') { row.push(cur); rows.push(row); row=[]; cur=''; } else cur+=c; }
+  }
+  if (cur.length>0 || row.length>0){ row.push(cur); rows.push(row); }
+  return rows.map(r => r.map(s => s.trim())).filter(r => r.some(c => c.length>0));
 }
 function num(s){ if(s===undefined||s===null||s==='') return 0; let v=String(s).replace(/\s/g,'').replace(',', '.'); const n=parseFloat(v); return isNaN(n)?0:n; }
+function numN(s){ if(s===undefined||s===null||String(s).trim()==='') return null; const n=parseFloat(String(s).replace(/\s/g,'').replace(',', '.')); return isNaN(n)?null:n; }
 
 const httpItem = $('Consultar Tasas').first();
 const csv = (httpItem && httpItem.json && httpItem.json.data) ? String(httpItem.json.data) : '';
 
 const APP_URL = 'https://grupojk-cambios.github.io/grupojk-conversor/';
 
-// ====== LISTA DE MAYORISTAS (EDITAR AQUI) ======
+// ====== LISTA MANUAL DE MAYORISTAS (respaldo opcional, EDITAR AQUI) ======
 // Numeros de WhatsApp mayoristas (solo digitos, con codigo de pais).
 // Ejemplo: const MAYORISTAS = ['584121234567', '593961230380'];
 const MAYORISTAS = [];
@@ -24,7 +32,15 @@ const MAYORISTAS = [];
 let jid = '';
 try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; } catch(e) { jid = ''; }
 const senderDigits = String(jid).replace(/\D/g,'');
-const esMayorista = MAYORISTAS.some(n => { const d=String(n).replace(/\D/g,''); return d && (senderDigits===d || senderDigits.endsWith(d)); });
+let esMayorista = MAYORISTAS.some(n => { const d=String(n).replace(/\D/g,''); return d && (senderDigits===d || senderDigits.endsWith(d)); });
+// Supabase: si el numero esta registrado en la tabla perfiles_mayor (registro via app) -> mayorista.
+// Si el nodo "Consultar Mayorista" falla o no tiene credencial, esto queda en false y se usa detal (seguro).
+if (!esMayorista) {
+  try {
+    const filasMayor = $('Consultar Mayorista').all();
+    esMayorista = filasMayor.some(it => it.json && (it.json.id || it.json.whatsapp));
+  } catch(e) {}
+}
 const modo = esMayorista ? 'mayor' : 'detal';
 
 if(!csv){
@@ -50,14 +66,15 @@ for(let i=1;i<filas.length;i++){
   const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6;
   if(tE===0 && tR===0) continue;
   const codigo = idx.cod!==-1 && row[idx.cod] ? row[idx.cod].toUpperCase() : nombre.substring(0,3).toUpperCase();
-  paises.push({ nombre, codigo, moneda: idx.moneda!==-1 && row[idx.moneda] ? row[idx.moneda] : 'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?num(row[idx.mEMayor]):0, margenReciboMayor: idx.mRMayor!==-1?num(row[idx.mRMayor]):0, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1 && row[idx.ciudades] ? String(row[idx.ciudades]).trim() : '' });
+  paises.push({ nombre, codigo, moneda: idx.moneda!==-1 && row[idx.moneda] ? row[idx.moneda] : 'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1 && row[idx.ciudades] ? String(row[idx.ciudades]).trim() : '' });
 }
 
 // Guardar datos crudos para la calculadora (mismo dato que el prompt)
 try { const sd=$getWorkflowStaticData('global'); sd.paisesData = paises; } catch(e){}
 
-function mEnv(p){ return modo==='mayor'&&p.margenEnvioMayor>0?p.margenEnvioMayor:(p.margenEnvio||0); }
-function mRec(p){ return modo==='mayor'&&p.margenReciboMayor>0?p.margenReciboMayor:(p.margenRecibo||0); }
+function mEnv(p){ return modo==='mayor'&&p.margenEnvioMayor!=null&&!isNaN(parseFloat(p.margenEnvioMayor))?parseFloat(p.margenEnvioMayor):(p.margenEnvio||0); }
+function mRec(p){ return modo==='mayor'&&p.margenReciboMayor!=null&&!isNaN(parseFloat(p.margenReciboMayor))?parseFloat(p.margenReciboMayor):(p.margenRecibo||0); }
+function mRecO(p){ return (p.nombre||'').toLowerCase()==='ecuador'?0:mRec(p); } // Ecuador (base USD referencia) recibo siempre 0
 function tEnv(p){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p)/100):0; }
 function tRec(p){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p)/100):0; }
 function esDolar(p){ const c=(p.codigo||'').toUpperCase(); const n=(p.nombre||'').toUpperCase(); return ['USD','USDT'].includes(c)||n.includes('USDT')||n.includes('ZELLE')||n.includes('EFECTIVO VEN'); }
@@ -70,9 +87,9 @@ function obtenerTP(o,d){
   else if(!BASES.includes(oc)&&!esDolar(o)&&BASES.includes(dc)){ const f=parseFloat(o['factor'+dc]); if(f>0&&!isNaN(f)){ tD=1/f; fa=true; } }
   if(!fa){ const oF=FU.includes(oc),dF=FU.includes(dc),oD=esDolar(o),dD=esDolar(d);
     if(oF||dF){ if(oF&&!oD)tO=1/Math.max(tO,0.001); if(oF&&dD)tD=1; if(oD&&dF)tO=1; }
-    else { if(oD&&!dD){ const mO=mRec(o),mD=mEnv(d); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
-      else if(oD&&dD){ tO=1; const tB=d.tasaProveedorEnvio||0; const mD=mEnv(d); tD=tB*(1-mD/100); }
-      else if(!oD&&dD){ const mO=mRec(o),mD=mEnv(d); const tB=o.tasaProveedorRecibo||0; tO=tB*(1+(mO+mD)/100); tD=1; } } }
+    else { if(oD&&!dD){ const mO=mRecO(o),mD=mEnv(d); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
+      else if(oD&&dD){ const mO=mRecO(o),mD=mEnv(d); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
+      else if(!oD&&dD){ const mO=mRecO(o),mD=mEnv(d); const tB=o.tasaProveedorRecibo||0; tO=tB*(1+(mO+mD)/100); tD=1; } } }
   if(tO===0)tO=1; return {tO,tD};
 }
 // Pais de referencia = Ecuador (la base USD del operador). Las tasas de la tabla se cruzan contra Ecuador,
@@ -107,20 +124,42 @@ try { cuentasCsv = String($('Consultar Cuentas').first().json.data || ''); } cat
 const cuentasTodas = [];
 if (cuentasCsv) {
   const filasC = parseCSV(cuentasCsv);
-  // Encabezado: Pais, Metodo, Disponible, Datos, Notas. El ORDEN de filas = orden de rotacion.
+  // Encabezado: Pais, Metodo, Disponible, Datos, Notas [, Tipo]. El ORDEN de filas = orden de rotacion.
+  const normH = s => String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const headC = (filasC[0]||[]).map(normH);
+  // Soporta 1 columna "Tipo" (DETAL / MAYOR / AMBOS) o 2 columnas "Detal" y "Mayor" (si/no).
+  const iTipo = headC.findIndex(h => h.indexOf('TIPO') !== -1 || h.indexOf('TARIFA') !== -1);
+  const iDetal = headC.findIndex(h => h === 'DETAL');
+  const iMayor = headC.findIndex(h => h === 'MAYOR');
   for (let i=1; i<filasC.length; i++) {
     const row = filasC[i];
     const pais = (row[0]||'').trim();
     const datos = (row[3]||'').trim();
     if (!pais || !datos) continue;
     if (!/^s/i.test((row[2]||'').trim())) continue; // solo Disponible = Si
+    // A que tarifa aplica esta cuenta. Por defecto (columna ausente o vacia) sirve para AMBAS.
+    let esDetal = true, esMayor = true;
+    if (iTipo !== -1) {
+      const t = normH(row[iTipo]);
+      if (t.indexOf('DETAL') !== -1 && t.indexOf('MAYOR') === -1) esMayor = false;
+      else if (t.indexOf('MAYOR') !== -1 && t.indexOf('DETAL') === -1) esDetal = false;
+    } else if (iDetal !== -1 || iMayor !== -1) {
+      if (iDetal !== -1) esDetal = /^s/i.test(String(row[iDetal]||'').trim());
+      if (iMayor !== -1) esMayor = /^s/i.test(String(row[iMayor]||'').trim());
+      if (!esDetal && !esMayor) { esDetal = true; esMayor = true; } // fila sin marcar -> ambas
+    }
+    if (modo === 'mayor' ? !esMayor : !esDetal) continue; // no aplica a este cliente
     cuentasTodas.push({ Pais: pais, Metodo: (row[1]||'').trim(), Datos: datos });
   }
 }
-// Agrupar por pais preservando el orden de filas
+// Agrupar SOLO por PAIS (no por banco): UNA sola cuenta por pais por dia,
+// sin importar cuantos bancos haya en la hoja para ese pais. Al dia siguiente
+// rota a otra cuenta del mismo pais (puede ser de otro banco). Misma cuenta
+// para TODOS los clientes de ese dia (el indice depende de la fecha, no del cliente).
 const porPais = {};
 for (const c of cuentasTodas) {
-  const k = c.Pais.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const k = norm(c.Pais);
   (porPais[k] = porPais[k] || []).push(c);
 }
 // Indice del dia segun hora de Ecuador (UTC-5): cambia a la medianoche de Ecuador
@@ -132,7 +171,26 @@ for (const k in porPais) {
   cuentas.push(arr[idx]);
 }
 
-return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, error: paises.length? null : 'Lista vacia' } }];
+// ===== PERFIL DEL CLIENTE (historial de transacciones en Supabase) =====
+// Lee las operaciones previas del cliente (nodo "Consultar Cliente") y arma un contexto corto
+// para que el bot atienda mejor (saludar por nombre, saber a que pais suele enviar).
+let clienteContexto = '';
+try {
+  const ops = $('Consultar Cliente').all().map(i => i.json).filter(o => o && (o.pais_destino || o.nombre_cliente));
+  if (ops.length) {
+    const nombre = ((ops[0].nombre_cliente || '') + ' ' + (ops[0].apellido_cliente || '')).trim();
+    const freq = {};
+    ops.forEach(o => { const p = o.pais_destino; if (p) freq[p] = (freq[p] || 0) + 1; });
+    const recurrente = Object.keys(freq).sort((a,b) => freq[b] - freq[a])[0] || '';
+    const partes = [];
+    if (nombre) partes.push('se llama ' + nombre);
+    partes.push('ya es cliente (tiene operaciones previas con nosotros)');
+    if (recurrente) partes.push('suele enviar a ' + recurrente);
+    clienteContexto = 'Este cliente ' + partes.join(', ') + '. Saludalo por su nombre con naturalidad y, si pide cotizar, puedes sugerir su destino habitual. No menciones montos ni datos viejos salvo que el cliente pregunte.';
+  }
+} catch(e){}
+
+return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, clienteContexto, error: paises.length? null : 'Lista vacia' } }];
 '@
 
 # ===================== CODIGO DE LA CALCULADORA (Code Tool) =====================
@@ -156,23 +214,32 @@ const direccion= (String(inDir||'directa').toLowerCase()==='inversa')?'inversa':
 const modoN    = (String(inModo||'detal').toLowerCase()==='mayor')?'mayor':'detal';
 
 function parseCSV(text){
-  const lineas = text.split(/\r?\n/).filter(l => l.trim().length>0);
-  const parseLine = (linea)=>{ const row=[]; let inQ=false; let cur=''; for(const c of linea){ if(c==='"') inQ=!inQ; else if(c===',' && !inQ){ row.push(cur); cur=''; } else cur+=c; } row.push(cur); return row.map(s=>s.trim()); };
-  return lineas.map(parseLine);
+  // Parser robusto: respeta comillas y celdas MULTI-LINEA (ej. cuentas con banco/numero/titular en renglones).
+  const Q = '"';
+  const rows=[]; let row=[]; let cur=''; let inQ=false;
+  for (let i=0; i<text.length; i++){
+    const c = text[i];
+    if (inQ){ if (c===Q){ if (text[i+1]===Q){ cur+=Q; i++; } else inQ=false; } else cur+=c; }
+    else { if (c===Q) inQ=true; else if (c===',') { row.push(cur); cur=''; } else if (c==='\r') { } else if (c==='\n') { row.push(cur); rows.push(row); row=[]; cur=''; } else cur+=c; }
+  }
+  if (cur.length>0 || row.length>0){ row.push(cur); rows.push(row); }
+  return rows.map(r => r.map(s => s.trim())).filter(r => r.some(c => c.length>0));
 }
 function num(s){ if(s===undefined||s===null||s==='') return 0; let v=String(s).replace(/\s/g,'').replace(',', '.'); const n=parseFloat(v); return isNaN(n)?0:n; }
+function numN(s){ if(s===undefined||s===null||String(s).trim()==='') return null; const n=parseFloat(String(s).replace(/\s/g,'').replace(',', '.')); return isNaN(n)?null:n; }
 function norm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim(); }
 function construirPaises(text){
   const filas = parseCSV(text); if(!filas.length) return [];
   const head=(filas[0]||[]).map(h=>String(h||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''));
   const idx={ factorEUR:head.findIndex(h=>h.includes('FACTOR EUR')||h.includes('VALOR EUR')), factorUSDT:head.findIndex(h=>h.includes('FACTOR USDT')||h.includes('VALOR USDT')), cod:head.findIndex(h=>h.includes('CODIGO')||h.includes('BANCO')), moneda:head.findIndex(h=>h.includes('NOMBRE')||h.includes('MONEDA')), mEMayor:head.findIndex(h=>h.includes('MARGEN ENVIO MAYOR')), mRMayor:head.findIndex(h=>h.includes('MARGEN RECIBO MAYOR')) };
   const paises=[];
-  for(let i=1;i<filas.length;i++){ const row=filas[i]; const nombre=(row[0]||'').trim(); if(!nombre) continue; const tE=num(row[1]); const mE=(row[2]!==undefined)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6; if(tE===0&&tR===0) continue; const codigo=idx.cod!==-1&&row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase(); paises.push({ nombre, codigo, moneda: idx.moneda!==-1&&row[idx.moneda]?row[idx.moneda]:'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?num(row[idx.mEMayor]):0, margenReciboMayor: idx.mRMayor!==-1?num(row[idx.mRMayor]):0, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1&&row[idx.ciudades]?String(row[idx.ciudades]).trim():'' }); }
+  for(let i=1;i<filas.length;i++){ const row=filas[i]; const nombre=(row[0]||'').trim(); if(!nombre) continue; const tE=num(row[1]); const mE=(row[2]!==undefined)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6; if(tE===0&&tR===0) continue; const codigo=idx.cod!==-1&&row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase(); paises.push({ nombre, codigo, moneda: idx.moneda!==-1&&row[idx.moneda]?row[idx.moneda]:'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1&&row[idx.ciudades]?String(row[idx.ciudades]).trim():'' }); }
   return paises;
 }
 function isCajaDolar(p){ const c=(p.codigo||'').toUpperCase(); const n=(p.nombre||'').toUpperCase(); return ['USD','USDT'].includes(c)||n.includes('USDT')||n.includes('ZELLE')||n.includes('EFECTIVO VEN'); }
-function mEnv(p,modo){ return modo==='mayor'&&p.margenEnvioMayor>0?p.margenEnvioMayor:(p.margenEnvio||0); }
-function mRec(p,modo){ return modo==='mayor'&&p.margenReciboMayor>0?p.margenReciboMayor:(p.margenRecibo||0); }
+function mEnv(p,modo){ return modo==='mayor'&&p.margenEnvioMayor!=null&&!isNaN(parseFloat(p.margenEnvioMayor))?parseFloat(p.margenEnvioMayor):(p.margenEnvio||0); }
+function mRec(p,modo){ return modo==='mayor'&&p.margenReciboMayor!=null&&!isNaN(parseFloat(p.margenReciboMayor))?parseFloat(p.margenReciboMayor):(p.margenRecibo||0); }
+function mRecO(p,modo){ return (p.nombre||'').toLowerCase()==='ecuador'?0:mRec(p,modo); } // Ecuador (base USD referencia) recibo siempre 0
 function tEnv(p,modo){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p,modo)/100):0; }
 function tRec(p,modo){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p,modo)/100):0; }
 function obtenerTasasProcesadas(origen,destino,modo){
@@ -190,9 +257,9 @@ function obtenerTasasProcesadas(origen,destino,modo){
       if(oF && dD) tasaDestinoDesdeDolares=1;
       if(oD && dF) tasaOrigenParaDolares=1;
     } else {
-      if(oD && !dD){ const mO=mRec(origen,modo), mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }
-      else if(oD && dD){ tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; const mD=mEnv(destino,modo); tasaDestinoDesdeDolares=tBaseD*(1-mD/100); }
-      else if(!oD && dD){ const mO=mRec(origen,modo), mD=mEnv(destino,modo); const tBaseO=origen.tasaProveedorRecibo||0; tasaOrigenParaDolares=tBaseO*(1+(mO+mD)/100); tasaDestinoDesdeDolares=1; }
+      if(oD && !dD){ const mO=mRecO(origen,modo), mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }
+      else if(oD && dD){ const mO=mRecO(origen,modo),mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }
+      else if(!oD && dD){ const mO=mRecO(origen,modo), mD=mEnv(destino,modo); const tBaseO=origen.tasaProveedorRecibo||0; tasaOrigenParaDolares=tBaseO*(1+(mO+mD)/100); tasaDestinoDesdeDolares=1; }
     }
   }
   if(tasaOrigenParaDolares===0) tasaOrigenParaDolares=1;
@@ -267,11 +334,12 @@ $systemMsg = @'
 El cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea). Leelos todos y responde UNA sola vez, corto.
 
 Tarifa de este cliente: {{ $node["Code in JavaScript"].json.modo }} (detal=publico, mayor=mayorista). Nunca menciones lo mayorista a un cliente detal.
+{{ $node["Code in JavaScript"].json.clienteContexto ? ('CONTEXTO DEL CLIENTE (usalo con naturalidad para atender mejor): ' + $node["Code in JavaScript"].json.clienteContexto) : '' }}
 
 Tasas de hoy (Envio/Recibo ya con margen; "N/D" = no disponible):
 {{ JSON.stringify($node["Code in JavaScript"].json.lista) }}
 
-CUENTAS para pagar/depositar (solo estas existen; usa el campo "Datos" tal cual al enviarla):
+CUENTAS DEL DIA para pagar/depositar (UNA sola cuenta por pais por dia; usa el campo "Datos" tal cual):
 {{ JSON.stringify($node["Code in JavaScript"].json.cuentas) }}
 
 REGLAS:
@@ -279,10 +347,10 @@ REGLAS:
 - FORMATO DE NUMEROS (MUY IMPORTANTE): los montos vienen en formato latino. El PUNTO son MILES y la COMA son decimales. Ejemplos: "710.000" = 710000 (setecientos diez mil); "1.000.000" = 1000000; "1.500,50" = 1500.5; "207,76" = 207.76. NUNCA interpretes el punto como decimal en montos grandes. Pasa a la herramienta el numero entero correcto (ej 710000, no 710).
 - IDENTIFICA bien ORIGEN y DESTINO antes de calcular. Mapeo moneda->lugar: COP/"pesos colombianos"=Colombia; USD/"dolares"/"$"=Ecuador, Zelle, Panama o EEUU (segun lo que diga); VES/"bolivares"/"Bs"=Venezuela; "efectivo en VE"=Efectivo Venezuela. "Cuanto recibo/me llega/me das" = el cliente da el monto de ORIGEN (direccion directa). "Cuanto debo enviar/pasar para que llegue X" = X es el DESTINO que debe llegar (direccion inversa). Si la frase es confusa, repregunta en pocas palabras antes de calcular.
 - SANIDAD / NO TERQUEAR: si el cliente dice que el monto esta mal, o el resultado se ve descomunal (millones cuando deberian ser cientos, o viceversa), NUNCA insistas "el calculo es correcto". Asume que pudo haber error de direccion o de formato de numero: vuelve a llamar la herramienta revisando origen, destino, direccion y el monto, y corrige.
-- Solo piden tasa de un pais sin monto: di Envio o Recibo en 1 linea. Si no sabes si quiere enviar o recibir, preguntalo en pocas palabras.
-- Disponibilidad: si una moneda esta en "N/D" o no aparece: "Por ahora no manejamos ese servicio." No inventes.
+- TASA SOLA (cliente pide "tasa de X" o "que tasa hay para X" SIN dar monto ni el otro pais): NO sueltes los numeros de Envio/Recibo. Responde corto pidiendo el cruce: "Hola! Para cotizarte bien, dime desde donde envias y hacia donde recibe el destinatario (y el monto si lo tienes)". Cuando ya tengas origen + destino (con o sin monto), haz un EJEMPLO usa la herramienta calculadora_remesas con un monto de muestra (100 si no dieron monto), responde el resultado en 1-2 lineas, y al FINAL pon "Tasa: X.XX <codigo>". Ej: "Por 100 USD desde Ecuador recibes 341.440 COP en Colombia. Tasa: 3414.40 COP". Si el cliente da monto, usa ESE monto (no 100).
+- DISPONIBILIDAD (NO te equivoques en esto): la lista de tasas de arriba es la VERDAD absoluta. ANTES de decir que NO manejas algo, BUSCALO en la lista por nombre de pais, por codigo de moneda o por nombre de moneda. Ejemplos de match: "pesos mexicanos"/"mexico"/"mxn" = Mexico; "pesos colombianos"/"cop" = Colombia; "soles" = Peru; "reales" = Brasil. Si el pais/moneda APARECE en la lista con una tasa de Envio o Recibo distinta de "N/D", entonces SI lo manejas en esa direccion: cotiza normal, NUNCA digas que no. Solo responde "Por ahora no manejamos ese servicio" cuando de verdad NO esta en la lista, o ambas tasas (Envio y Recibo) son "N/D". Nunca asumas ni adivines: revisa la lista primero.
 - VENEZUELA: hay bolivares (VES, a cuenta/pago movil) y efectivo en dolares ("Efectivo Venezuela"). Regla para NO preguntar de mas: (a) si el cliente YA dijo "Bs"/"bolivares"/"pago movil" -> usa Venezuela (bolivares) y NO preguntes nada de eso. (b) si YA dijo "dolares"/"$"/"efectivo"/"cash" o una ciudad/estado venezolano (Caracas, Maracaibo, Valencia...) -> es Efectivo Venezuela (USD). (c) SOLO pregunta "Lo quieres en bolivares o en efectivo (dolares)?" cuando el cliente va a RECIBIR dinero EN Venezuela y NO dejo claro cual de los dos quiere. (d) si Venezuela es el ORIGEN (el cliente ENVIA Bs hacia otro pais), NUNCA preguntes eso: solo es bolivares. Para efectivo en dolares, pregunta en que ciudad lo retira.
-- Preguntan por CUENTA / datos para pagar / donde deposito / a donde transfiero: revisa la lista CUENTAS de abajo. Si hay una para ese pais/metodo, envia su campo "Datos" tal cual (puedes elegir la mas adecuada o preguntar el metodo si hay varias). Si NO hay ninguna para ese pais: "Por ahora no tengo esa cuenta a la mano, un asesor te la pasa enseguida."
+- CUENTAS (REGLA ESTRICTA - UNA SOLA CUENTA POR PAIS POR DIA): en la lista CUENTAS DEL DIA hay EXACTAMENTE UNA cuenta por pais (la del dia de hoy, ya rotada). Cuando el cliente pida datos para pagar / donde deposito / a donde transfiero, busca la cuenta de ese pais en la lista y envia su campo "Datos" TAL CUAL, completo (con todas sus lineas: banco, numero, titular, cedula). NUNCA preguntes "cual banco prefieres", NUNCA ofrezcas alternativas, NUNCA enumeres bancos: solo manda la unica cuenta que hay para ese pais hoy. Si el cliente pide OTRA cuenta / OTRO banco / "una banesco" / "tienes de otro banco" / "mandame otra" (o cualquier variante) DESPUES de que ya le enviaste la del dia, responde EXACTAMENTE UNA linea corta: "Solo esa esta habilitada hoy, usamos una sola cuenta para recibir al dia por pais 🙏". No des explicaciones extra, no ofrezcas escalar, no repitas la cuenta. Solo si NO hay NINGUNA cuenta de ese pais en la lista: "Por ahora no tengo esa cuenta a la mano, un asesor te la pasa enseguida."
 - COMPROBANTE DE PAGO: si ves "[El cliente envio un COMPROBANTE de pago...]", NUNCA digas "no tengo esa cuenta". Responde MUY corto, 1 sola linea. Si en el mensaje hay numeros de cuenta/cedula/banco/datos de una cuenta destino (aunque vengan reenviados o en numeros sueltos), confirma: "Listo, recibido! Procesamos tu remesa enseguida ✅" y NO preguntes nada mas. SOLO si NO hay ninguna cuenta en el mensaje, pide corto: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)". La cuenta destino es donde el destinatario RECIBE el dinero; el cliente puede dividir el monto en varias cuentas.
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
 - Fuera de tema: "Solo remesas de JK."
@@ -292,6 +360,8 @@ REGLAS:
 {{ $node["Code in JavaScript"].json.hayEfectivoVe ? '- Efectivo Venezuela (dolares en efectivo). El precio PUEDE variar por ciudad, asi que SIEMPRE pregunta el estado/ciudad y calcula con la herramienta usando ESA ubicacion exacta como pais_destino (ej "Efectivo Venezuela Maracaibo"). Ubicaciones disponibles: ' + ($node["Code in JavaScript"].json.evUbicaciones || []).map(u => u.estado + (u.ciudades && u.ciudades.length ? ' (' + u.ciudades.join(', ') + ')' : '')).join('; ') + '. Si la ciudad NO esta en la lista, ahi no hay entrega en efectivo por ahora.' : '' }}
 
 PROHIBIDO repetir en cada mensaje cosas como "estoy aqui", "disponible", "para ayudarte", "cualquier consulta", "no dudes en". Responde lo justo y para. Suena como una persona, no como un bot.
+
+MULTI-COTIZACION: si das varias cotizaciones (ej. desde Venezuela Y desde Ecuador), separa cada cotizacion con una linea que diga solamente "---" (tres guiones, sin nada mas, en una linea propia). Asi cada cotizacion sale como mensaje aparte en WhatsApp. Una sola cotizacion = sin "---".
 '@
 
 # ===================== CODIGO: PREP DEBOUNCE =====================
@@ -306,17 +376,44 @@ return [{ json: { jid, texto: texto || '', miTs, keyBuf: 'buf:'+jid, keyTok: 'to
 
 # ===================== CODIGO: TEXTO DIRECTO (mensajes de texto) =====================
 $textoDirectoCode = @'
-// Extrae el texto de un mensaje normal (texto, respuesta citada, o pie de imagen/video).
-let t='';
+// Extrae el texto del mensaje. Cubre: texto simple, extendedTextMessage (incluye cita),
+// pie de imagen/video/documento, y respuestas a botones/listas. Si el cliente CITO un
+// mensaje, agregamos el texto citado como CONTEXTO para que el bot sepa a que se refiere.
+let t = '';
+let citado = '';
 try {
   const m = $json.body.data.message || {};
   t = m.conversation
     || (m.extendedTextMessage && m.extendedTextMessage.text)
     || (m.imageMessage && m.imageMessage.caption)
     || (m.videoMessage && m.videoMessage.caption)
+    || (m.documentMessage && m.documentMessage.caption)
+    || (m.buttonsResponseMessage && m.buttonsResponseMessage.selectedDisplayText)
+    || (m.listResponseMessage && m.listResponseMessage.title)
+    || (m.templateButtonReplyMessage && m.templateButtonReplyMessage.selectedDisplayText)
     || '';
+  // Contexto de cita (extendedText, imageMessage o data.contextInfo directamente)
+  const ctx = (m.extendedTextMessage && m.extendedTextMessage.contextInfo)
+    || (m.imageMessage && m.imageMessage.contextInfo)
+    || (m.videoMessage && m.videoMessage.contextInfo)
+    || $json.body.data.contextInfo
+    || null;
+  if (ctx && ctx.quotedMessage) {
+    const q = ctx.quotedMessage;
+    citado = q.conversation
+      || (q.extendedTextMessage && q.extendedTextMessage.text)
+      || (q.imageMessage && q.imageMessage.caption)
+      || (q.videoMessage && q.videoMessage.caption)
+      || '';
+  }
 } catch(e){}
-return [{ json: { texto: String(t || '').normalize('NFKC') } }];
+let texto = String(t || '').normalize('NFKC').trim();
+if (citado) {
+  citado = String(citado).normalize('NFKC').trim();
+  if (citado.length > 200) citado = citado.substring(0,200) + '...';
+  texto = '[el cliente respondio citando esto que tu/asesor le dijiste antes: "' + citado + '"]\n' + texto;
+}
+return [{ json: { texto } }];
 '@
 
 # ===================== CODIGO: AUDIO A BINARIO =====================
@@ -420,6 +517,48 @@ const datos = String($('Detectar Aprobación').item.json.datosCuenta || '').trim
 if (!datos) return [];
 const bloques = datos.split(/\n\s*\n+/).map(b => b.trim()).filter(b => b.length);
 return bloques.map(b => ({ json: { cuenta: b } }));
+'@
+
+# ===================== CODIGO: SEPARAR RESPUESTA (1 mensaje por cotizacion) =====================
+$separarRespuestaCode = @'
+// Separa la respuesta en mensajes: cada COTIZACION (lineas que terminan en "Tasa: X") = 1 mensaje aparte.
+// Si la respuesta no tiene cotizaciones (no aparece "Tasa:"), va como un solo mensaje.
+// Esto cumple lo que pidio el usuario: 1 cotizacion = 1 mensaje, sin depender del modelo.
+const out = String($json.output || '').trim();
+if (!out) return [{ json: $json }];
+if (!/tasa\s*:/i.test(out)) return [{ json: $json }];
+const lineas = out.split(/\n/).map(l => l.trim()).filter(l => l.length);
+const mensajes = [];
+let buf = [];
+for (const l of lineas) {
+  buf.push(l);
+  if (/tasa\s*:/i.test(l)) { mensajes.push(buf.join('\n')); buf = []; }
+}
+if (buf.length) mensajes.push(buf.join('\n')); // cola sin "Tasa:" (preguntas/cierre)
+if (mensajes.length <= 1) return [{ json: $json }];
+return mensajes.map(m => ({ json: { ...$json, output: m } }));
+'@
+
+# ===================== CODIGO: REGISTRAR OPERACION (fila para Excel) =====================
+$registrarOperacionCode = @'
+// Arma UNA fila de reporte por cada operacion aprobada (comprobante + cuenta destino).
+// Orden de columnas (debe coincidir con la tabla de Excel): Fecha, Cliente, Numero, CuentaDestino, Comprobante, Tipo.
+function p2(n){ return String(n).padStart(2,'0'); }
+const d = new Date(Date.now() - 5*3600000); // hora Ecuador (UTC-5)
+const fecha = d.getUTCFullYear()+'-'+p2(d.getUTCMonth()+1)+'-'+p2(d.getUTCDate())+' '+p2(d.getUTCHours())+':'+p2(d.getUTCMinutes());
+let a = {};
+try { a = $('Detectar Aprobación').item.json || {}; } catch(e){}
+const cliente = a.nombre || 'Cliente';
+const numero = a.numero ? ('+'+a.numero) : '';
+const cuenta = String(a.datosCuenta || '').replace(/\n+/g,' | ').trim();
+let comprobante = '';
+const mc = String(a.mensajeCombinado || '');
+const m = mc.match(/datos leidos:\s*([^\]]*)\]/i);
+if (m) comprobante = m[1].trim(); else comprobante = '(ver comprobante en grupo)';
+let tipo = 'detal';
+try { tipo = $('Code in JavaScript').first().json.modo || 'detal'; } catch(e){}
+const fila = [fecha, cliente, numero, cuenta, comprobante, tipo];
+return [{ json: { Fecha:fecha, Cliente:cliente, Numero:numero, CuentaDestino:cuenta, Comprobante:comprobante, Tipo:tipo, fila } }];
 '@
 
 # ===================== CODIGO: DETECTAR ASESOR (alerta) =====================
@@ -550,12 +689,33 @@ $nodes = @(
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
   },
   [ordered]@{
+    # Busca el numero del cliente en la tabla perfiles_mayor de Supabase (registro de la app).
+    # Filtro "like.*<digitos>" para que matchee con o sin "+" delante. Si falla o no hay credencial -> sigue (detal).
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_mayor'; returnAll = $false; limit = 1; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'') }}" }
+    id = 'ab12cd34-ef56-4789-9abc-supamayor001'; name = 'Consultar Mayorista'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1780,300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # Busca las operaciones previas del cliente en 'transacciones' (por su whatsapp) para personalizar la atencion.
+    # Solo columnas necesarias. Si falla o no hay credencial -> sigue sin contexto (normal).
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones'; returnAll = $false; limit = 15; filterType = 'string'; filterString = "={{ 'whatsapp_cliente=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'') }}" }
+    id = 'cd34ef56-ab78-4890-9cde-supacliente1'; name = 'Consultar Cliente'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1820,300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
     parameters = @{ jsCode = $mainCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1860,128); id = '6ac06fc7-1afb-49ab-893c-e2f2b5f8b995'; name = 'Code in JavaScript'
   },
   [ordered]@{
     parameters = @{ promptType = 'define'; text = "={{ `$('Combinar').item.json.mensajeCombinado }}"; options = @{ systemMessage = $systemMsg } }
     type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1; position = @(1960,128); id = '2ac354a3-fe77-4708-80c5-b238454cfdd6'; name = 'AI Agent'; executeOnce = $true
+    retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $separarRespuestaCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2180,128); id = 'cc99dd00-ee11-4727-9ccc-separarresp1'; name = 'Separar Respuesta'
   },
   [ordered]@{
     parameters = @{ resource = 'messages-api'; instanceName = 'bot-JK-prueba-operador1'; remoteJid = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
@@ -579,8 +739,9 @@ $nodes = @(
     credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
   },
   [ordered]@{
-    parameters = @{ sessionIdType = 'customKey'; sessionKey = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; contextWindowLength = 15 }
-    id = 'bff6d1ec-1a12-45f2-a96a-327e1edd3f0e'; name = 'Memoria de Chat'; type = '@n8n/n8n-nodes-langchain.memoryBufferWindow'; typeVersion = 1.3; position = @(2040,400)
+    parameters = @{ sessionIdType = 'customKey'; sessionKey = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; contextWindowLength = 15; sessionTTL = 259200 }
+    id = 'bff6d1ec-1a12-45f2-a96a-327e1edd3f0e'; name = 'Memoria de Chat'; type = '@n8n/n8n-nodes-langchain.memoryRedisChat'; typeVersion = 1.6; position = @(2040,400)
+    credentials = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $detectarAprobacionCode }
@@ -619,6 +780,11 @@ $nodes = @(
     credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
   },
   [ordered]@{
+    parameters = @{ jsCode = $registrarOperacionCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2380,340); id = 'bb88cc99-dd00-4727-9bbb-registrarop1'; name = 'Registrar Operación'
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+  },
+  [ordered]@{
     parameters = @{ name = 'calculadora_remesas'; description = 'Convierte montos de dinero entre paises/monedas con las tasas oficiales del dia de JK Remesas. Usala para cualquier conversion de monto, para cruces entre dos paises, o cuando intervengan dolares, USDT o euros. Devuelve el resultado exacto.'; language = 'javaScript'; jsCode = $toolCode; specifyInputSchema = $true; schemaType = 'manual'; inputSchema = $inputSchema }
     type = '@n8n/n8n-nodes-langchain.toolCode'; typeVersion = 1.1; position = @(2200,400); id = 'b1f2c3d4-0000-4a00-9000-aabbccddeeff'; name = 'Calculadora de Conversion'
   }
@@ -649,14 +815,17 @@ $connections = [ordered]@{
   'Redis Borrar Buffer'    = @{ main = @( ,@( @{ node='Combinar'; type='main'; index=0 } ) ) }
   'Combinar'               = @{ main = @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) ) }
   'Consultar Tasas'        = @{ main = @( ,@( @{ node='Consultar Cuentas'; type='main'; index=0 } ) ) }
-  'Consultar Cuentas'      = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
+  'Consultar Cuentas'      = @{ main = @( ,@( @{ node='Consultar Mayorista'; type='main'; index=0 } ) ) }
+  'Consultar Mayorista'    = @{ main = @( ,@( @{ node='Consultar Cliente'; type='main'; index=0 } ) ) }
+  'Consultar Cliente'      = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
   'Code in JavaScript'     = @{ main = @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) ) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
   'Calculadora de Conversion' = @{ ai_tool = @( ,@( @{ node='AI Agent'; type='ai_tool'; index=0 } ) ) }
-  'AI Agent'               = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 } ) ) }
+  'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 } ) ) }
+  'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
-  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 } ) ) }
+  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }
   'Redis Leer ID Imagen'   = @{ main = @( ,@( @{ node='Re-descargar Imagen'; type='main'; index=0 } ) ) }
   'Re-descargar Imagen'    = @{ main = @( ,@( @{ node='Enviar Imagen Grupo'; type='main'; index=0 } ) ) }
   'Enviar Imagen Grupo'    = @{ main = @( ,@( @{ node='Separar Cuentas'; type='main'; index=0 } ) ) }
