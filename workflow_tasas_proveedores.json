@@ -1,0 +1,1156 @@
+{
+    "name":  "Tasas de Proveedores",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "updates":  [
+                                                         "message"
+                                                     ],
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "id":  "a1000000-0000-4000-9000-telegramtrig1",
+                      "name":  "Telegram Trigger",
+                      "type":  "n8n-nodes-base.telegramTrigger",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -400,
+                                       300
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "admin-chat-1",
+                                                                                   "leftValue":  "={{ [\u0027627887509\u0027,\u00278892262444\u0027].indexOf(String($json.message.chat.id)) !== -1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "boolean"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "a2000000-0000-4000-9000-soloadmin0001",
+                      "name":  "¿Chat Autorizado?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -200,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let texto = \u0027\u0027, chatId = \u0027\u0027;\ntry {\n  const msg = $(\u0027Telegram Trigger\u0027).first().json.message || {};\n  texto = String(msg.text || \u0027\u0027).trim();\n  chatId = String((msg.chat \u0026\u0026 msg.chat.id) || \u0027\u0027);\n} catch(e){}\nconst t = String(texto).toLowerCase().normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g,\u0027\u0027).replace(/[^a-z0-9]/g,\u0027\u0027);\nconst CORTAS = [\u0027si\u0027,\u0027sii\u0027,\u0027ok\u0027,\u0027oka\u0027,\u0027okey\u0027,\u0027dale\u0027,\u0027confirmo\u0027,\u0027confirmar\u0027,\u0027listo\u0027,\u0027ya\u0027,\u0027correcto\u0027,\u0027sipi\u0027,\n                \u0027no\u0027,\u0027nop\u0027,\u0027cancelar\u0027,\u0027cancela\u0027,\u0027anular\u0027,\u0027nel\u0027,\u0027negativo\u0027];\nconst esRespuestaCorta = CORTAS.indexOf(t) !== -1;\nconst miTs = String(Date.now()) + \u0027-\u0027 + Math.random().toString(36).slice(2,8);\nreturn [{ json: { chatId, texto, esRespuestaCorta, miTs, keyBuf: \u0027bufTasas:\u0027+chatId, keyTok: \u0027tokTasas:\u0027+chatId } }];"
+                                     },
+                      "id":  "g1000000-0000-4000-9000-prepdebounce1",
+                      "name":  "Prep Debounce",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -60,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "corta-1",
+                                                                                   "leftValue":  "={{ $json.esRespuestaCorta }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "boolean"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "g2000000-0000-4000-9000-escorta000001",
+                      "name":  "¿Respuesta Corta?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       60,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "list":  "={{ $(\u0027Prep Debounce\u0027).first().json.keyBuf }}",
+                                         "operation":  "push",
+                                         "tail":  true,
+                                         "messageData":  "={{ $(\u0027Prep Debounce\u0027).first().json.texto }}"
+                                     },
+                      "id":  "g3000000-0000-4000-9000-rpushtasas001",
+                      "name":  "Redis Guardar Msg",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       460
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $(\u0027Prep Debounce\u0027).first().json.miTs }}",
+                                         "expire":  true,
+                                         "ttl":  180,
+                                         "keyType":  "string",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).first().json.keyTok }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "g4000000-0000-4000-9000-rsettoktasas1",
+                      "name":  "Redis Marcar Token",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       200,
+                                       460
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "unit":  "seconds",
+                                         "amount":  45
+                                     },
+                      "id":  "g5000000-0000-4000-9000-esperar20s001",
+                      "name":  "Esperar Mensajes",
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       340,
+                                       460
+                                   ],
+                      "webhookId":  "b7c8d9e0-1122-4334-9556-esperatasas01"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).first().json.keyTok }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "tokenActual",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "g6000000-0000-4000-9000-rgettoktasas1",
+                      "name":  "Redis Leer Token",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       480,
+                                       460
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const miTs = $(\u0027Prep Debounce\u0027).first().json.miTs;\nlet actual = $json.tokenActual;\nif (actual === undefined || actual === null) { try { actual = $(\u0027Redis Leer Token\u0027).first().json.tokenActual; } catch(e){} }\nif (String(actual) !== String(miTs)) return [];   // llego otro mensaje despues: esta ejecucion no responde\nreturn [{ json: { ok: true } }];"
+                                     },
+                      "id":  "g7000000-0000-4000-9000-filtrarult001",
+                      "name":  "Filtrar Ultimo",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       620,
+                                       460
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).first().json.keyBuf }}",
+                                         "keyType":  "list",
+                                         "propertyName":  "mensajes",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "g8000000-0000-4000-9000-rgetlisttasas",
+                      "name":  "Redis Leer Mensajes",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       760,
+                                       460
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ $(\u0027Prep Debounce\u0027).first().json.keyBuf }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "g9000000-0000-4000-9000-rdelbuftasas1",
+                      "name":  "Redis Borrar Buffer",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       900,
+                                       460
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let arr = [];\ntry { arr = $(\u0027Redis Leer Mensajes\u0027).first().json.mensajes; } catch(e){}\nif (!Array.isArray(arr)) arr = (arr === undefined || arr === null) ? [] : [arr];\nconst textoFinal = arr.join(\u0027\\n\\n\u0027).trim();\n// Se conserva la lista SIN juntar: la IA lee UN mensaje por vez (juntarlos le baja mucho la\n// precision; con 3 mensajes de golpe se salteo una seccion entera y se invento un pais).\nreturn [{ json: { textoFinal, mensajes: arr, cuantos: arr.length } }];"
+                                     },
+                      "id":  "ga000000-0000-4000-9000-combinarmsgs1",
+                      "name":  "Combinar Mensajes",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1040,
+                                       460
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "url":  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv"
+                                     },
+                      "id":  "a3000000-0000-4000-9000-leerpaises001",
+                      "name":  "Leer Paises",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       0,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  1500,
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ \u0027pendiente:tasas:\u0027 + $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "pendienteRaw",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "a4000000-0000-4000-9000-rgetpend00001",
+                      "name":  "Redis Leer Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       200,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== Utilidades =====\nfunction norm(s){ return String(s||\u0027\u0027).toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).replace(/[^a-z0-9]/g,\u0027\u0027); }\n\n// Numeros en formato latino, tolerante. Como el resultado SIEMPRE se le muestra al usuario\n// para confirmar, un caso ambiguo se ve antes de escribir en la hoja.\nfunction numLatino(s){\n  let v = String(s||\u0027\u0027).trim().replace(/\\s/g,\u0027\u0027);\n  if(!v) return null;\n  if(v.indexOf(\u0027,\u0027) !== -1){\n    v = v.replace(/\\./g,\u0027\u0027).replace(\u0027,\u0027, \u0027.\u0027);            // coma = decimal, puntos = miles\n  } else {\n    const p = v.split(\u0027.\u0027);\n    if(p.length \u003e 2) v = p.join(\u0027\u0027);                       // 1.000.000 -\u003e 1000000\n    else if(p.length === 2 \u0026\u0026 p[1].length === 3) v = p.join(\u0027\u0027); // 3.400 -\u003e 3400 (miles)\n    // un punto con 1-2 decimales (4.92) se deja tal cual\n  }\n  const n = parseFloat(v);\n  return isNaN(n) ? null : n;\n}\n\n// Parser CSV robusto (mismo criterio que el bot: respeta comillas y celdas multi-linea).\nfunction parseCSV(text){\n  const Q = \u0027\"\u0027;\n  const rows=[]; let row=[]; let cur=\u0027\u0027; let inQ=false;\n  for (let i=0; i\u003ctext.length; i++){\n    const c = text[i];\n    if (inQ){ if (c===Q){ if (text[i+1]===Q){ cur+=Q; i++; } else inQ=false; } else cur+=c; }\n    else { if (c===Q) inQ=true; else if (c===\u0027,\u0027) { row.push(cur); cur=\u0027\u0027; } else if (c===\u0027\\r\u0027) { } else if (c===\u0027\\n\u0027) { row.push(cur); rows.push(row); row=[]; cur=\u0027\u0027; } else cur+=c; }\n  }\n  if (cur.length\u003e0 || row.length\u003e0){ row.push(cur); rows.push(row); }\n  return rows.map(r =\u003e r.map(s =\u003e s.trim())).filter(r =\u003e r.some(c =\u003e c.length\u003e0));\n}\n\n// ===== Entradas =====\n// El texto sale de \"Combinar Mensajes\" (varios mensajes agrupados en la pausa de 20s).\n// Si esa rama no corrio (respuesta corta si/no), se usa el mensaje de Telegram directo.\nlet texto = \u0027\u0027, chatId = \u0027\u0027;\ntry {\n  const msg = $(\u0027Telegram Trigger\u0027).first().json.message || {};\n  texto = String(msg.text || \u0027\u0027).trim();\n  chatId = String((msg.chat \u0026\u0026 msg.chat.id) || \u0027\u0027);\n} catch(e){}\ntry {\n  const c = $(\u0027Combinar Mensajes\u0027).first().json;\n  if (c \u0026\u0026 c.textoFinal) texto = String(c.textoFinal).trim();\n} catch(e){}\n\nlet pendiente = null;\ntry {\n  const raw = $(\u0027Redis Leer Pendiente\u0027).first().json.pendienteRaw;\n  if (raw) pendiente = (typeof raw === \u0027string\u0027) ? JSON.parse(raw) : raw;\n} catch(e){ pendiente = null; }\n\n// Paises validos leidos del CSV en vivo (para no escribir un pais que no existe en la hoja).\nconst paisesValidos = [];\ntry {\n  const csv = String($(\u0027Leer Paises\u0027).first().json.data || \u0027\u0027);\n  const filas = parseCSV(csv);\n  for (let i=1; i\u003cfilas.length; i++){\n    const p = (filas[i][0]||\u0027\u0027).trim();\n    if (p) paisesValidos.push(p);\n  }\n} catch(e){}\n\nconst t = norm(texto);\n\n// ===== 1) Hay algo pendiente de confirmar =====\nif (pendiente \u0026\u0026 pendiente.filas \u0026\u0026 pendiente.filas.length){\n  const esSi = [\u0027si\u0027,\u0027sii\u0027,\u0027ok\u0027,\u0027oka\u0027,\u0027okey\u0027,\u0027dale\u0027,\u0027confirmo\u0027,\u0027confirmar\u0027,\u0027listo\u0027,\u0027ya\u0027,\u0027correcto\u0027,\u0027sipi\u0027].indexOf(t) !== -1;\n  const esNo = [\u0027no\u0027,\u0027nop\u0027,\u0027cancelar\u0027,\u0027cancela\u0027,\u0027anular\u0027,\u0027nel\u0027,\u0027negativo\u0027].indexOf(t) !== -1;\n  if (esSi) return [{ json: { accion:\u0027confirmar\u0027, chatId, filas: pendiente.filas, resumen: pendiente.resumen } }];\n  if (esNo) return [{ json: { accion:\u0027cancelar\u0027, chatId } }];\n  // Si escribio otra cosa, lo tratamos como un mensaje NUEVO (sobrescribe el pendiente).\n}\n\n// ===== 2) Interpretar tasas nuevas =====\n// Se aceptan DOS formatos (y mezclados):\n//   A) una linea por pais:   \"Colombia 3100 3130\"  |  \"col 3100/3130\"  |  \"col r 3130\"\n//   B) bloque multi-linea:   \"Colombia\" / \"Envio: 3100\" / \"Recibo: 3130\"  (: opcional, abreviaturas ok)\n\n// Abreviaturas y codigos de moneda -\u003e nombre de pais. Solo se usan si no hubo match exacto.\nconst ALIAS = {\n  col:\u0027Colombia\u0027, colom:\u0027Colombia\u0027, cop:\u0027Colombia\u0027,\n  ven:\u0027Venezuela\u0027, vzla:\u0027Venezuela\u0027, vzl:\u0027Venezuela\u0027, ves:\u0027Venezuela\u0027, bs:\u0027Venezuela\u0027, bolivares:\u0027Venezuela\u0027,\n  arg:\u0027Argentina\u0027, ars:\u0027Argentina\u0027,\n  bra:\u0027Brasil\u0027, brasil:\u0027Brasil\u0027, brl:\u0027Brasil\u0027, reales:\u0027Brasil\u0027, reais:\u0027Brasil\u0027,\n  chi:\u0027Chile\u0027, chl:\u0027Chile\u0027, clp:\u0027Chile\u0027,\n  per:\u0027Peru\u0027, pe:\u0027Peru\u0027, pen:\u0027Peru\u0027, soles:\u0027Peru\u0027, sol:\u0027Peru\u0027,\n  mex:\u0027Mexico\u0027, mx:\u0027Mexico\u0027, mxn:\u0027Mexico\u0027,\n  uru:\u0027Uruguay\u0027, uy:\u0027Uruguay\u0027, uyu:\u0027Uruguay\u0027,\n  par:\u0027Paraguay\u0027, py:\u0027Paraguay\u0027, pyg:\u0027Paraguay\u0027, guaranies:\u0027Paraguay\u0027,\n  rd:\u0027Republica Dominicana\u0027, repdom:\u0027Republica Dominicana\u0027, dominicana:\u0027Republica Dominicana\u0027, dop:\u0027Republica Dominicana\u0027,\n  gua:\u0027Guatemala\u0027, gt:\u0027Guatemala\u0027, gtq:\u0027Guatemala\u0027, quetzales:\u0027Guatemala\u0027,\n  bol:\u0027Bolivia\u0027, bob:\u0027Bolivia\u0027,\n  ecu:\u0027Ecuador\u0027, ec:\u0027Ecuador\u0027,\n  pan:\u0027Panama\u0027, pa:\u0027Panama\u0027,\n  cr:\u0027Costa Rica\u0027, costarica:\u0027Costa Rica\u0027, crc:\u0027Costa Rica\u0027, colones:\u0027Costa Rica\u0027,\n  hon:\u0027Honduras\u0027, hn:\u0027Honduras\u0027, lempiras:\u0027Honduras\u0027,\n  nic:\u0027Nicaragua\u0027, ni:\u0027Nicaragua\u0027, cordobas:\u0027Nicaragua\u0027,\n  eur:\u0027Europa\u0027, euros:\u0027Europa\u0027, euro:\u0027Europa\u0027\n};\n\n// Reconoce la palabra clave de una linea/token: envio o recibo (con abreviaturas).\nfunction tipoClave(k){\n  const n = norm(k);\n  if(!n) return null;\n  if(/^(e|env|envi|envio|envios|enviar|salida|venta|vender|v)$/.test(n)) return \u0027envio\u0027;\n  if(/^(r|rec|recib|recibo|recibos|recibir|recibe|entrada|compra|comprar|c)$/.test(n)) return \u0027recibo\u0027;\n  return null;\n}\n\n// Resuelve el nombre escrito contra los paises reales de la hoja.\n// estricto=true (formato de una linea): NO usa el emparejado laxo por \"contiene\", porque con texto\n// sucio de proveedor (ej. \"SOL/ CHILE (CLP)\") aceptaba cualquier cosa y escribia tasas equivocadas.\nfunction resolverPais(nombre, estricto){\n  const nq = norm(nombre);\n  if(!nq) return null;\n  let m = paisesValidos.find(p =\u003e norm(p) === nq);          // 1) exacto\n  if(m) return m;\n  if(ALIAS[nq]){                                            // 2) alias/codigo de moneda\n    const a = norm(ALIAS[nq]);\n    m = paisesValidos.find(p =\u003e norm(p) === a);\n    if(m) return m;\n    const c0 = paisesValidos.filter(p =\u003e norm(p).indexOf(a) === 0);\n    if(c0.length) return c0.sort((x,y)=\u003ex.length-y.length)[0];\n  }\n  // 3) empieza por lo escrito -\u003e el nombre MAS CORTO (evita agarrar \"Efectivo Venezuela-Zulia\")\n  const c1 = paisesValidos.filter(p =\u003e norm(p).indexOf(nq) === 0);\n  if(c1.length) return c1.sort((x,y)=\u003ex.length-y.length)[0];\n  if(estricto) return null;\n  const c2 = paisesValidos.filter(p =\u003e norm(p).indexOf(nq) !== -1 || nq.indexOf(norm(p)) !== -1);\n  if(c2.length) return c2.sort((x,y)=\u003ex.length-y.length)[0];\n  return null;\n}\n\n// FORMATO A: \"\u003cpais\u003e [marca] \u003cnum\u003e [marca] \u003cnum\u003e\" en UNA linea.\nfunction parseUnaLinea(linea){\n  const l = String(linea||\u0027\u0027).trim().replace(/[;,.\\-]+$/,\u0027\u0027);\n  if(!l) return null;\n  // OJO: la coma NO separa tokens, es el decimal latino (\"257,4\" es UN numero, no dos).\n  const toks = l.split(/[\\s\\/|;]+/).filter(Boolean);\n  if(toks.length \u003c 2) return null;\n  // Se separan desde el FINAL los tokens que son numero o marca (envio/recibo).\n  const cola = [];\n  while(toks.length){\n    const ult = toks[toks.length-1];\n    if(numLatino(ult) !== null || tipoClave(ult)) cola.unshift(toks.pop());\n    else break;\n  }\n  if(!toks.length || !cola.length) return null;\n  // El nombre del pais tiene que verse LIMPIO: solo letras (con tildes), puntos y espacios, y como\n  // mucho 3 palabras. Si trae emojis, banderas, parentesis o codigos raros, es texto de proveedor:\n  // se devuelve null para que lo agarre la IA en vez de adivinar mal.\n  const crudoPais = toks.join(\u0027 \u0027).trim();\n  if(!/^[a-zA-ZÀ-ɏ.\\s]+$/.test(crudoPais)) return null;\n  if(crudoPais.split(/\\s+/).filter(Boolean).length \u003e 3) return null;\n  const pais = resolverPais(crudoPais, true);\n  if(!pais) return { errorPais: crudoPais };\n\n  let envio = null, recibo = null;\n  const libres = [];\n  for(let i=0; i\u003ccola.length; i++){\n    const marca = tipoClave(cola[i]);\n    if(marca){\n      const val = numLatino(cola[i+1]);\n      if(val !== null){ if(marca === \u0027envio\u0027) envio = val; else recibo = val; i++; }\n      continue;\n    }\n    const v = numLatino(cola[i]);\n    if(v !== null) libres.push(v);\n  }\n  if(envio === null \u0026\u0026 recibo === null){\n    if(libres.length \u003e= 1) envio = libres[0];\n    if(libres.length \u003e= 2) recibo = libres[1];\n  } else {\n    for(const v of libres){\n      if(envio === null){ envio = v; continue; }\n      if(recibo === null){ recibo = v; }\n    }\n  }\n  if(envio === null \u0026\u0026 recibo === null) return null;\n  return { pais, envio, recibo };\n}\n\nconst bloques = texto.split(/\\n\\s*\\n/).map(b =\u003e b.trim()).filter(Boolean);\nconst filas = [];\nconst errores = [];\n\nfunction agregarFila(pais, envio, recibo){\n  let f = filas.find(x =\u003e x.Pais === pais);\n  if(!f){ f = { Pais: pais }; filas.push(f); }\n  if(envio  !== null \u0026\u0026 envio  !== undefined) f[\u0027Tasa Envio\u0027]  = envio;\n  if(recibo !== null \u0026\u0026 recibo !== undefined) f[\u0027Tasa Recibo\u0027] = recibo;\n  return f;\n}\n\nfor (const bloque of bloques){\n  const lineas = bloque.split(\u0027\\n\u0027).map(l =\u003e l.trim()).filter(Boolean);\n  if (!lineas.length) continue;\n  // Un bloque SIN ningun numero es un encabezado o un saludo (\"Actualizacion\", \"Buen dia\"):\n  // se ignora en silencio, no es un error del usuario.\n  if (!/\\d/.test(bloque)) continue;\n\n  // Si la PRIMERA linea ya trae numeros -\u003e formato A (cada linea es un pais).\n  if (/\\d/.test(lineas[0])){\n    let ultima = null;\n    for (const ln of lineas){\n      const r = parseUnaLinea(ln);\n      if (r \u0026\u0026 r.pais){ ultima = agregarFila(r.pais, r.envio, r.recibo); continue; }\n      if (r \u0026\u0026 r.errorPais){ errores.push(\u0027\"\u0027 + r.errorPais + \u0027\": no existe en la hoja.\u0027); continue; }\n      // No es un pais: puede ser una linea suelta \"recibo: 3130\" del pais anterior.\n      const mk = ln.match(/^([a-zA-Zñáéíóúü]+)\\s*:?\\s*(.+)$/);\n      if (mk \u0026\u0026 ultima){\n        const marca = tipoClave(mk[1]);\n        const val = numLatino(mk[2]);\n        if (marca \u0026\u0026 val !== null) ultima[marca === \u0027envio\u0027 ? \u0027Tasa Envio\u0027 : \u0027Tasa Recibo\u0027] = val;\n      }\n    }\n    continue;\n  }\n\n  // Formato B: primera linea = pais, el resto claves.\n  const nombrePais = lineas[0].replace(/[:\\-]+$/,\u0027\u0027).trim();\n  // Si el \"nombre de pais\" viene sucio (emojis, banderas, asteriscos, frases largas) NO es algo que\n  // el usuario escribio: es texto de proveedor. Se ignora en silencio y se deja que lo lea la IA.\n  if(!/^[a-zA-ZÀ-ɏ.\\s]+$/.test(nombrePais) || nombrePais.split(/\\s+/).filter(Boolean).length \u003e 3) continue;\n  let envio = null, recibo = null;\n  for (let i=1; i\u003clineas.length; i++){\n    const mk = lineas[i].match(/^([a-zA-Zñáéíóúü]+)\\s*:?\\s*(.+)$/);   // \":\" OPCIONAL\n    if (!mk) continue;\n    const marca = tipoClave(mk[1]);\n    const val = numLatino(mk[2]);\n    if (!marca || val === null) continue;\n    if (marca === \u0027envio\u0027) envio = val; else recibo = val;\n  }\n  if (envio === null \u0026\u0026 recibo === null){\n    errores.push(\u0027\"\u0027 + nombrePais + \u0027\": no encontre ninguna tasa (envio o recibo).\u0027);\n    continue;\n  }\n  const pais = resolverPais(nombrePais, false);\n  if (!pais){ errores.push(\u0027\"\u0027 + nombrePais + \u0027\": no existe en la hoja de tasas.\u0027); continue; }\n  agregarFila(pais, envio, recibo);\n}\n\n// ===== 3) Nada reconocido: si tiene numeros, que lo lea la IA =====\n// Los \"errores\" NO bloquean a la IA: frases sueltas de un mensaje de proveedor\n// (ej. \"Pedidos +573219343265\") generaban errores falsos y tapaban el mensaje entero.\n// Se pasan igual, para mostrarlos solo si la IA tampoco encuentra nada.\nif (!filas.length){\n  const cuantosNumeros = (texto.match(/\\d+[.,]?\\d*/g) || []).length;\n  if (cuantosNumeros \u003e= 1 \u0026\u0026 texto.length \u003e= 12){\n    const promptSistema = [\n      \u0027Sos un extractor de tasas de cambio. Te paso el texto CRUDO del mensaje de UN proveedor de remesas.\u0027,\n      \u0027Devolve SOLO JSON valido con esta forma exacta:\u0027,\n      \u0027{\"proveedores\":[{\"nombre\":\"\u003cnombre del proveedor\u003e\",\"filas\":[{\"pais\":\"\u003cnombre EXACTO de la lista\u003e\",\"envio\":\u003cnumero o null\u003e,\"recibo\":\u003cnumero o null\u003e}]}]}\u0027,\n      \u0027\u0027,\n      \u0027PAISES VALIDOS (usa EXACTAMENTE estos nombres, tal cual estan escritos):\u0027,\n      paisesValidos.join(\u0027 | \u0027),\n      \u0027\u0027,\n      \u0027REGLAS:\u0027,\n      \u0027- El nombre del proveedor: si el texto empieza con \"Proveedor: X\" usa X. Si no, usa el titulo del mensaje (ej. \"*CORPORACION GRUPO ELITE*\"). Si no hay ninguno, usa \"Proveedor\".\u0027,\n      \u0027- MUY IMPORTANTE: un mismo mensaje suele traer DOS listas separadas, una de ENVIO y otra de RECIBO (a veces con un titulo tipo \"*RECIBO*\"). Tenes que extraer las DOS. Recorre el mensaje linea por linea de arriba a abajo y no te saltees ninguna seccion.\u0027,\n      \u0027- NUNCA asignes un numero a un pais que no aparece en ESA misma linea. Si la linea dice COP es Colombia, si dice ARS es Argentina, etc. No inventes paises.\u0027,\n      \u0027\u0027,\n      \u0027=== COMO DECIDIR SI UN NUMERO ES \"ENVIO\" O \"RECIBO\" (lo mas importante) ===\u0027,\n      \u0027ENVIO  = el dolar/USDT va HACIA el pais. Nosotros pagamos dolares y alguien cobra moneda local alla.\u0027,\n      \u0027RECIBO = la moneda local va HACIA el dolar. Alguien entrega moneda local alla y nosotros recibimos dolares.\u0027,\n      \u0027\u0027,\n      \u0027Pista 1 - ORDEN DE LAS MONEDAS (la mas confiable): \"X/Y\" significa de X hacia Y.\u0027,\n      \u0027  \"USDT/COP\", \"USD/CHILE\", \"DOLAR/ARS\"  -\u003e ENVIO.\u0027,\n      \u0027  \"COP/USDT\", \"ARS/DOLAR\", \"MXN/USDT\"   -\u003e RECIBO.\u0027,\n      \u0027\u0027,\n      \u0027Pista 2 - CUIDADO: cuando el proveedor habla en primera persona lo dice desde SU lado,\u0027,\n      \u0027que es el CONTRARIO al nuestro. Fijate SIEMPRE en que moneda menciona:\u0027,\n      \u0027  \"RECIBO USDT\" / \"USDT RECIBO\" / \"recibo dolares\"  -\u003e el proveedor RECIBE dolares y entrega moneda local -\u003e para nosotros es ENVIO.\u0027,\n      \u0027  \"DOY USDT\" / \"USDT DOY\" / \"entrego dolares\"       -\u003e el proveedor DA dolares y cobra moneda local     -\u003e para nosotros es RECIBO.\u0027,\n      \u0027  \"RECIBIENDO DEPOSITOS\" / \"recibo COP\" / \"recibo pesos\" -\u003e el proveedor recibe MONEDA LOCAL -\u003e RECIBO.\u0027,\n      \u0027  \"RETIROS\" / \"retiros sin tarjeta\" (el destinatario retira alla) -\u003e ENVIO.\u0027,\n      \u0027  \"pagando usdt x COP\" / \"pago usdt por pesos\"      -\u003e se pagan dolares para entregar pesos -\u003e ENVIO.\u0027,\n      \u0027\u0027,\n      \u0027Pista 3 - CONTROL FINAL: para un mismo pais el numero de ENVIO SIEMPRE es MENOR que el de RECIBO\u0027,\n      \u0027(esa diferencia es la ganancia del proveedor). Si te quedo un ENVIO mas alto que un RECIBO del mismo\u0027,\n      \u0027pais, casi seguro invertiste la direccion: revisala antes de responder.\u0027,\n      \u0027\u0027,\n      \u0027- IGNORA por completo las lineas cuya moneda base NO sea dolar o USDT (ej. \"SOL/CHILE\" es base sol peruano: ignorala).\u0027,\n      \u0027- IGNORA lineas sin numero claro (\"CONSULTAR AL MOMENTO\", tachadas, vacias) y los telefonos de contacto.\u0027,\n      \u0027- Numeros en formato latino: la coma es decimal y el punto es de miles. \"1.668\" = 1668. \"4,82\" = 4.82. Devolvelos como numero JSON normal (punto decimal).\u0027,\n      \u0027- Los digitos pueden venir como emoji (1️⃣9️⃣.4️⃣0️⃣ = 19.40). Convertilos a numero normal.\u0027,\n      \u0027- Si de un pais solo hay envio o solo recibo, pone null en el otro.\u0027,\n      \u0027- Si un pais del mensaje no esta en la lista de validos, omitilo.\u0027,\n      \u0027- No inventes ningun numero: si no esta en el mensaje, no lo pongas.\u0027\n    ].join(\u0027\\n\u0027);\n    // UN item por mensaje original -\u003e UNA llamada a la IA por proveedor. Juntarlos en una sola\n    // llamada le baja mucho la precision (se salteo una lista entera de envios y se invento un pais).\n    let partes = [];\n    try {\n      const c = $(\u0027Combinar Mensajes\u0027).first().json;\n      if (c \u0026\u0026 Array.isArray(c.mensajes)) partes = c.mensajes.filter(x =\u003e String(x||\u0027\u0027).trim().length \u003e 10);\n    } catch(e){}\n    if (!partes.length) partes = [texto];\n    return partes.map(p =\u003e ({ json: { accion:\u0027ia\u0027, chatId, textoOriginal: String(p).trim(), promptSistema, errores: errores.join(\u0027\\n\u0027) } }));\n  }\n  return [{ json: { accion:\u0027error\u0027, chatId, errores: errores.join(\u0027\\n\u0027) } }];\n}\n\n// Resumen legible para que el usuario confirme ANTES de escribir.\nconst lineasResumen = filas.map(f =\u003e {\n  const partes = [];\n  if (f[\u0027Tasa Envio\u0027]  !== undefined) partes.push(\u0027envio \u0027 + f[\u0027Tasa Envio\u0027]);\n  if (f[\u0027Tasa Recibo\u0027] !== undefined) partes.push(\u0027recibo \u0027 + f[\u0027Tasa Recibo\u0027]);\n  const noTocado = (f[\u0027Tasa Envio\u0027] === undefined) ? \u0027 (envio no se toca)\u0027\n                 : (f[\u0027Tasa Recibo\u0027] === undefined) ? \u0027 (recibo no se toca)\u0027 : \u0027\u0027;\n  return \u0027• \u0027 + f.Pais + \u0027: \u0027 + partes.join(\u0027, \u0027) + noTocado;\n});\nlet resumen = lineasResumen.join(\u0027\\n\u0027);\nif (errores.length) resumen += \u0027\\n\\n⚠️ Ignorado:\\n\u0027 + errores.join(\u0027\\n\u0027);\n\nreturn [{ json: { accion:\u0027nuevo\u0027, chatId, filas, resumen, pendienteJson: JSON.stringify({ filas, resumen }) } }];"
+                                     },
+                      "id":  "a5000000-0000-4000-9000-interpretar01",
+                      "name":  "Interpretar Mensaje",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       400,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-conf",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "confirmar",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "confirmar"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-canc",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "cancelar",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "cancelar"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-nuevo",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "nuevo",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "nuevo"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-err",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "error",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "error"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-ia",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "ia",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "ia"
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "id":  "a6000000-0000-4000-9000-router0000001",
+                      "name":  "Router",
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       600,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const d = $(\u0027Interpretar Mensaje\u0027).first().json;\nconst filas = (d \u0026\u0026 d.filas) || [];\nif (!filas.length) return [];\nreturn filas.map(f =\u003e ({ json: f }));"
+                                     },
+                      "id":  "b1000000-0000-4000-9000-expandirfila1",
+                      "name":  "Expandir Filas",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       820,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "authentication":  "serviceAccount",
+                                         "resource":  "sheet",
+                                         "operation":  "update",
+                                         "documentId":  {
+                                                            "__rl":  true,
+                                                            "value":  "1bkLLIh0i1ml9KOEl_QiCNIWlQVFErfjtPTnLNYfAp5s",
+                                                            "mode":  "id"
+                                                        },
+                                         "sheetName":  {
+                                                           "__rl":  true,
+                                                           "value":  "0",
+                                                           "mode":  "id"
+                                                       },
+                                         "columns":  {
+                                                         "mappingMode":  "autoMapInputData",
+                                                         "matchingColumns":  [
+                                                                                 "Pais"
+                                                                             ],
+                                                         "schema":  [
+
+                                                                    ],
+                                                         "value":  {
+
+                                                                   }
+                                                     },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b2000000-0000-4000-9000-updatesheet01",
+                      "name":  "Actualizar Hoja",
+                      "type":  "n8n-nodes-base.googleSheets",
+                      "typeVersion":  4.5,
+                      "position":  [
+                                       1020,
+                                       60
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ \u0027pendiente:tasas:\u0027 + $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "b3000000-0000-4000-9000-rdelpend00001",
+                      "name":  "Redis Borrar Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1220,
+                                       60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Se ejecuta una vez, despues de escribir en la hoja.\nconst d = $(\u0027Interpretar Mensaje\u0027).first().json;\nconst n = ((d \u0026\u0026 d.filas) || []).length;\nreturn [{ json: { texto: \u0027✅ Listo, actualice \u0027 + n + \u0027 \u0027 + (n === 1 ? \u0027pais\u0027 : \u0027paises\u0027) + \u0027 en la hoja.\\n\\n\u0027 + (d.resumen || \u0027\u0027) } }];"
+                                     },
+                      "id":  "b4000000-0000-4000-9000-textook000001",
+                      "name":  "Texto Confirmado",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1420,
+                                       60
+                                   ],
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "additionalFields":  {
+
+                                                              },
+                                         "text":  "={{ $json.texto }}"
+                                     },
+                      "id":  "b5000000-0000-4000-9000-tgok00000001",
+                      "name":  "Avisar Actualizado",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1620,
+                                       60
+                                   ],
+                      "executeOnce":  true,
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ \u0027pendiente:tasas:\u0027 + $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "c1000000-0000-4000-9000-rdelcancel001",
+                      "name":  "Redis Borrar (Cancelar)",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       820,
+                                       220
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "additionalFields":  {
+
+                                                              },
+                                         "text":  "Cancelado, no toque nada en la hoja 👍"
+                                     },
+                      "id":  "c2000000-0000-4000-9000-tgcancel00001",
+                      "name":  "Avisar Cancelado",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1020,
+                                       220
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $json.pendienteJson }}",
+                                         "expire":  true,
+                                         "ttl":  900,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027pendiente:tasas:\u0027 + $json.chatId }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d1000000-0000-4000-9000-rsetpend00001",
+                      "name":  "Redis Guardar Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       820,
+                                       380
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let d = null, viaIA = false;\ntry { const b = $(\u0027Armar Borrador IA\u0027).first().json; if (b \u0026\u0026 (b.resumen || b.sinDatos)) { d = b; viaIA = true; } } catch(e){}\nif (!d) { try { d = $(\u0027Interpretar Mensaje\u0027).first().json; } catch(e){} }\nif (!d) return [{ json: { texto: \u0027No pude procesar el mensaje.\u0027 } }];\n\nif (d.sinDatos) return [{ json: { texto: d.textoDirecto, borrador: \u0027\u0027 } }];\n\nif (viaIA){\n  const provs = d.proveedores || [];\n  const encabezado = provs.length \u003e 1\n    ? (\u0027Compare \u0027 + provs.length + \u0027 proveedores (\u0027 + provs.join(\u0027, \u0027) + \u0027) y estas son las MEJORES:\u0027)\n    : (\u0027Lei el mensaje de \u0027 + (provs[0] || \u0027el proveedor\u0027) + \u0027. OJO: son SUS tasas, sin tus ajustes:\u0027);\n  // El BORRADOR va aparte, en un 2do mensaje limpio (sin encabezado ni explicaciones), asi se puede\n  // copiar de un toque en Telegram, editar y reenviar. Pedido del usuario.\n  const texto = encabezado + \u0027\\n\\n\u0027 + d.resumen\n    + \u0027\\n\\n(envio: gana el mas alto | recibo: gana el mas bajo)\u0027\n    + \u0027\\n\\nSi las queres tal cual, responde si.\u0027\n    + \u0027\\nSi no, copia el mensaje de abajo, cambia los numeros y mandamelo.\u0027;\n  return [{ json: { texto, borrador: d.borrador || \u0027\u0027 } }];\n}\nreturn [{ json: { texto: \u0027Entendi esto:\\n\\n\u0027 + d.resumen + \u0027\\n\\n¿Lo aplico en la hoja? Responde *si* o *no*.\u0027, borrador: \u0027\u0027 } }];"
+                                     },
+                      "id":  "d2000000-0000-4000-9000-textoask00001",
+                      "name":  "Texto Pregunta",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1020,
+                                       380
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "additionalFields":  {
+
+                                                              },
+                                         "text":  "={{ $json.texto }}"
+                                     },
+                      "id":  "d3000000-0000-4000-9000-tgask00000001",
+                      "name":  "Pedir Confirmacion",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1220,
+                                       380
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let b = \u0027\u0027;\ntry { b = String($(\u0027Texto Pregunta\u0027).first().json.borrador || \u0027\u0027).trim(); } catch(e){}\nif (!b) return [];\nreturn [{ json: { texto: b } }];"
+                                     },
+                      "id":  "d4000000-0000-4000-9000-prepborrador1",
+                      "name":  "Preparar Borrador",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1420,
+                                       380
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "additionalFields":  {
+
+                                                              },
+                                         "text":  "={{ $json.texto }}"
+                                     },
+                      "id":  "d5000000-0000-4000-9000-tgborrador001",
+                      "name":  "Enviar Borrador",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1620,
+                                       380
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const d = $(\u0027Interpretar Mensaje\u0027).first().json;\nconst detalle = d.errores ? (\u0027\\n\\nDetalle:\\n\u0027 + d.errores) : \u0027\u0027;\nconst ayuda = \u0027No pude leer las tasas.\u0027 + detalle\n  + \u0027\\n\\nFormas que entiendo:\\n\u0027\n  + \u0027\\n1) Corto (una linea por pais):\\nColombia 3100 3130\\nVenezuela 856 870\\n   (primer numero = envio, segundo = recibo)\\n\u0027\n  + \u0027\\n2) Con abreviatura:\\ncol 3100 3130\\nven 856 870\\n\u0027\n  + \u0027\\n3) Solo una de las dos:\\ncol 3100        (solo envio)\\ncol r 3130      (solo recibo)\\n\u0027\n  + \u0027\\n4) Largo (como antes):\\nColombia\\nenvio: 3100\\nrecibo: 3130\\n\u0027\n  + \u0027\\nTambien podes pegarme el mensaje tal cual te lo manda un proveedor y lo interpreto.\u0027;\nreturn [{ json: { texto: ayuda } }];"
+                                     },
+                      "id":  "e1000000-0000-4000-9000-textoerr00001",
+                      "name":  "Texto Ayuda",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       820,
+                                       540
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $(\u0027Telegram Trigger\u0027).first().json.message.chat.id }}",
+                                         "additionalFields":  {
+
+                                                              },
+                                         "text":  "={{ $json.texto }}"
+                                     },
+                      "id":  "e2000000-0000-4000-9000-tgerr00000001",
+                      "name":  "Avisar Formato",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1020,
+                                       540
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "qb4kRPKHUMWXYXLl",
+                                                              "name":  "Telegram Tasas Proveedores"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.openai.com/v1/chat/completions",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "openAiApi",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: \u0027gpt-4o\u0027, temperature: 0, response_format: { type: \u0027json_object\u0027 }, messages: [ { role: \u0027system\u0027, content: $json.promptSistema }, { role: \u0027user\u0027, content: $json.textoOriginal } ] }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "f1000000-0000-4000-9000-openaitasas01",
+                      "name":  "Leer con IA",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       820,
+                                       700
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function norm(s){ return String(s||\u0027\u0027).toLowerCase().normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g,\u0027\u0027).replace(/[^a-z0-9]/g,\u0027\u0027); }\nfunction parseCSV(text){\n  const Q = \u0027\"\u0027;\n  const rows=[]; let row=[]; let cur=\u0027\u0027; let inQ=false;\n  for (let i=0; i\u003ctext.length; i++){\n    const c = text[i];\n    if (inQ){ if (c===Q){ if (text[i+1]===Q){ cur+=Q; i++; } else inQ=false; } else cur+=c; }\n    else { if (c===Q) inQ=true; else if (c===\u0027,\u0027) { row.push(cur); cur=\u0027\u0027; } else if (c===\u0027\\r\u0027) { } else if (c===\u0027\\n\u0027) { row.push(cur); rows.push(row); row=[]; cur=\u0027\u0027; } else cur+=c; }\n  }\n  if (cur.length\u003e0 || row.length\u003e0){ row.push(cur); rows.push(row); }\n  return rows.map(r =\u003e r.map(s =\u003e s.trim())).filter(r =\u003e r.some(c =\u003e c.length\u003e0));\n}\n\nconst chatId = String($(\u0027Interpretar Mensaje\u0027).first().json.chatId || \u0027\u0027);\n\n// Paises reales de la hoja (para no escribir uno inventado por la IA).\nconst paisesValidos = [];\ntry {\n  const filas0 = parseCSV(String($(\u0027Leer Paises\u0027).first().json.data || \u0027\u0027));\n  for (let i=1; i\u003cfilas0.length; i++){ const p=(filas0[i][0]||\u0027\u0027).trim(); if(p) paisesValidos.push(p); }\n} catch(e){}\n\n// Respuestas de OpenAI: puede venir UNA por cada mensaje de proveedor (una llamada por mensaje).\nconst gruposIA = [];\nlet items = [];\ntry { items = $input.all(); } catch(e){ items = [{ json: $json }]; }\nlet n = 0;\nfor (const it of items){\n  let cont = \u0027\u0027;\n  try { cont = String(it.json.choices[0].message.content || \u0027\u0027); } catch(e){ continue; }\n  cont = cont.replace(/^```(?:json)?/i,\u0027\u0027).replace(/```$/,\u0027\u0027).trim();\n  let data = null;\n  try { data = JSON.parse(cont); } catch(e){ continue; }\n  n++;\n  if (data \u0026\u0026 Array.isArray(data.proveedores)) {\n    for (const g of data.proveedores) gruposIA.push(g);\n  } else if (data \u0026\u0026 Array.isArray(data.filas)) {\n    gruposIA.push({ nombre: data.nombre || (\u0027Proveedor \u0027 + n), filas: data.filas });\n  }\n}\n\n// Aplana: una entrada por (proveedor, pais).\nconst entradas = [];\nconst omitidos = [];\nfor (const g of gruposIA){\n  const prov = String((g \u0026\u0026 g.nombre) || \u0027Proveedor\u0027).trim().slice(0,40);\n  for (const f of ((g \u0026\u0026 g.filas) || [])){\n    const nq = norm(f.pais);\n    const pais = paisesValidos.find(p =\u003e norm(p) === nq) || paisesValidos.find(p =\u003e norm(p).indexOf(nq) === 0);\n    if (!pais){ if(f.pais \u0026\u0026 omitidos.indexOf(String(f.pais)) === -1) omitidos.push(String(f.pais)); continue; }\n    const e = (f.envio  === null || f.envio  === undefined || isNaN(Number(f.envio)))  ? null : Number(f.envio);\n    const r = (f.recibo === null || f.recibo === undefined || isNaN(Number(f.recibo))) ? null : Number(f.recibo);\n    if (e === null \u0026\u0026 r === null) continue;\n    entradas.push({ pais, prov, envio: e, recibo: r });\n  }\n}\n\n// ===== MEJOR OFERTA POR PAIS =====\n// Criterio confirmado por el usuario (2026-08-10):\n//   ENVIO  -\u003e gana el numero MAS ALTO  (el proveedor entrega mas moneda local por dolar)\n//   RECIBO -\u003e gana el numero MAS BAJO  (hacen falta menos pesos para conseguir un dolar)\nconst porPais = {};\nfor (const x of entradas){\n  if (!porPais[x.pais]) porPais[x.pais] = { envios: [], recibos: [] };\n  if (x.envio  !== null) porPais[x.pais].envios.push({ v: x.envio,  prov: x.prov });\n  if (x.recibo !== null) porPais[x.pais].recibos.push({ v: x.recibo, prov: x.prov });\n}\n\nconst filas = [];\nconst detalle = [];\nconst sospechosos = [];\nfor (const pais of Object.keys(porPais)){\n  const g = porPais[pais];\n  const mejorEnvio  = g.envios.length  ? g.envios.slice().sort((a,b) =\u003e b.v - a.v)[0]  : null;  // MAS ALTO\n  const mejorRecibo = g.recibos.length ? g.recibos.slice().sort((a,b) =\u003e a.v - b.v)[0] : null;  // MAS BAJO\n  const fila = { Pais: pais };\n  if (mejorEnvio)  fila[\u0027Tasa Envio\u0027]  = mejorEnvio.v;\n  if (mejorRecibo) fila[\u0027Tasa Recibo\u0027] = mejorRecibo.v;\n  filas.push(fila);\n\n  // Control: el envio SIEMPRE debe ser menor que el recibo (esa diferencia es la ganancia del\n  // proveedor). Si sale al reves, lo mas probable es que se haya confundido la direccion.\n  const invertido = (mejorEnvio \u0026\u0026 mejorRecibo \u0026\u0026 mejorEnvio.v \u003e= mejorRecibo.v);\n  if (invertido) sospechosos.push(pais);\n\n  const lin = [pais + (invertido ? \u0027   \u003c-- REVISAR: el envio quedo mayor o igual que el recibo\u0027 : \u0027\u0027)];\n  if (mejorEnvio){\n    const otros = g.envios.filter(x =\u003e x !== mejorEnvio).sort((a,b) =\u003e b.v - a.v);\n    lin.push(\u0027   envio  \u0027 + mejorEnvio.v + \u0027  \u003c- \u0027 + mejorEnvio.prov\n      + (otros.length ? \u0027\\n            otros: \u0027 + otros.map(o =\u003e o.v + \u0027 (\u0027 + o.prov + \u0027)\u0027).join(\u0027, \u0027) : \u0027\u0027));\n  } else lin.push(\u0027   envio  -- (ninguno lo trae)\u0027);\n  if (mejorRecibo){\n    const otros = g.recibos.filter(x =\u003e x !== mejorRecibo).sort((a,b) =\u003e a.v - b.v);\n    lin.push(\u0027   recibo \u0027 + mejorRecibo.v + \u0027  \u003c- \u0027 + mejorRecibo.prov\n      + (otros.length ? \u0027\\n            otros: \u0027 + otros.map(o =\u003e o.v + \u0027 (\u0027 + o.prov + \u0027)\u0027).join(\u0027, \u0027) : \u0027\u0027));\n  } else lin.push(\u0027   recibo -- (ninguno lo trae)\u0027);\n  detalle.push(lin.join(\u0027\\n\u0027));\n}\n\nif (!filas.length){\n  let det = \u0027\u0027;\n  try { const e = $(\u0027Interpretar Mensaje\u0027).first().json.errores; if(e) det = \u0027\\n\\nDetalle:\\n\u0027 + e; } catch(e){}\n  const texto = \u0027Lei el mensaje pero no pude sacar tasas claras de ahi.\u0027 + det\n    + \u0027\\n\\nPasamelas en formato corto, una linea por pais:\\n\\nColombia 3100 3130\\nVenezuela 856 870\u0027;\n  return [{ json: { chatId, filas: [], resumen: \u0027\u0027, pendienteJson: \u0027\u0027, sinDatos: true, textoDirecto: texto } }];\n}\n\nconst cuantosProv = [];\nfor (const x of entradas){ if (cuantosProv.indexOf(x.prov) === -1) cuantosProv.push(x.prov); }\n\nlet resumen = detalle.join(\u0027\\n\\n\u0027);\nif (sospechosos.length) resumen += \u0027\\n\\n⚠️ Revisa \u0027 + sospechosos.join(\u0027, \u0027)\n  + \u0027: el envio deberia ser MENOR que el recibo. Puede que el proveedor lo haya escrito al reves.\u0027;\nif (omitidos.length) resumen += \u0027\\n\\n(Omiti, no estan en tu hoja: \u0027 + omitidos.join(\u0027, \u0027) + \u0027)\u0027;\n\n// Borrador copiable: el usuario lo edita con SUS numeros y lo reenvia.\n// OJO: si solo hay RECIBO hay que marcarlo con \"r\", porque un numero suelto se lee como ENVIO.\nconst borrador = filas.map(f =\u003e {\n  const e = f[\u0027Tasa Envio\u0027], r = f[\u0027Tasa Recibo\u0027];\n  if (e !== undefined \u0026\u0026 r !== undefined) return f.Pais + \u0027 \u0027 + e + \u0027 \u0027 + r;\n  if (e !== undefined) return f.Pais + \u0027 \u0027 + e;\n  return f.Pais + \u0027 r \u0027 + r;\n}).join(\u0027\\n\u0027);\n\n// Resumen corto (el que se guarda como pendiente y se muestra al confirmar).\nconst resumenCorto = filas.map(f =\u003e {\n  const partes = [];\n  if (f[\u0027Tasa Envio\u0027]  !== undefined) partes.push(\u0027envio \u0027 + f[\u0027Tasa Envio\u0027]);\n  if (f[\u0027Tasa Recibo\u0027] !== undefined) partes.push(\u0027recibo \u0027 + f[\u0027Tasa Recibo\u0027]);\n  const noTocado = (f[\u0027Tasa Envio\u0027] === undefined) ? \u0027 (envio no se toca)\u0027\n                 : (f[\u0027Tasa Recibo\u0027] === undefined) ? \u0027 (recibo no se toca)\u0027 : \u0027\u0027;\n  return \u0027• \u0027 + f.Pais + \u0027: \u0027 + partes.join(\u0027, \u0027) + noTocado;\n}).join(\u0027\\n\u0027);\n\nreturn [{ json: { chatId, filas, resumen, resumenCorto, borrador, proveedores: cuantosProv,\n                  pendienteJson: JSON.stringify({ filas, resumen: resumenCorto }) } }];"
+                                     },
+                      "id":  "f2000000-0000-4000-9000-borradoria001",
+                      "name":  "Armar Borrador IA",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1020,
+                                       700
+                                   ]
+                  }
+              ],
+    "connections":  {
+                        "Telegram Trigger":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "¿Chat Autorizado?",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "¿Chat Autorizado?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Prep Debounce",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Prep Debounce":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "¿Respuesta Corta?",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "¿Respuesta Corta?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Leer Paises",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "node":  "Redis Guardar Msg",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Redis Guardar Msg":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Redis Marcar Token",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Redis Marcar Token":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Esperar Mensajes",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Esperar Mensajes":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Redis Leer Token",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Redis Leer Token":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Filtrar Ultimo",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Filtrar Ultimo":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Redis Leer Mensajes",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Redis Leer Mensajes":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Redis Borrar Buffer",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Redis Borrar Buffer":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Combinar Mensajes",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Combinar Mensajes":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Leer Paises",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Leer Paises":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Redis Leer Pendiente",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Redis Leer Pendiente":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Interpretar Mensaje",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Interpretar Mensaje":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Router",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Router":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "node":  "Expandir Filas",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Redis Borrar (Cancelar)",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Redis Guardar Pendiente",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Texto Ayuda",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Leer con IA",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Leer con IA":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Armar Borrador IA",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Armar Borrador IA":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Redis Guardar Pendiente",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Expandir Filas":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Actualizar Hoja",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Actualizar Hoja":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Redis Borrar Pendiente",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Redis Borrar Pendiente":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Texto Confirmado",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Texto Confirmado":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Avisar Actualizado",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Redis Borrar (Cancelar)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Avisar Cancelado",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Redis Guardar Pendiente":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Texto Pregunta",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Texto Pregunta":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Pedir Confirmacion",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Pedir Confirmacion":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Preparar Borrador",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Preparar Borrador":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Enviar Borrador",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Texto Ayuda":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Avisar Formato",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

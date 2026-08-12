@@ -41,7 +41,15 @@ if (!esMayorista) {
     esMayorista = filasMayor.some(it => it.json && (it.json.id || it.json.whatsapp));
   } catch(e) {}
 }
-const modo = esMayorista ? 'mayor' : 'detal';
+// Admin (Supabase perfiles_detal role='admin'): puede fijar su propia tarifa con "modo mayor"/"modo detal"
+// (ver nodo "Detectar Comando Admin"). Mientras no elija, ve tarifa detal por defecto.
+let esAdminSender = false;
+try { esAdminSender = !!$('Detectar Comando Admin').first().json.esAdmin; } catch(e){}
+let modoAdminGuardado = '';
+try { modoAdminGuardado = String($('Redis Leer Modo Admin').first().json.modoAdmin || '').toLowerCase().trim(); } catch(e){}
+const modo = esAdminSender
+  ? ((modoAdminGuardado === 'mayor' || modoAdminGuardado === 'detal') ? modoAdminGuardado : 'detal')
+  : (esMayorista ? 'mayor' : 'detal');
 
 if(!csv){
   return [{ json: { lista:[], modo, esMayorista, appUrl:APP_URL, hayEfectivoVe:false, totalPaises:0, error:'No se recibieron datos de tasas' } }];
@@ -329,7 +337,7 @@ $inputSchema = @'
 
 # ===================== SYSTEM MESSAGE DEL AGENTE =====================
 $systemMsg = @'
-=Eres asistente de *JK Remesas* por WhatsApp. RESPONDE EN MAXIMO 2-3 LINEAS, directo y humano. 1-2 emojis maximo. NO repitas frases de cortesia.
+=Eres asistente de *Cambios JK🚛* por WhatsApp. RESPONDE EN MAXIMO 2-3 LINEAS, directo y humano. 1-2 emojis maximo. NO repitas frases de cortesia.
 
 El cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea). Leelos todos y responde UNA sola vez, corto.
 
@@ -344,6 +352,9 @@ CUENTAS DEL DIA para pagar/depositar (UNA sola cuenta por pais por dia; usa el c
 
 REGLAS:
 - MONTO a convertir, cruce entre paises, o dolares/USDT/euros (EsDolar:true): USA la herramienta calculadora_remesas (pais_origen, pais_destino, monto, direccion "directa"/"inversa", modo "{{ $node["Code in JavaScript"].json.modo }}"). NUNCA calcules tu; da el numero que devuelve la herramienta.
+- LLAMA LA HERRAMIENTA SIEMPRE (LA REGLA MAS IMPORTANTE DE TODAS): para dar CUALQUIER cifra (tasa, monto, "recibes X") DEBES llamar calculadora_remesas en ESTE MISMO turno. Si en este turno no llamaste la herramienta, NO puedes escribir ningun numero: en ese caso pregunta lo que falte en vez de inventar.
+- LA CONVERSACION NO ES FUENTE DE TASAS: esta PROHIBIDO copiar, repetir o "acordarte" de una tasa o monto que aparezca mas arriba en el historial, aunque lo hayas dicho tu hace un minuto. Las tasas cambian durante el dia y la tarifa del cliente (detal/mayor) pudo haber cambiado entre mensajes: un numero viejo puede estar MAL aunque parezca correcto. Vuelve a llamar la herramienta SIEMPRE, incluso si la pregunta es identica a una anterior, si el cliente solo dice "dame la tasa" / "y ahora?" / "cuanto es?" / "si" / "ok", o si esta citando un mensaje tuyo. Repetir un numero sin recalcular es un ERROR GRAVE.
+- La tarifa vigente AHORA es "{{ $node["Code in JavaScript"].json.modo }}" y ese es el valor exacto que debes pasar en el parametro modo. Ignora cualquier tarifa que se haya usado antes en la conversacion.
 - FORMATO DE NUMEROS (MUY IMPORTANTE): los montos vienen en formato latino. El PUNTO son MILES y la COMA son decimales. Ejemplos: "710.000" = 710000 (setecientos diez mil); "1.000.000" = 1000000; "1.500,50" = 1500.5; "207,76" = 207.76. NUNCA interpretes el punto como decimal en montos grandes. Pasa a la herramienta el numero entero correcto (ej 710000, no 710).
 - IDENTIFICA bien ORIGEN y DESTINO antes de calcular. Mapeo moneda->lugar: COP/"pesos colombianos"=Colombia; USD/"dolares"/"$"=Ecuador, Zelle, Panama o EEUU (segun lo que diga); VES/"bolivares"/"Bs"=Venezuela; "efectivo en VE"=Efectivo Venezuela. "Cuanto recibo/me llega/me das" = el cliente da el monto de ORIGEN (direccion directa). "Cuanto debo enviar/pasar para que llegue X" = X es el DESTINO que debe llegar (direccion inversa). Si la frase es confusa, repregunta en pocas palabras antes de calcular.
 - SANIDAD / NO TERQUEAR: si el cliente dice que el monto esta mal, o el resultado se ve descomunal (millones cuando deberian ser cientos, o viceversa), NUNCA insistas "el calculo es correcto". Asume que pudo haber error de direccion o de formato de numero: vuelve a llamar la herramienta revisando origen, destino, direccion y el monto, y corrige.
@@ -486,6 +497,37 @@ try { arr = $('Redis Leer Mensajes').item.json.mensajes; } catch(e){}
 if (!Array.isArray(arr)) arr = (arr === undefined || arr === null) ? [] : [arr];
 const combinado = arr.join('\n\n').trim() || '(sin texto)';
 return [{ json: { mensajeCombinado: combinado } }];
+'@
+
+# ===================== CODIGO: DETECTAR COMANDO ADMIN (modo mayor/detal) =====================
+$detectarComandoAdminCode = @'
+// Detecta si el remitente es ADMIN (Supabase perfiles_detal role=admin, nodo "Consultar Admins")
+// y si escribio un comando de modo ("modo mayor" / "modo detal"). Un cliente normal JAMAS activa esto.
+let jid = '';
+try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; } catch(e){}
+const senderDigits = String(jid).replace(/\D/g,'');
+let esAdmin = false;
+try {
+  const admins = $('Consultar Admins').all().map(i => i.json).filter(a => a && a.whatsapp);
+  esAdmin = admins.some(a => { const d = String(a.whatsapp||'').replace(/\D/g,''); return d && (senderDigits===d || senderDigits.endsWith(d) || d.endsWith(senderDigits)); });
+} catch(e){}
+let texto = '';
+try { texto = String($('Combinar').item.json.mensajeCombinado || '').trim(); } catch(e){}
+// Acepta: "mayor", "detal", "al mayor", "al detal", "modo mayor", "tarifa al detalle", etc.
+// Se exige que el mensaje sea SOLO eso (anclado ^...$) para no secuestrar preguntas reales
+// del admin como "cuanto es al mayor para 5000" (eso debe cotizarse normal, no cambiar el modo).
+const m = texto.match(/^\s*(?:modo\s+|tarifa\s+|precio\s+|pasame\s+|ponme\s+|dame\s+)?(?:al\s+|a\s+|en\s+)?(mayor|mayorista|detal|detalle)\s*[.!?]*\s*$/i);
+const esComandoModo = !!(esAdmin && m);
+const modoElegido = m ? (/^may/i.test(m[1]) ? 'mayor' : 'detal') : '';
+return [{ json: { esAdmin, esComandoModo, modoElegido, jid } }];
+'@
+
+# ===================== CODIGO: CONFIRMAR MODO ADMIN (texto de respuesta) =====================
+$confirmarModoAdminCode = @'
+// Arma el mensaje corto de confirmacion tras guardar la preferencia de tarifa del admin.
+const modo = String($('Detectar Comando Admin').item.json.modoElegido || '').toLowerCase();
+const texto = modo === 'mayor' ? 'Listo, ahora te muestro tarifa MAYOR 👍' : 'Listo, ahora te muestro tarifa DETAL 👍';
+return [{ json: { output: texto } }];
 '@
 
 # ===================== CODIGO: DETECTAR APROBACION (comprobante + cuenta) =====================
@@ -679,6 +721,30 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1420,128); id = 'a7b8c9d0-aaaa-4aaa-9aaa-combinar0001'; name = 'Combinar'
   },
   [ordered]@{
+    # Trae TODOS los perfiles con role='admin' en perfiles_detal (Kelvin, Dario, quien se agregue despues).
+    # Se usa para el comando "modo mayor"/"modo detal" (Detectar Comando Admin). Nunca afecta a clientes.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_detal'; returnAll = $false; limit = 20; filterType = 'string'; filterString = 'role=eq.admin' }
+    id = 'f3a4b5c6-1234-4d99-9e11-supaadmin0001'; name = 'Consultar Admins'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1420,300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $detectarComandoAdminCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1490,300); id = 'f4a5b6c7-2345-4d10-9e22-detcomando01'; name = 'Detectar Comando Admin'
+  },
+  [ordered]@{
+    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'admin-cond-1'; leftValue = '={{ $json.esComandoModo }}'; rightValue = $true; operator = @{ type = 'boolean'; operation = 'equals' } } ); combinator = 'and' } }
+    id = 'f5a6b7c8-3456-4d21-9e33-escomando001'; name = '¿Es Comando Admin?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(1560,300)
+  },
+  [ordered]@{
+    parameters = @{ operation = 'set'; key = "={{ 'modoAdmin:' + `$json.jid }}"; value = '={{ $json.modoElegido }}'; keyType = 'string'; expire = $true; ttl = 2592000 }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1630,220); id = 'f6a7b8c9-4567-4d32-9e44-rsetmodo0001'; name = 'Redis Guardar Modo Admin'; credentials = $redisCred
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $confirmarModoAdminCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1700,220); id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'; name = 'Confirmar Modo Admin'
+  },
+  [ordered]@{
     parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'; options = @{} }
     id = 'd117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a'; name = 'Consultar Tasas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1600,128)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
@@ -703,6 +769,11 @@ $nodes = @(
     id = 'cd34ef56-ab78-4890-9cde-supacliente1'; name = 'Consultar Cliente'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1820,300)
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # Lee la preferencia de tarifa guardada por un admin (comando "modo mayor"/"modo detal"). Vacio para clientes normales.
+    parameters = @{ operation = 'get'; key = "={{ 'modoAdmin:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; propertyName = 'modoAdmin'; keyType = 'string'; options = @{} }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1840,300); id = 'f8a9b0c1-6789-4d54-9e66-rgetmodo0001'; name = 'Redis Leer Modo Admin'; credentials = $redisCred
   },
   [ordered]@{
     parameters = @{ jsCode = $mainCode }
@@ -813,11 +884,17 @@ $connections = [ordered]@{
   'Filtrar Ultimo'         = @{ main = @( ,@( @{ node='Redis Leer Mensajes'; type='main'; index=0 } ) ) }
   'Redis Leer Mensajes'    = @{ main = @( ,@( @{ node='Redis Borrar Buffer'; type='main'; index=0 } ) ) }
   'Redis Borrar Buffer'    = @{ main = @( ,@( @{ node='Combinar'; type='main'; index=0 } ) ) }
-  'Combinar'               = @{ main = @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) ) }
+  'Combinar'               = @{ main = @( ,@( @{ node='Consultar Admins'; type='main'; index=0 } ) ) }
+  'Consultar Admins'       = @{ main = @( ,@( @{ node='Detectar Comando Admin'; type='main'; index=0 } ) ) }
+  'Detectar Comando Admin' = @{ main = @( ,@( @{ node='¿Es Comando Admin?'; type='main'; index=0 } ) ) }
+  '¿Es Comando Admin?'     = @{ main = (@( ,@( @{ node='Redis Guardar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) )) }
+  'Redis Guardar Modo Admin' = @{ main = @( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) }
+  'Confirmar Modo Admin'   = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Consultar Tasas'        = @{ main = @( ,@( @{ node='Consultar Cuentas'; type='main'; index=0 } ) ) }
   'Consultar Cuentas'      = @{ main = @( ,@( @{ node='Consultar Mayorista'; type='main'; index=0 } ) ) }
   'Consultar Mayorista'    = @{ main = @( ,@( @{ node='Consultar Cliente'; type='main'; index=0 } ) ) }
-  'Consultar Cliente'      = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
+  'Consultar Cliente'      = @{ main = @( ,@( @{ node='Redis Leer Modo Admin'; type='main'; index=0 } ) ) }
+  'Redis Leer Modo Admin'  = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
   'Code in JavaScript'     = @{ main = @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) ) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
