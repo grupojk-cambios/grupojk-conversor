@@ -3,6 +3,18 @@ import html2canvas from 'html2canvas'
 import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa, calcularTasaEnvio, calcularTasaRecibo } from './constants'
 import './GeneradorEstados.css'
 
+/**
+ * Formatea una tasa para la pizarra: SIEMPRE 2 decimales.
+ * El redondeo es el normal (3er decimal >= 5 sube, si no baja): 10,319 -> 10,32 | 3,283 -> 3,28.
+ * Unica excepcion: una tasa tan chica que con 2 decimales quedaria en "0,00" (pasa en cruces
+ * entre monedas muy distintas); ahi se deja el formato automatico para no mostrar un cero.
+ */
+const formatearTasa = (valor) => {
+  if (!valor || isNaN(valor)) return '0,00'
+  if (Math.abs(valor) < 0.005) return formatearMonto(valor)
+  return formatearMonto(valor, null, 2)
+}
+
 export default function GeneradorEstados() {
   const [todosPaises, setTodosPaises] = useState([])
   const [paisOrigen, setPaisOrigen] = useState(null)
@@ -212,7 +224,7 @@ export default function GeneradorEstados() {
       else if (pais.codigo === 'EUR') bandera = '🇪🇺';
       else bandera = '📍';
       
-      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearMonto(tasaEnvio)}* | 📥 *${formatearMonto(tasaRecibo)}*\n`;
+      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearTasa(tasaEnvio)}* | 📥 *${formatearTasa(tasaRecibo)}*\n`;
     });
     
     texto += `\n⚠️ *Todos monto mínimo de $20*\n`;
@@ -462,7 +474,7 @@ export default function GeneradorEstados() {
                 />
               </div>
               <div className="dest-info">
-                <div className="dest-rate">{formatearMonto(pais.displayRate)}</div>
+                <div className="dest-rate">{formatearTasa(pais.displayRate)}</div>
                 <div className="dest-name">{pais.isInverse ? `x 1 ${pais.codigo}` : pais.displayUnit}</div>
               </div>
             </div>
@@ -646,7 +658,7 @@ export default function GeneradorEstados() {
                 {/* Tasa Envío */}
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.95em', fontWeight: 800, color: '#10b981', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
-                    {formatearMonto(tasaEnvio)}
+                    {formatearTasa(tasaEnvio)}
                   </div>
                   <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
                     x 1 USD
@@ -656,7 +668,7 @@ export default function GeneradorEstados() {
                 {/* Tasa Recibo */}
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.95em', fontWeight: 800, color: 'var(--primary-color)', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
-                    {formatearMonto(tasaRecibo)}
+                    {formatearTasa(tasaRecibo)}
                   </div>
                   <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
                     x 1 USD
