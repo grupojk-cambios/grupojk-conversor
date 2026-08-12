@@ -322,12 +322,13 @@ export function calcularConversionInversa(paisOrigen, paisDestino, montoRecibir,
 
 /**
  * Formatea un número según la moneda destino.
- * Usa 2 decimales por defecto, más para tasas menores a 10.
+ * Usa 2 decimales por defecto para evitar confusiones en toda la app.
+ * Única excepción: valores muy pequeños (menores a 0.005) conservan decimales extra para no mostrar "0,00".
  */
 export function formatearMonto(valor, codigo, maxDigits) {
   if (!valor || isNaN(valor)) return '0.00'
 
-  // Si nos piden decimales específicos (como en la tabla), los respetamos
+  // Si nos piden decimales específicos explícitos, los respetamos
   if (maxDigits !== undefined) {
     return valor.toLocaleString('es-CO', {
       minimumFractionDigits: 2,
@@ -335,13 +336,12 @@ export function formatearMonto(valor, codigo, maxDigits) {
     })
   }
 
-  // Lógica inteligente: Si el valor es muy pequeño (menor a 1), necesitamos al menos 4 decimales, y más si es muy muy pequeño
+  const valAbs = Math.abs(valor)
   let decimales = 2
-  if (valor < 0.00001) decimales = 7
-  else if (valor < 0.0001) decimales = 6
-  else if (valor < 0.001) decimales = 5
-  else if (valor < 1) decimales = 4
-  else if (valor < 100) decimales = 3
+  if (valAbs > 0 && valAbs < 0.00001) decimales = 7
+  else if (valAbs > 0 && valAbs < 0.0001) decimales = 6
+  else if (valAbs > 0 && valAbs < 0.001) decimales = 5
+  else if (valAbs > 0 && valAbs < 0.005) decimales = 4
 
   return valor.toLocaleString('es-CO', {
     minimumFractionDigits: 2,
