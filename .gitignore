@@ -25,3 +25,12 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# Volcados de n8n (ejecuciones, cuerpos de peticiones, respaldos sueltos de workflows).
+# Estos archivos traen las cabeceras "apikey" en texto plano y este repo es PUBLICO.
+# El respaldo bueno de los workflows es n8n mismo + los build_*.ps1 que los generan.
+ejecucion_*.json
+execution_*.json
+*_body.json
+workflow_*_actual.json
+JSON para N8N/
