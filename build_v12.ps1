@@ -307,7 +307,12 @@ function compute(paises){
     resultado = calcularConversion(o,d,montoN,modoN);
     explicacion = 'Enviando '+montoN+' '+o.codigo+' ('+o.nombre+') el destinatario recibe '+resultado.toFixed(2)+' '+d.codigo+' ('+d.nombre+').';
   }
-  return JSON.stringify({ ok:true, modo:modoN, direccion, origen:o.nombre, monedaOrigen:o.moneda, codigoOrigen:o.codigo, destino:d.nombre, monedaDestino:d.moneda, codigoDestino:d.codigo, monto:montoN, resultado:Number(resultado.toFixed(2)), tasaCruzada:Number(cross.toFixed(6)), explicacion });
+  // La tasa se entrega con 2 decimales, IGUAL que la app y la pizarra, para que el cliente nunca
+  // vea la misma tasa escrita de dos formas distintas. Antes iba con 6 decimales y la IA redondeaba
+  // a su antojo (a veces daba 816,192 y otras 816,19).
+  // Salvaguarda: un cruce con tasa diminuta (< 0,005) quedaria en 0,00, ahi se dejan mas decimales.
+  const tasaMostrar = (Math.abs(cross) < 0.005) ? Number(cross.toFixed(6)) : Number(cross.toFixed(2));
+  return JSON.stringify({ ok:true, modo:modoN, direccion, origen:o.nombre, monedaOrigen:o.moneda, codigoOrigen:o.codigo, destino:d.nombre, monedaDestino:d.moneda, codigoDestino:d.codigo, monto:montoN, resultado:Number(resultado.toFixed(2)), tasaCruzada:tasaMostrar, explicacion });
 }
 
 // 1) Camino rapido y seguro: datos ya cargados por el nodo principal (sincrono)
@@ -355,6 +360,7 @@ REGLAS:
 - LLAMA LA HERRAMIENTA SIEMPRE (LA REGLA MAS IMPORTANTE DE TODAS): para dar CUALQUIER cifra (tasa, monto, "recibes X") DEBES llamar calculadora_remesas en ESTE MISMO turno. Si en este turno no llamaste la herramienta, NO puedes escribir ningun numero: en ese caso pregunta lo que falte en vez de inventar.
 - LA CONVERSACION NO ES FUENTE DE TASAS: esta PROHIBIDO copiar, repetir o "acordarte" de una tasa o monto que aparezca mas arriba en el historial, aunque lo hayas dicho tu hace un minuto. Las tasas cambian durante el dia y la tarifa del cliente (detal/mayor) pudo haber cambiado entre mensajes: un numero viejo puede estar MAL aunque parezca correcto. Vuelve a llamar la herramienta SIEMPRE, incluso si la pregunta es identica a una anterior, si el cliente solo dice "dame la tasa" / "y ahora?" / "cuanto es?" / "si" / "ok", o si esta citando un mensaje tuyo. Repetir un numero sin recalcular es un ERROR GRAVE.
 - La tarifa vigente AHORA es "{{ $node["Code in JavaScript"].json.modo }}" y ese es el valor exacto que debes pasar en el parametro modo. Ignora cualquier tarifa que se haya usado antes en la conversacion.
+- DECIMALES AL RESPONDER: escribe SIEMPRE las tasas y los montos con 2 decimales, ni uno mas. Los numeros que devuelve la herramienta ya vienen redondeados a 2: copialos TAL CUAL, no les agregues decimales ni los recalcules. Ej: escribe "Tasa: 816.19 Bs", nunca "816.192". (Unica excepcion: si la herramienta te devuelve un numero con mas decimales porque es diminuto, ahi si lo copias completo.) Esto es para que la tasa se vea igual que en la pizarra y en la app.
 - FORMATO DE NUMEROS (MUY IMPORTANTE): los montos vienen en formato latino. El PUNTO son MILES y la COMA son decimales. Ejemplos: "710.000" = 710000 (setecientos diez mil); "1.000.000" = 1000000; "1.500,50" = 1500.5; "207,76" = 207.76. NUNCA interpretes el punto como decimal en montos grandes. Pasa a la herramienta el numero entero correcto (ej 710000, no 710).
 - IDENTIFICA bien ORIGEN y DESTINO antes de calcular. Mapeo moneda->lugar: COP/"pesos colombianos"=Colombia; USD/"dolares"/"$"=Ecuador, Zelle, Panama o EEUU (segun lo que diga); VES/"bolivares"/"Bs"=Venezuela; "efectivo en VE"=Efectivo Venezuela. "Cuanto recibo/me llega/me das" = el cliente da el monto de ORIGEN (direccion directa). "Cuanto debo enviar/pasar para que llegue X" = X es el DESTINO que debe llegar (direccion inversa). Si la frase es confusa, repregunta en pocas palabras antes de calcular.
 - SANIDAD / NO TERQUEAR: si el cliente dice que el monto esta mal, o el resultado se ve descomunal (millones cuando deberian ser cientos, o viceversa), NUNCA insistas "el calculo es correcto". Asume que pudo haber error de direccion o de formato de numero: vuelve a llamar la herramienta revisando origen, destino, direccion y el monto, y corrige.
