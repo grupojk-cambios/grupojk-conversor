@@ -200,7 +200,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
   const [evEstadoSeleccionado, setEvEstadoSeleccionado] = useState(null)
   const [evSelectTarget, setEvSelectTarget] = useState('destino') // 'origen' | 'destino'
   
-  const [copiadoTipo, setCopiadoTipo] = useState(null) // 'enviar' | 'recibir' | null
+  const [copiadoTipo, setCopiadoTipo] = useState(null) // 'enviar' | 'recibir' | 'tasa' | null
 
   const handleCopiar = (valor, tipo) => {
     if (!valor) return
@@ -777,7 +777,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                 display: 'inline-flex',
                 flexDirection: 'column', 
                 alignItems: 'center',
-                padding: '0.6rem 2rem',
+                padding: '0.6rem 1.2rem',
                 background: 'rgba(16,185,129,0.12)',
                 border: '1px solid rgba(16,185,129,0.4)',
                 borderRadius: '1.2rem',
@@ -786,8 +786,46 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                 maxWidth: '320px'
               }}>
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.12rem', marginBottom: '0.2rem' }}>Tasa Aplicada</span>
-                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
-                   {tasaDisplay.base} = {formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} <span style={{ fontSize: '0.6em', color: 'var(--secondary-color)' }}>{tasaDisplay.unidad}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', width: '100%' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
+                     {tasaDisplay.base} = {formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} <span style={{ fontSize: '0.6em', color: 'var(--secondary-color)' }}>{tasaDisplay.unidad}</span>
+                  </div>
+                  {/* Copia SOLO el numero de la tasa, igual que los botones de los montos */}
+                  <button
+                    type="button"
+                    onClick={() => handleCopiar(formatearMonto(tasaDisplay.valor, tasaDisplay.unidad), 'tasa')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: copiadoTipo === 'tasa' ? '#10b981' : 'var(--text-low)',
+                      cursor: 'pointer',
+                      padding: '0.4rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s',
+                      borderRadius: '0.5rem',
+                      flexShrink: 0
+                    }}
+                    onMouseEnter={e => {
+                      if (copiadoTipo !== 'tasa') e.currentTarget.style.color = 'var(--primary-color)';
+                    }}
+                    onMouseLeave={e => {
+                      if (copiadoTipo !== 'tasa') e.currentTarget.style.color = 'var(--text-low)';
+                    }}
+                    title="Copiar tasa"
+                  >
+                    {copiadoTipo === 'tasa' ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
