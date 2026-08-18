@@ -378,9 +378,10 @@ function App() {
 
   // Branding dinámico
   const brandName = modoMayor ? 'Grupo JK Mayor' : 'CAMBIOS JK'
-  const bypassMayorAuth = mayorAuth || (profile?.role === 'admin')
+  const isMayorProfile = profile?.tipo === 'mayor' || profile?.role === 'admin'
+  const bypassMayorAuth = mayorAuth || isMayorProfile
 
-  if (!sheetsReady) {
+  if (!sheetsReady || (user && !profile)) {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', color: 'white', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ fontSize: '3.5rem', animation: 'spin 2s linear infinite', display: 'inline-block' }}>🚛</div>
