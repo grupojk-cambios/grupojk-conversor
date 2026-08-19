@@ -164,76 +164,83 @@ function App() {
   useEffect(() => {
     if (user) {
       const fetchProfile = async () => {
-        // 1. Intentar buscar en AMBAS tablas para ver dónde pertenece realmente
-        const { data: pMayor } = await supabase.from('perfiles_mayor').select('*').eq('id', user.id).single()
-        const { data: pDetal } = await supabase.from('perfiles_detal').select('*').eq('id', user.id).single()
-        
-        let perfilEncontrado = pMayor || pDetal
-        let tablaPertenece = pMayor ? 'perfiles_mayor' : (pDetal ? 'perfiles_detal' : null)
-
-        if (perfilEncontrado) {
-          setProfile(perfilEncontrado)
-          // Forzar el modo según la tabla donde se encontró
-          const esMayor = tablaPertenece === 'perfiles_mayor'
-          const esAdmin = perfilEncontrado.role === 'admin'
-          const modoActivo = localStorage.getItem('jk_active_mode')
-           
-          if (esAdmin && modoActivo) {
-            // Si es admin y ya eligió un modo, respetarlo
-            setModoMayor(modoActivo === 'mayor')
-          } else {
-            // Para usuarios normales o admins sin elección previa, forzar modo de tabla
-            setModoMayor(esMayor)
-            localStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
-          }
-
-          if (perfilEncontrado.role === 'admin') {
-            setAuth(true)
-            sessionStorage.setItem('jk_admin_auth', 'true')
-          }
-
-          if (!perfilEncontrado.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
-            setShowWhatsAppModal(true)
-          }
-        } else {
-          // Si no existe, crearlo basándose en el modo activo, metadata, o ruta intencionada
-          const { data: newUser } = await supabase.auth.getUser()
-          const metadata = newUser.user?.user_metadata
+        try {
+          // 1. Intentar buscar en AMBAS tablas para ver dónde pertenece realmente
+          const { data: pMayor } = await supabase.from('perfiles_mayor').select('*').eq('id', user.id).single()
+          const { data: pDetal } = await supabase.from('perfiles_detal').select('*').eq('id', user.id).single()
           
-          const googleTipo = localStorage.getItem('jk_google_signup_tipo')
-          const intendedRoute = sessionStorage.getItem('jk_intended_route')
-          const modoReal = (
-            metadata?.tipo === 'mayor' ||
-            googleTipo === 'mayor' ||
-            modoMayor ||
-            localStorage.getItem('jk_active_mode') === 'mayor' ||
-            (intendedRoute && intendedRoute.startsWith('mayor')) ||
-            ruta.startsWith('mayor')
-          ) ? 'mayor' : 'detal'
+          let perfilEncontrado = pMayor || pDetal
+          let tablaPertenece = pMayor ? 'perfiles_mayor' : (pDetal ? 'perfiles_detal' : null)
 
-          const tablaDestino = modoReal === 'mayor' ? 'perfiles_mayor' : 'perfiles_detal'
+          if (perfilEncontrado) {
+            setProfile(perfilEncontrado)
+            // Forzar el modo según la tabla donde se encontró
+            const esMayor = tablaPertenece === 'perfiles_mayor'
+            const esAdmin = perfilEncontrado.role === 'admin'
+            const modoActivo = localStorage.getItem('jk_active_mode')
+             
+            if (esAdmin && modoActivo) {
+              // Si es admin y ya eligió un modo, respetarlo
+              setModoMayor(modoActivo === 'mayor')
+            } else {
+              // Para usuarios normales o admins sin elección previa, forzar modo de tabla
+              setModoMayor(esMayor)
+              localStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
+            }
 
-          const { data: created } = await supabase
-            .from(tablaDestino)
-            .insert([{
-              id: user.id,
-              full_name: metadata?.nombre || metadata?.full_name || user.email?.split('@')[0],
-              email: user.email,
-              whatsapp: metadata?.whatsapp || '',
-              tipo: modoReal
-            }])
-            .select()
-            .single()
-            
-          if (created) {
-            localStorage.removeItem('jk_google_signup_tipo')
-            setProfile(created)
-            setModoMayor(modoReal === 'mayor')
-            localStorage.setItem('jk_active_mode', modoReal)
-            if (!created.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
+            if (perfilEncontrado.role === 'admin') {
+              setAuth(true)
+              sessionStorage.setItem('jk_admin_auth', 'true')
+            }
+
+            if (!perfilEncontrado.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
               setShowWhatsAppModal(true)
             }
+          } else {
+            // Si no existe, crearlo basándose en el modo activo, metadata, o ruta intencionada
+            const { data: newUser } = await supabase.auth.getUser()
+            const metadata = newUser.user?.user_metadata
+            
+            const googleTipo = localStorage.getItem('jk_google_signup_tipo')
+            const intendedRoute = sessionStorage.getItem('jk_intended_route')
+            const modoReal = (
+              metadata?.tipo === 'mayor' ||
+              googleTipo === 'mayor' ||
+              modoMayor ||
+              localStorage.getItem('jk_active_mode') === 'mayor' ||
+              (intendedRoute && intendedRoute.startsWith('mayor')) ||
+              ruta.startsWith('mayor')
+            ) ? 'mayor' : 'detal'
+
+            const tablaDestino = modoReal === 'mayor' ? 'perfiles_mayor' : 'perfiles_detal'
+
+            const { data: created } = await supabase
+              .from(tablaDestino)
+              .insert([{
+                id: user.id,
+                full_name: metadata?.nombre || metadata?.full_name || user.email?.split('@')[0],
+                email: user.email,
+                whatsapp: metadata?.whatsapp || '',
+                tipo: modoReal
+              }])
+              .select()
+              .single()
+              
+            if (created) {
+              localStorage.removeItem('jk_google_signup_tipo')
+              setProfile(created)
+              setModoMayor(modoReal === 'mayor')
+              localStorage.setItem('jk_active_mode', modoReal)
+              if (!created.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
+                setShowWhatsAppModal(true)
+              }
+            } else {
+              setProfile({ id: user.id, email: user.email, tipo: modoReal })
+            }
           }
+        } catch (err) {
+          console.error('Error cargando perfil:', err)
+          setProfile({ id: user.id, email: user.email, tipo: modoMayor ? 'mayor' : 'detal' })
         }
       }
       fetchProfile()
@@ -286,9 +293,9 @@ function App() {
 
   // Redirección forzada si no hay usuario (Capa de Seguridad)
   useEffect(() => {
-    if (sheetsReady && !user && ruta !== 'login' && !ruta.startsWith('admin')) {
+    if (sheetsReady && !user && ruta !== 'login' && ruta !== 'mayor' && !ruta.startsWith('admin')) {
       // Guardar la ruta a la que intentaba ir (memoria de ruta)
-      if (ruta !== 'inicio' && ruta !== 'login') {
+      if (ruta !== 'inicio' && ruta !== 'login' && ruta !== 'mayor') {
         sessionStorage.setItem('jk_intended_route', ruta)
       }
       if (ruta.startsWith('mayor')) {
@@ -297,8 +304,8 @@ function App() {
       }
       navegar('login')
     }
-    // Si ya hay usuario y está en login, mandarlo al inicio o a la ruta guardada
-    if (sheetsReady && user && ruta === 'login') {
+    // Si ya hay usuario y está en login o mayor, mandarlo al inicio o a la ruta guardada
+    if (sheetsReady && user && (ruta === 'login' || ruta === 'mayor')) {
       const intended = sessionStorage.getItem('jk_intended_route')
       if (intended) {
         sessionStorage.removeItem('jk_intended_route')
@@ -394,12 +401,10 @@ function App() {
 
   const isMayorIntent = modoMayor || ruta.startsWith('mayor') || localStorage.getItem('jk_active_mode') === 'mayor'
 
-  // Si intenta acceder a rutas mayor sin estar autenticado → login de acceso mayor (los admins de Supabase hacen bypass)
-  if (isMayorIntent && !bypassMayorAuth && ruta !== 'mayor') {
-    // Guardar la ruta original si es específica
-    if (ruta.startsWith('mayor-')) {
-      sessionStorage.setItem('jk_intended_route', ruta)
-    }
+  // Si intenta acceder a rutas específicas de mayor (ej: mayor-cotizador, mayor-tasas, mayor-inicio) sin estar autenticado ni con bypass
+  if (isMayorIntent && !bypassMayorAuth && ruta.startsWith('mayor-')) {
+    // Guardar la ruta original
+    sessionStorage.setItem('jk_intended_route', ruta)
     setModoMayor(true)
     localStorage.setItem('jk_active_mode', 'mayor')
     // Redirigir a login mayor (password gate)
