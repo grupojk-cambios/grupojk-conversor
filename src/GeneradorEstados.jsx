@@ -10,7 +10,7 @@ import './GeneradorEstados.css'
  * entre monedas muy distintas); ahi se deja el formato automatico para no mostrar un cero.
  */
 const formatearTasa = (valor) => {
-  if (!valor || isNaN(valor)) return '0,00'
+  if (!valor || isNaN(valor) || valor <= 0) return 'N/A'
   if (Math.abs(valor) < 0.005) return formatearMonto(valor)
   return formatearMonto(valor, null, 2)
 }
@@ -69,19 +69,29 @@ export default function GeneradorEstados() {
 
       // Calcular la tasa enviar para cada país desde el Origen
       const paisesConTasa = paisesDestino.map(pais => {
-        const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisOrigen, pais, todosPaises, modoCalculo)
-        const tc = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+        const rawEnvio = parseFloat(pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0));
+        const rawReciboOrig = parseFloat(paisOrigen.tasaProveedorRecibo !== undefined ? paisOrigen.tasaProveedorRecibo : (paisOrigen.tasaProveedor || 0));
         
-        let displayRate = tc;
+        let displayRate = 0;
         let displayUnit = pais.codigo;
         let isInverse = false;
+        let tc = 0;
 
-        // Si el origen NO es dólar y el destino SÍ es dólar, aplicamos la lógica inversa del Cotizador
-        if (!isCajaDolar(paisOrigen) && isCajaDolar(pais)) {
-          const tcInverso = calcularConversionInversa(paisOrigen, pais, 1, todosPaises, modoCalculo)
-          displayRate = tcInverso;
-          displayUnit = paisOrigen.codigo;
-          isInverse = true;
+        const origValido = isCajaDolar(paisOrigen) || rawReciboOrig > 0;
+        const destValido = isCajaDolar(pais) || rawEnvio > 0;
+
+        if (origValido && destValido) {
+          const { tasaOrigenParaDolares, tasaDestinoDesdeDolares } = obtenerTasasProcesadas(paisOrigen, pais, todosPaises, modoCalculo)
+          tc = (1 / tasaOrigenParaDolares) * tasaDestinoDesdeDolares
+          displayRate = tc;
+
+          // Si el origen NO es dólar y el destino SÍ es dólar, aplicamos la lógica inversa del Cotizador
+          if (!isCajaDolar(paisOrigen) && isCajaDolar(pais)) {
+            const tcInverso = calcularConversionInversa(paisOrigen, pais, 1, todosPaises, modoCalculo)
+            displayRate = tcInverso;
+            displayUnit = paisOrigen.codigo;
+            isInverse = true;
+          }
         }
 
         return {
@@ -190,18 +200,28 @@ export default function GeneradorEstados() {
     texto += `💵 *BASE USD / USDT*\n\n`;
     
     paisesLocales.forEach(pais => {
+      const rawEnvio = parseFloat(pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0));
+      const rawRecibo = parseFloat(pais.tasaProveedorRecibo !== undefined ? pais.tasaProveedorRecibo : (pais.tasaProveedor || 0));
+      
       let tasaEnvio = 0;
       let tasaRecibo = 0;
       
-      if (!paisReferencia || pais.id === paisReferencia.id) {
-        tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
-        tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
-      } else {
-        const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
-        tasaEnvio = (1 / tOrigE) * tDestE;
-        
-        const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
-        tasaRecibo = tOrigR;
+      if (rawEnvio > 0) {
+        if (!paisReferencia || pais.id === paisReferencia.id) {
+          tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+        } else {
+          const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
+          tasaEnvio = (1 / tOrigE) * tDestE;
+        }
+      }
+      
+      if (rawRecibo > 0) {
+        if (!paisReferencia || pais.id === paisReferencia.id) {
+          tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
+        } else {
+          const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
+          tasaRecibo = tOrigR;
+        }
       }
       
       let bandera = '';
@@ -605,18 +625,28 @@ export default function GeneradorEstados() {
 
           {chunk.map(pais => {
             const paisReferencia = todosPaises.find(p => p.id === 9);
+            const rawEnvio = parseFloat(pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0));
+            const rawRecibo = parseFloat(pais.tasaProveedorRecibo !== undefined ? pais.tasaProveedorRecibo : (pais.tasaProveedor || 0));
+            
             let tasaEnvio = 0;
             let tasaRecibo = 0;
             
-            if (!paisReferencia || pais.id === paisReferencia.id) {
-              tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
-              tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
-            } else {
-              const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
-              tasaEnvio = (1 / tOrigE) * tDestE;
-              
-              const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
-              tasaRecibo = tOrigR;
+            if (rawEnvio > 0) {
+              if (!paisReferencia || pais.id === paisReferencia.id) {
+                tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+              } else {
+                const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
+                tasaEnvio = (1 / tOrigE) * tDestE;
+              }
+            }
+            
+            if (rawRecibo > 0) {
+              if (!paisReferencia || pais.id === paisReferencia.id) {
+                tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
+              } else {
+                const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
+                tasaRecibo = tOrigR;
+              }
             }
             
             return (
