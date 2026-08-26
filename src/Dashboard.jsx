@@ -30,15 +30,35 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
         const paraleloVal = paralelo?.promedio || 0
         const usdtVal = paraleloVal > 0 ? (paraleloVal * 1.008) : 0
 
-        const fechaObj = oficial?.fechaActualizacion ? new Date(oficial.fechaActualizacion) : new Date()
-        const hora = fechaObj.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true })
-        const fechaStr = fechaObj.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
+        // 1. Fecha Valor BCV sin desfase de zona horaria
+        let fechaValorBCV = 'Hoy'
+        if (oficial?.fechaActualizacion) {
+          const fechaParts = oficial.fechaActualizacion.split('T')[0].split('-')
+          if (fechaParts.length === 3) {
+            const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            const dia = parseInt(fechaParts[2], 10)
+            const mes = meses[parseInt(fechaParts[1], 10) - 1]
+            fechaValorBCV = `${dia} ${mes}`
+          }
+        }
+
+        // 2. Corte Paralelo (9:00 AM o 1:00 PM)
+        let corteParalelo = '1:00 PM'
+        if (paralelo?.fechaActualizacion) {
+          const pDate = new Date(paralelo.fechaActualizacion)
+          const horaVE = pDate.getUTCHours() - 4
+          corteParalelo = horaVE < 13 ? '9:00 AM' : '1:00 PM'
+        }
+
+        const actualizadoBadge = `Hoy · ${corteParalelo}`
 
         setMonitorVzla({
           bcv: bcvVal,
           paralelo: paraleloVal,
           usdt: usdtVal,
-          actualizado: `${fechaStr} · ${hora}`,
+          fechaValorBCV,
+          corteParalelo,
+          actualizado: actualizadoBadge,
           loading: false
         })
       } catch (err) {
@@ -108,7 +128,7 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
           
           <div className="monitor-live-badge">
             <span className="monitor-live-dot" />
-            <span>{monitorVzla.actualizado ? `Actualizado: ${monitorVzla.actualizado}` : 'En Vivo'}</span>
+            <span>{monitorVzla.actualizado ? `Actualizado ${monitorVzla.actualizado}` : 'En Vivo'}</span>
           </div>
         </div>
 
@@ -133,7 +153,7 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
               <div className="monitor-card-unit">x 1 USD Oficial</div>
             </div>
             <div className="monitor-card-footer">
-              <span>🔹 Banco Central de Venezuela</span>
+              <span>🔹 Fecha Valor: {monitorVzla.fechaValorBCV || 'Hoy'}</span>
             </div>
           </div>
 
@@ -157,7 +177,7 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
               <div className="monitor-card-unit">x 1 USD Libre</div>
             </div>
             <div className="monitor-card-footer">
-              <span>📊 Referencia Monitor / EnParalelo</span>
+              <span>📊 Corte: {monitorVzla.corteParalelo || '1:00 PM'}</span>
             </div>
           </div>
 
@@ -181,7 +201,7 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
               <div className="monitor-card-unit">x 1 USDT Digital</div>
             </div>
             <div className="monitor-card-footer">
-              <span>⚡ P2P Anuncios verificados</span>
+              <span>⚡ En tiempo real (P2P)</span>
             </div>
           </div>
         </div>
