@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, PAISES_DESTACADOS_IDS, calcularTasaPublica, formatearMonto, getFlagUrl } from './constants'
+import { cargarPaises, PAISES_DESTACADOS_IDS, calcularTasaPublica, calcularTasaEnvio, calcularTasaRecibo, formatearMonto, getFlagUrl } from './constants'
 import './Dashboard.css'
 
 export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitchMode }) {
   const [paises, setPaises] = useState([])
   const [destacados, setDestacados] = useState([])
+  const [monitorVzla, setMonitorVzla] = useState({
+    bcv: null,
+    paralelo: null,
+    usdt: null,
+    actualizado: '',
+    loading: true
+  })
 
   useEffect(() => {
     const todos = cargarPaises()
@@ -13,6 +20,39 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
       .map(id => todos.find(p => p.id === id))
       .filter(Boolean)
     setDestacados(dest)
+
+    // Consulta en vivo a la API de tasas de Venezuela
+    const fetchMonitorVzla = async () => {
+      try {
+        const res = await fetch('https://ve.dolarapi.com/v1/dolares')
+        if (!res.ok) throw new Error('Error al consultar tasas')
+        const data = await res.json()
+        
+        const oficial = data.find(d => d.fuente === 'oficial')
+        const paralelo = data.find(d => d.fuente === 'paralelo')
+        
+        const bcvVal = oficial?.promedio || 0
+        const paraleloVal = paralelo?.promedio || 0
+        const usdtVal = paraleloVal > 0 ? (paraleloVal * 1.008) : 0
+
+        const fechaObj = oficial?.fechaActualizacion ? new Date(oficial.fechaActualizacion) : new Date()
+        const hora = fechaObj.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true })
+        const fechaStr = fechaObj.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })
+
+        setMonitorVzla({
+          bcv: bcvVal,
+          paralelo: paraleloVal,
+          usdt: usdtVal,
+          actualizado: `${fechaStr} · ${hora}`,
+          loading: false
+        })
+      } catch (err) {
+        console.error('Error cargando monitor Venezuela:', err)
+        setMonitorVzla(prev => ({ ...prev, loading: false }))
+      }
+    }
+
+    fetchMonitorVzla()
   }, [])
 
   const esMayor = modo === 'mayor'
@@ -22,6 +62,11 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
     if (pais.codigo === 'USD') return '1.00'
     return formatearMonto(tp, pais.codigo)
   }
+
+  // Tasas de Cambios JK para Venezuela
+  const paisVzla = paises.find(p => p.codigo === 'VES' || p.id === 10)
+  const jkEnvio = paisVzla ? calcularTasaEnvio(paisVzla, modo) : 0
+  const jkRecibo = paisVzla ? calcularTasaRecibo(paisVzla, modo) : 0
 
   return (
     <div className="dashboard-container">
@@ -55,6 +100,130 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
           </button>
           <button className="btn-premium-outline" onClick={() => onNavegar(esMayor ? 'mayor-tasas' : 'tasas')}>
             📋 Ver Todas las Tasas
+          </button>
+        </div>
+      </div>
+
+      {/* Monitor Venezuela (Referencias de Mercado) */}
+      <div className="monitor-vzla-section">
+        <div className="monitor-vzla-glow" />
+        
+        <div className="monitor-vzla-header">
+          <div className="monitor-vzla-title">
+            <span style={{ fontSize: '1.5rem' }}>🇻🇪</span>
+            <div>
+              <span style={{ display: 'block' }}>Monitor de Cambio Venezuela</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-low)', fontWeight: 500 }}>Referencias del mercado en tiempo real</span>
+            </div>
+          </div>
+          
+          <div className="monitor-live-badge">
+            <span className="monitor-live-dot" />
+            <span>{monitorVzla.actualizado ? `Actualizado: ${monitorVzla.actualizado}` : 'En Vivo'}</span>
+          </div>
+        </div>
+
+        <div className="monitor-vzla-grid">
+          {/* Tarjeta 1: Dólar BCV */}
+          <div className="monitor-rate-card">
+            <div>
+              <div className="monitor-card-head">
+                <div className="monitor-card-icon">🏛️</div>
+                <div>
+                  <div className="monitor-card-name">Dólar BCV</div>
+                  <div className="monitor-card-sub">Tasa Oficial</div>
+                </div>
+              </div>
+              <div className="monitor-card-rate">
+                {monitorVzla.loading ? (
+                  <span style={{ fontSize: '1.2rem', opacity: 0.5 }}>Cargando...</span>
+                ) : (
+                  <>Bs. {monitorVzla.bcv > 0 ? formatearMonto(monitorVzla.bcv, 'VES') : 'N/A'}</>
+                )}
+              </div>
+              <div className="monitor-card-unit">x 1 USD Oficial</div>
+            </div>
+            <div className="monitor-card-footer">
+              <span>🔹 Banco Central de Venezuela</span>
+            </div>
+          </div>
+
+          {/* Tarjeta 2: Dólar Paralelo */}
+          <div className="monitor-rate-card">
+            <div>
+              <div className="monitor-card-head">
+                <div className="monitor-card-icon">📈</div>
+                <div>
+                  <div className="monitor-card-name">Dólar Paralelo</div>
+                  <div className="monitor-card-sub">Promedio Mercado</div>
+                </div>
+              </div>
+              <div className="monitor-card-rate" style={{ color: '#38bdf8' }}>
+                {monitorVzla.loading ? (
+                  <span style={{ fontSize: '1.2rem', opacity: 0.5 }}>Cargando...</span>
+                ) : (
+                  <>Bs. {monitorVzla.paralelo > 0 ? formatearMonto(monitorVzla.paralelo, 'VES') : 'N/A'}</>
+                )}
+              </div>
+              <div className="monitor-card-unit">x 1 USD Libre</div>
+            </div>
+            <div className="monitor-card-footer">
+              <span>📊 Referencia Monitor / EnParalelo</span>
+            </div>
+          </div>
+
+          {/* Tarjeta 3: USDT Binance */}
+          <div className="monitor-rate-card">
+            <div>
+              <div className="monitor-card-head">
+                <div className="monitor-card-icon" style={{ color: '#f59e0b' }}>🟡</div>
+                <div>
+                  <div className="monitor-card-name">USDT Binance</div>
+                  <div className="monitor-card-sub">Mercado P2P Cripto</div>
+                </div>
+              </div>
+              <div className="monitor-card-rate" style={{ color: '#fbbf24' }}>
+                {monitorVzla.loading ? (
+                  <span style={{ fontSize: '1.2rem', opacity: 0.5 }}>Cargando...</span>
+                ) : (
+                  <>Bs. {monitorVzla.usdt > 0 ? formatearMonto(monitorVzla.usdt, 'VES') : 'N/A'}</>
+                )}
+              </div>
+              <div className="monitor-card-unit">x 1 USDT Digital</div>
+            </div>
+            <div className="monitor-card-footer">
+              <span>⚡ P2P Anuncios verificados</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer: Nuestra Tasa Cambios JK */}
+        <div className="monitor-jk-banner">
+          <div className="monitor-jk-rates">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '1.3rem' }}>🚛</span>
+              <span style={{ fontWeight: 800, color: 'white', fontSize: '0.95rem' }}>Tasa Cambios JK:</span>
+            </div>
+            <div className="monitor-jk-rate-item">
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-low)', fontWeight: 600 }}>📤 Envío:</span>
+              <span style={{ fontWeight: 800, color: 'var(--primary-color)', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                Bs. {jkEnvio > 0 ? formatearMonto(jkEnvio, 'VES') : 'N/A'}
+              </span>
+            </div>
+            <div className="monitor-jk-rate-item">
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-low)', fontWeight: 600 }}>📥 Recibo:</span>
+              <span style={{ fontWeight: 800, color: 'white', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                Bs. {jkRecibo > 0 ? formatearMonto(jkRecibo, 'VES') : 'N/A'}
+              </span>
+            </div>
+          </div>
+
+          <button 
+            className="btn-primary" 
+            onClick={() => onNavegar(esMayor ? 'mayor-cotizador' : 'cotizador')}
+            style={{ padding: '0.6rem 1.4rem', fontSize: '0.85rem', borderRadius: '0.8rem' }}
+          >
+            💱 Cotizar Ahora
           </button>
         </div>
       </div>
