@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, PAISES_DESTACADOS_IDS, calcularTasaPublica, calcularTasaEnvio, calcularTasaRecibo, formatearMonto, getFlagUrl } from './constants'
+import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, formatearMonto } from './constants'
 import './Dashboard.css'
 
 export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitchMode }) {
   const [paises, setPaises] = useState([])
-  const [destacados, setDestacados] = useState([])
   const [monitorVzla, setMonitorVzla] = useState({
     bcv: null,
     paralelo: null,
@@ -16,10 +15,6 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
   useEffect(() => {
     const todos = cargarPaises()
     setPaises(todos)
-    const dest = PAISES_DESTACADOS_IDS
-      .map(id => todos.find(p => p.id === id))
-      .filter(Boolean)
-    setDestacados(dest)
 
     // Consulta en vivo a la API de tasas de Venezuela
     const fetchMonitorVzla = async () => {
@@ -56,12 +51,6 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
   }, [])
 
   const esMayor = modo === 'mayor'
-
-  const tasaDisplay = (pais) => {
-    const tp = calcularTasaPublica(pais, modo)
-    if (pais.codigo === 'USD') return '1.00'
-    return formatearMonto(tp, pais.codigo)
-  }
 
   // Tasas de Cambios JK para Venezuela
   const paisVzla = paises.find(p => p.codigo === 'VES' || p.id === 10)
@@ -226,59 +215,6 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
             💱 Cotizar Ahora
           </button>
         </div>
-      </div>
-
-      {/* Tasas Destacadas */}
-      <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div>
-          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.3rem', color: 'white', letterSpacing: '-0.02em' }}>Tasas del Día</h2>
-          <p style={{ color: 'var(--text-low)', fontSize: '0.95rem' }}>
-            1 USD equivale a — Actualizado por <span style={{color: 'white', fontWeight: 600}}>{esMayor ? 'Grupo JK Mayor' : 'CAMBIOS JK'}</span>
-          </p>
-        </div>
-        <button onClick={() => onNavegar(esMayor ? 'mayor-tasas' : 'tasas')}
-          style={{ color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.95rem', paddingBottom: '0.2rem' }}>
-          Ver todas →
-        </button>
-      </div>
-
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-        gap: '1.2rem',
-        marginBottom: '4rem',
-      }}>
-        {destacados.map(pais => (
-          <div key={pais.id}
-            className="dashboard-card"
-            onClick={() => onNavegar(esMayor ? 'mayor-cotizador' : 'cotizador')}
-          >
-            <div style={{ width: '4.5rem', height: '3rem', margin: '0 auto 1.2rem', overflow: 'hidden', borderRadius: '0.6rem', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
-              <img 
-                src={getFlagUrl(pais)}
-                alt={pais.nombre}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-            <p style={{ fontWeight: 700, color: 'white', fontSize: '1.05rem', marginBottom: '0.2rem', letterSpacing: '0.02em' }}>
-              {pais.nombre}
-            </p>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-low)', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {pais.moneda}
-            </p>
-            <p style={{
-              fontSize: '1.6rem', fontWeight: 800,
-              color: 'var(--primary-color)',
-              fontFamily: 'Manrope, sans-serif',
-              textShadow: '0 2px 10px rgba(16,185,129,0.2)'
-            }}>
-              {tasaDisplay(pais)}
-            </p>
-            <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.4rem', fontWeight: 600 }}>
-              {pais.codigo}
-            </p>
-          </div>
-        ))}
       </div>
 
       {/* Info inferior */}
