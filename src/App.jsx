@@ -173,6 +173,27 @@ function App() {
           let tablaPertenece = pMayor ? 'perfiles_mayor' : (pDetal ? 'perfiles_detal' : null)
 
           if (perfilEncontrado) {
+            const googleTipo = localStorage.getItem('jk_google_signup_tipo')
+            const { data: userData } = await supabase.auth.getUser()
+            const metadata = userData.user?.user_metadata
+
+            if ((metadata?.tipo === 'mayor' || googleTipo === 'mayor') && tablaPertenece === 'perfiles_detal') {
+              // Migrar a perfiles_mayor automáticamente
+              await supabase.from('perfiles_mayor').upsert([{
+                id: user.id,
+                full_name: perfilEncontrado.full_name,
+                avatar_url: perfilEncontrado.avatar_url,
+                whatsapp: perfilEncontrado.whatsapp,
+                email: perfilEncontrado.email,
+                role: perfilEncontrado.role,
+                tipo: 'mayor'
+              }])
+              await supabase.from('perfiles_detal').delete().eq('id', user.id)
+              perfilEncontrado = { ...perfilEncontrado, tipo: 'mayor' }
+              tablaPertenece = 'perfiles_mayor'
+              localStorage.removeItem('jk_google_signup_tipo')
+            }
+
             setProfile(perfilEncontrado)
             // Forzar el modo según la tabla donde se encontró
             const esMayor = tablaPertenece === 'perfiles_mayor'
@@ -390,7 +411,7 @@ function App() {
 
   if (!sheetsReady || (user && !profile)) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', color: 'white', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-color)', color: 'white', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ fontSize: '3.5rem', animation: 'spin 2s linear infinite', display: 'inline-block' }}>🚛</div>
         <p style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '0.05em' }}>Cargando el Camión...</p>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-low)', marginTop: '-0.5rem' }}>GRUPO JK · Tasas en Tiempo Real</p>
@@ -401,21 +422,17 @@ function App() {
 
   const isMayorIntent = modoMayor || ruta.startsWith('mayor') || localStorage.getItem('jk_active_mode') === 'mayor'
 
-  // Si intenta acceder a rutas específicas de mayor (ej: mayor-cotizador, mayor-tasas, mayor-inicio) sin estar autenticado ni con bypass
-  if (isMayorIntent && !bypassMayorAuth && ruta.startsWith('mayor-')) {
-    // Guardar la ruta original
-    sessionStorage.setItem('jk_intended_route', ruta)
+  // Si intenta acceder a rutas de mayor sin estar autenticado ni con bypass
+  if (isMayorIntent && !bypassMayorAuth && (ruta.startsWith('mayor-') || ruta === 'mayor')) {
+    if (ruta.startsWith('mayor-')) {
+      sessionStorage.setItem('jk_intended_route', ruta)
+    }
     setModoMayor(true)
     localStorage.setItem('jk_active_mode', 'mayor')
-    // Redirigir a login mayor (password gate)
-    window.location.hash = '#/mayor'
     return <LoginMayor onLogin={handleMayorLogin} />
   }
 
-  // Ruta exacta "mayor" = login (password gate)
-  if (ruta === 'mayor' && !bypassMayorAuth) {
-    return <LoginMayor onLogin={handleMayorLogin} />
-  }
+  // Si ya tiene bypass y entra a "mayor", redirigir a mayor-inicio o su ruta intencionada
   if (ruta === 'mayor' && bypassMayorAuth) {
     const intended = sessionStorage.getItem('jk_intended_route')
     if (intended) {
@@ -424,6 +441,7 @@ function App() {
     } else {
       navegar('mayor-inicio')
     }
+    return null
   }
 
   // Determinar si mostrar navbar público
@@ -642,7 +660,7 @@ function App() {
         )}
         
         {/* MAYOR */}
-        {ruta === 'mayor-inicio' && bypassMayorAuth && (
+        {ruta === 'mayor-inicio' && (
           <Dashboard 
             onNavegar={navegar} 
             modo="mayor" 
@@ -654,7 +672,7 @@ function App() {
             }}
           />
         )}
-        {ruta === 'mayor-cotizador' && bypassMayorAuth && (
+        {ruta === 'mayor-cotizador' && (
           <Cotizador 
             modo="mayor" 
             profile={profile} 
@@ -665,8 +683,8 @@ function App() {
             }}
           />
         )}
-        {ruta === 'mayor-tasas' && bypassMayorAuth && <ListaPaises modo="mayor" />}
-        {ruta === 'mayor-mis-operaciones' && bypassMayorAuth && <MisOperaciones modo="mayor" />}
+        {ruta === 'mayor-tasas' && <ListaPaises modo="mayor" />}
+        {ruta === 'mayor-mis-operaciones' && <MisOperaciones modo="mayor" />}
 
         {/* ADMIN */}
         {ruta === 'admin-jk' && (
@@ -675,6 +693,20 @@ function App() {
         
         {ruta === 'admin' && (
           auth ? <AdminPanel onLogout={handleLogout} /> : <LoginAdmin onLogin={handleLogin} />
+        )}
+
+        {/* Fallback de seguridad para rutas no reconocidas */}
+        {!['inicio', 'cotizador', 'tasas', 'mis-operaciones', 'perfil', 'login', 'mayor-inicio', 'mayor-cotizador', 'mayor-tasas', 'mayor-mis-operaciones', 'admin-jk', 'admin', 'mayor'].includes(ruta) && (
+          <Dashboard 
+            onNavegar={navegar} 
+            modo={modoMayor ? 'mayor' : 'detal'} 
+            profile={profile} 
+            onSwitchMode={(nuevo) => {
+              localStorage.setItem('jk_active_mode', nuevo)
+              setModoMayor(nuevo === 'mayor')
+              navegar(nuevo === 'mayor' ? 'mayor-inicio' : 'inicio')
+            }}
+          />
         )}
       </main>
 

@@ -65,10 +65,14 @@ export default function Auth({ onLogin, tipo = 'detal' }) {
   const handleGoogleLogin = async () => {
     try {
       localStorage.setItem('jk_google_signup_tipo', tipo)
+      localStorage.setItem('jk_active_mode', tipo)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + window.location.pathname
+          redirectTo: window.location.origin + window.location.pathname,
+          data: {
+            tipo: tipo
+          }
         }
       })
       if (error) throw error
