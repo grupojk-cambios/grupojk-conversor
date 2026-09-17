@@ -92,6 +92,41 @@ function LoginMayor({ onLogin }) {
           >
             🔓 Ingresar
           </button>
+          <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem('jk_intended_route', 'mayor-inicio')
+                window.location.hash = '#/login'
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary-color)',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
+            >
+              ¿Tienes cuenta de mayorista? Iniciar sesión con Correo / Google →
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = '#/inicio'
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-low)',
+                fontSize: '0.8rem',
+                cursor: 'pointer'
+              }}
+            >
+              Ir a Cambio Detal (Público)
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -195,23 +230,18 @@ function App() {
             }
 
             setProfile(perfilEncontrado)
-            // Forzar el modo según la tabla donde se encontró
             const esMayor = tablaPertenece === 'perfiles_mayor'
             const esAdmin = perfilEncontrado.role === 'admin'
-            const modoActivo = localStorage.getItem('jk_active_mode')
              
-            if (esAdmin && modoActivo) {
-              // Si es admin y ya eligió un modo, respetarlo
-              setModoMayor(modoActivo === 'mayor')
-            } else {
-              // Para usuarios normales o admins sin elección previa, forzar modo de tabla
-              setModoMayor(esMayor)
-              localStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
-            }
-
-            if (perfilEncontrado.role === 'admin') {
+            if (esAdmin) {
               setAuth(true)
               sessionStorage.setItem('jk_admin_auth', 'true')
+            }
+
+            // Solo actualizar modo si no estamos en una ruta específica
+            if (!ruta.startsWith('mayor') && ruta !== 'inicio' && ruta !== 'cotizador' && ruta !== 'tasas') {
+              setModoMayor(esMayor)
+              localStorage.setItem('jk_active_mode', esMayor ? 'mayor' : 'detal')
             }
 
             if (!perfilEncontrado.whatsapp && ruta !== 'login' && !ruta.includes('admin')) {
@@ -314,14 +344,10 @@ function App() {
 
   // Redirección forzada si no hay usuario (Capa de Seguridad)
   useEffect(() => {
-    if (sheetsReady && !user && ruta !== 'login' && ruta !== 'mayor' && !ruta.startsWith('admin')) {
+    if (sheetsReady && !user && ruta !== 'login' && ruta !== 'mayor' && !ruta.startsWith('admin') && !ruta.startsWith('mayor')) {
       // Guardar la ruta a la que intentaba ir (memoria de ruta)
-      if (ruta !== 'inicio' && ruta !== 'login' && ruta !== 'mayor') {
+      if (ruta !== 'inicio' && ruta !== 'login' && !ruta.startsWith('mayor')) {
         sessionStorage.setItem('jk_intended_route', ruta)
-      }
-      if (ruta.startsWith('mayor')) {
-        setModoMayor(true)
-        localStorage.setItem('jk_active_mode', 'mayor')
       }
       navegar('login')
     }
