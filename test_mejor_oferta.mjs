@@ -137,5 +137,21 @@ const okMulti = fm && fm['Tasa Envio'] === 3100 && fm['Tasa Recibo'] === 3193 &&
 if (!okMulti) fallos++;
 console.log(`  ${okMulti ? 'OK   ' : 'FALLO'} junta 2 llamadas de IA -> ${JSON.stringify(fm)} provs=${multi.proveedores}`);
 
+// ===== CASO REAL DEL VIERNES 04/09: la IA metio un envio como recibo =====
+// Miguelacho mando "🇧🇷 5.08*USDT* RECIBO" (= envio 5.08) y la IA lo devolvio como recibo.
+// Resultado: el borrador salio "Brasil 4.9 5.08" cuando debia ser "Brasil 5.08 5.31".
+// El bot no puede saber que la IA se equivoco, pero SI debe avisar del cambio raro contra la hoja.
+console.log('');
+console.log('=== Caso del viernes: aviso de cambio grande contra la hoja ===');
+const viernes = correr({ proveedores: [
+  { nombre: 'CORPORACIÓN GRUPO ELITE', filas: [{ pais: 'Brasil', envio: 4.90, recibo: 5.31 }] },
+  { nombre: 'Miguelacho',              filas: [{ pais: 'Brasil', envio: null, recibo: 5.08 }] }  // <- mal clasificado
+] });
+const avisaCambio = /OJO, cambio de/.test(viernes.resumen) || /se movieron mas de lo normal/.test(viernes.resumen);
+if (!avisaCambio) fallos++;
+console.log(`  ${avisaCambio ? 'OK   ' : 'FALLO'} avisa del cambio raro en Brasil`);
+console.log('  --- resumen ---');
+console.log(viernes.resumen.split('\n').map(l => '  ' + l).join('\n'));
+
 console.log('');
 console.log(fallos ? `❌ ${fallos} fallaron` : '✅ Todas las pruebas pasaron');

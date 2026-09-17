@@ -229,57 +229,20 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
   if (!factorAplicado) {
     const origFuerte = MONEDAS_FUERTES.includes(origen.codigo)
     const destFuerte = MONEDAS_FUERTES.includes(destino.codigo)
-    const origDolar = isCajaDolar(origen)
-    const destDolar = isCajaDolar(destino)
 
-    if (origFuerte || destFuerte) {
-      // CORRECCIÓN MATEMÁTICA MONEDAS FUERTES (EUR, GBP, EU)
-      // Estas monedas se cotizan "USD por unidad" (Ej: 1 EUR = 1.16 USD).
-      // El sistema por defecto divide; para convertirlo a multiplicador, simplemente invertimos la base de recibo.
-
-      if (origFuerte && !origDolar) {
-        // Al invertirla, monto / (1 / 1.16) = monto * 1.16
-        tasaOrigenParaDolares = 1 / Math.max(tasaOrigenParaDolares, 0.001)
-      }
-
-      // Para el destino (Envío), la matemática estándar ya funciona correctamente como multiplicador directo.
-      // E.g., tasa = 0.81 -> montoUSD * 0.81 = montoEUR.
-
-      // Mantenemos las limpiezas de Cajas Dólar
-      if (origFuerte && destDolar) tasaDestinoDesdeDolares = 1
-      if (origDolar && destFuerte) tasaOrigenParaDolares = 1
-
-    } else {
-      // LOGICA DE MARGENES PARA USD (Zelle, Ecuador, etc)
-      if (origDolar && !destDolar) {
-        // ESCENARIO A: USD -> Moneda Local (Zelle -> Colombia)
-        // Sumamos el margen de recibo del origen al margen de envío del destino
-        let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        if (origen.id === 9) mO = 0; // El margen de recibo de Ecuador de referencia es siempre 0
-        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
-        tasaOrigenParaDolares = 1;
-        const tBaseD = parseFloat(destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 0));
-        tasaDestinoDesdeDolares = tBaseD * (1 - (mO + mD) / 100);
-      } else if (origDolar && destDolar) {
-        // ESCENARIO B: USD -> USD (E.g. Zelle -> Panamá, USDT -> Efectivo Venezuela)
-        // Ahora suma el margen de recibo del origen y el margen de envío del destino
-        let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        if (origen.id === 9) mO = 0; // El margen de recibo de Ecuador de referencia es siempre 0
-        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
-        tasaOrigenParaDolares = 1;
-        const tBaseD = parseFloat(destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 0));
-        tasaDestinoDesdeDolares = tBaseD * (1 - (mO + mD) / 100);
-      } else if (!origDolar && destDolar) {
-        // Caso inverso (Local -> USD)
-        // Sumamos el margen de recibo del origen al margen de envío del destino
-        let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor))) ? parseFloat(origen.margenReciboMayor) : (parseFloat(origen.margenRecibo) || 0);
-        if (origen.id === 9) mO = 0; // El margen de recibo de Ecuador de referencia es siempre 0
-        const mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor))) ? parseFloat(destino.margenEnvioMayor) : (parseFloat(destino.margenEnvio) || 0);
-        const tBaseO = parseFloat(origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 0));
-        tasaOrigenParaDolares = tBaseO * (1 + (mO + mD) / 100);
-        tasaDestinoDesdeDolares = 1;
-      }
+    // CORRECCIÓN MATEMÁTICA MONEDAS FUERTES (EUR, GBP, EU)
+    // Estas monedas se cotizan "USD por unidad" (Ej: 1 EUR = 1.08 USD).
+    // El sistema por defecto divide; para convertirlo a multiplicador directo, invertimos la base.
+    if (origFuerte) {
+      tasaOrigenParaDolares = 1 / Math.max(tasaOrigenParaDolares, 0.00001)
     }
+    if (destFuerte) {
+      tasaDestinoDesdeDolares = 1 / Math.max(tasaDestinoDesdeDolares, 0.00001)
+    }
+
+    // Ya no agrupamos los márgenes artificialmente para USDT/Zelle/Efectivo.
+    // Dejamos que la división estándar aplique a la tasa individual de cada divisa
+    // logrando que 100 / 1.02 dé el resultado exacto del sistema contable.
   }
 
   if (tasaOrigenParaDolares === 0) tasaOrigenParaDolares = 1; // Seguridad matemática

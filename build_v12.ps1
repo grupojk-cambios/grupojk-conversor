@@ -512,20 +512,50 @@ $detectarComandoAdminCode = @'
 let jid = '';
 try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; } catch(e){}
 const senderDigits = String(jid).replace(/\D/g,'');
+// SOLO los numeros con role='admin' en Supabase pueden cambiar la tarifa. Si Supabase falla o no
+// devuelve nada, esto queda en false y el comando NO se activa (falla del lado seguro).
+// El match por "termina en" es para aguantar que el numero este guardado con o sin codigo de pais,
+// pero se exigen al menos 8 digitos: si un admin tuviera el whatsapp mal cargado (ej. "0380"),
+// sin ese minimo CUALQUIER cliente cuyo numero termine en 0380 pasaria por admin.
 let esAdmin = false;
 try {
   const admins = $('Consultar Admins').all().map(i => i.json).filter(a => a && a.whatsapp);
-  esAdmin = admins.some(a => { const d = String(a.whatsapp||'').replace(/\D/g,''); return d && (senderDigits===d || senderDigits.endsWith(d) || d.endsWith(senderDigits)); });
+  esAdmin = admins.some(a => {
+    const d = String(a.whatsapp||'').replace(/\D/g,'');
+    if (!d || !senderDigits) return false;
+    if (senderDigits === d) return true;
+    if (d.length < 8 || senderDigits.length < 8) return false;
+    return senderDigits.endsWith(d) || d.endsWith(senderDigits);
+  });
 } catch(e){}
 let texto = '';
 try { texto = String($('Combinar').item.json.mensajeCombinado || '').trim(); } catch(e){}
+
 // Acepta: "mayor", "detal", "al mayor", "al detal", "modo mayor", "tarifa al detalle", etc.
-// Se exige que el mensaje sea SOLO eso (anclado ^...$) para no secuestrar preguntas reales
-// del admin como "cuanto es al mayor para 5000" (eso debe cotizarse normal, no cambiar el modo).
-const m = texto.match(/^\s*(?:modo\s+|tarifa\s+|precio\s+|pasame\s+|ponme\s+|dame\s+)?(?:al\s+|a\s+|en\s+)?(mayor|mayorista|detal|detalle)\s*[.!?]*\s*$/i);
-const esComandoModo = !!(esAdmin && m);
-const modoElegido = m ? (/^may/i.test(m[1]) ? 'mayor' : 'detal') : '';
-return [{ json: { esAdmin, esComandoModo, modoElegido, jid } }];
+// Se revisa LINEA POR LINEA (no el mensaje entero): por el debounce de 30s, si el admin manda
+// "Modo detal" justo despues de otros mensajes, todo llega junto en un solo texto. Antes se exigia
+// que el mensaje COMPLETO fuera el comando y por eso no lo reconocia.
+// La linea tiene que ser SOLO el comando, para no secuestrar frases como "cuanto es al mayor para 5000".
+const RX_COMANDO = /^\s*(?:modo\s+|tarifa\s+|precio\s+|pasame\s+|ponme\s+|dame\s+)?(?:al\s+|a\s+|en\s+)?(mayor|mayorista|detal|detalle)\s*[.!?]*\s*$/i;
+
+// OJO: solo se toca el texto si el remitente ES admin. Un cliente puede responder "mayor" a una
+// pregunta del bot, y si se le quitara esa linea el agente se quedaria sin saber que contesto.
+const lineas = texto.split('\n');
+const quedan = [];
+let modoElegido = '';
+for (const ln of lineas){
+  const m = esAdmin ? ln.match(RX_COMANDO) : null;
+  if (m){ modoElegido = /^may/i.test(m[1]) ? 'mayor' : 'detal'; continue; }  // se saca del texto
+  quedan.push(ln);
+}
+const esComandoModo = !!(esAdmin && modoElegido);
+
+// Lo que queda del mensaje despues de quitar el comando. Si sobra algo (una pregunta, un monto),
+// el flujo sigue normal y se responde YA con la tarifa nueva, en vez de perder ese mensaje.
+const textoLimpio = quedan.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+const soloComando = textoLimpio.length < 2;
+
+return [{ json: { esAdmin, esComandoModo, modoElegido, soloComando, textoLimpio, jid } }];
 '@
 
 # ===================== CODIGO: CONFIRMAR MODO ADMIN (texto de respuesta) =====================
@@ -747,6 +777,13 @@ $nodes = @(
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1630,220); id = 'f6a7b8c9-4567-4d32-9e44-rsetmodo0001'; name = 'Redis Guardar Modo Admin'; credentials = $redisCred
   },
   [ordered]@{
+    # ¿El mensaje era SOLO el comando, o venia con una pregunta pegada?
+    # Si venia algo mas, se sigue al flujo normal y se responde con la tarifa recien guardada
+    # (el modo se lee mas adelante, en "Redis Leer Modo Admin", asi que ya toma el valor nuevo).
+    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'solo-cmd-1'; leftValue = "={{ `$('Detectar Comando Admin').first().json.soloComando }}"; rightValue = $true; operator = @{ type = 'boolean'; operation = 'equals' } } ); combinator = 'and' } }
+    id = 'f9a0b1c2-7890-4d65-9e77-solocomando1'; name = '¿Solo el Comando?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(1700,150)
+  },
+  [ordered]@{
     parameters = @{ jsCode = $confirmarModoAdminCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1700,220); id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'; name = 'Confirmar Modo Admin'
   },
@@ -786,7 +823,9 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1860,128); id = '6ac06fc7-1afb-49ab-893c-e2f2b5f8b995'; name = 'Code in JavaScript'
   },
   [ordered]@{
-    parameters = @{ promptType = 'define'; text = "={{ `$('Combinar').item.json.mensajeCombinado }}"; options = @{ systemMessage = $systemMsg } }
+    # Se usa el texto SIN la linea del comando ("modo mayor"/"modo detal"), para que el agente no
+    # crea que el cliente le pregunto algo sobre tarifas. Si no hubo comando, es el mensaje tal cual.
+    parameters = @{ promptType = 'define'; text = "={{ `$('Detectar Comando Admin').first().json.textoLimpio || `$('Combinar').item.json.mensajeCombinado }}"; options = @{ systemMessage = $systemMsg } }
     type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1; position = @(1960,128); id = '2ac354a3-fe77-4708-80c5-b238454cfdd6'; name = 'AI Agent'; executeOnce = $true
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
   },
@@ -894,7 +933,9 @@ $connections = [ordered]@{
   'Consultar Admins'       = @{ main = @( ,@( @{ node='Detectar Comando Admin'; type='main'; index=0 } ) ) }
   'Detectar Comando Admin' = @{ main = @( ,@( @{ node='¿Es Comando Admin?'; type='main'; index=0 } ) ) }
   '¿Es Comando Admin?'     = @{ main = (@( ,@( @{ node='Redis Guardar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) )) }
-  'Redis Guardar Modo Admin' = @{ main = @( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) }
+  'Redis Guardar Modo Admin' = @{ main = @( ,@( @{ node='¿Solo el Comando?'; type='main'; index=0 } ) ) }
+  # true = solo el comando -> avisa y listo. false = venia una pregunta pegada -> sigue y la responde.
+  '¿Solo el Comando?'      = @{ main = (@( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) )) }
   'Confirmar Modo Admin'   = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Consultar Tasas'        = @{ main = @( ,@( @{ node='Consultar Cuentas'; type='main'; index=0 } ) ) }
   'Consultar Cuentas'      = @{ main = @( ,@( @{ node='Consultar Mayorista'; type='main'; index=0 } ) ) }

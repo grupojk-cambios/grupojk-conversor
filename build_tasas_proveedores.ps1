@@ -17,6 +17,17 @@ $SHEET_GID = '0'
 #   8892262444 = Operador Uno
 $CHAT_IDS  = @('627887509', '8892262444')
 $CHAT_IDS_JS = "[" + (($CHAT_IDS | ForEach-Object { "'" + $_ + "'" }) -join ",") + "]"
+# ===== REGLAS AUTOMATICAS POR PROVEEDOR =====
+# Hay proveedores que mandan SOLO la tasa de envio, y el recibo Kelvin lo calcula siempre igual.
+# Ejemplo: Jesus manda "Jesus / Venezuela / 955" y el recibo va SIEMPRE 20 puntos arriba (975).
+# Para agregar otro proveedor o cambiar los puntos, se edita esta lista y se vuelve a desplegar.
+$REGLAS_AUTO = @(
+  @{ proveedor = 'Jesus'; pais = 'Venezuela'; sumar = 20 }
+)
+$REGLAS_AUTO_JS = '[' + (($REGLAS_AUTO | ForEach-Object {
+  "{proveedor:'" + $_.proveedor + "',pais:'" + $_.pais + "',sumar:" + $_.sumar + "}"
+}) -join ',') + ']'
+
 # CSV publicado (SOLO LECTURA) para validar nombres de pais. Es el mismo que usa el bot.
 $CSV_TASAS = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'
 
@@ -62,6 +73,10 @@ return [{ json: { textoFinal, mensajes: arr, cuantos: arr.length } }];
 # ===================== CODIGO: INTERPRETAR MENSAJE =====================
 # Decide que hacer con el mensaje: confirmar / cancelar / tasas nuevas / error.
 $interpretarCode = @'
+// Reglas de proveedor (se inyectan desde el script, ver $REGLAS_AUTO arriba).
+// Sirven para dos cosas: saber de que PAIS habla ese proveedor aunque no lo escriba,
+// y calcularle el recibo cuando solo manda el envio.
+const REGLAS_AUTO = __REGLAS_AUTO__;
 // ===== Utilidades =====
 function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
 
@@ -93,6 +108,49 @@ function parseCSV(text){
   }
   if (cur.length>0 || row.length>0){ row.push(cur); rows.push(row); }
   return rows.map(r => r.map(s => s.trim())).filter(r => r.some(c => c.length>0));
+}
+
+// ===== MEMORIA DE PROVEEDORES =====
+// Cada proveedor manda siempre con la misma "forma" (las mismas palabras, cambian solo los
+// numeros). Se guarda esa forma junto al nombre, y asi Kelvin no tiene que escribir el nombre
+// cada dia: el bot lo reconoce solo. Se compara por parecido, no por texto exacto, para
+// aguantar cambios chicos.
+const IGNORAR_PAL = ['lunes','martes','miercoles','jueves','viernes','sabado','domingo',
+  'buen','buenos','buena','dias','dia','tardes','noches','hoy','ayer',
+  'enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+  'septiembre','octubre','noviembre','diciembre','tasa','tasas','actualizacion'];
+
+function palabrasClave(txt){
+  const limpio = String(txt||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]+/g,' ');
+  const out = [];
+  for (const w of limpio.split(' ')){
+    if (w.length >= 4 && IGNORAR_PAL.indexOf(w) === -1 && out.indexOf(w) === -1) out.push(w);
+  }
+  return out;
+}
+function parecidoPal(a, b){
+  if (!a.length || !b.length) return 0;
+  let comunes = 0;
+  for (const w of a) if (b.indexOf(w) !== -1) comunes++;
+  return comunes / (a.length + b.length - comunes);   // Jaccard
+}
+// Proveedores ya conocidos (guardados en Redis por el nodo "Redis Guardar Proveedores")
+let provConocidos = [];
+try {
+  const crudo = $('Redis Leer Proveedores').first().json.provFormatos;
+  if (crudo) provConocidos = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo;
+  if (!Array.isArray(provConocidos)) provConocidos = [];
+} catch(e){ provConocidos = []; }
+
+function reconocerProveedor(txt){
+  const p = palabrasClave(txt);
+  let mejor = null, punt = 0;
+  for (const c of provConocidos){
+    if (!c || !c.nombre || !Array.isArray(c.palabras)) continue;
+    const s = parecidoPal(p, c.palabras);
+    if (s > punt){ punt = s; mejor = c; }
+  }
+  return punt >= 0.5 ? mejor.nombre : '';   // 0.5 validado contra los mensajes reales de 08/25 a 09/07
 }
 
 // ===== Entradas =====
@@ -129,12 +187,18 @@ try {
 const t = norm(texto);
 
 // ===== 1) Hay algo pendiente de confirmar =====
+const ES_SI = ['si','sii','ok','oka','okey','dale','confirmo','confirmar','listo','ya','correcto','sipi'];
+const ES_NO = ['no','nop','cancelar','cancela','anular','nel','negativo'];
 if (pendiente && pendiente.filas && pendiente.filas.length){
-  const esSi = ['si','sii','ok','oka','okey','dale','confirmo','confirmar','listo','ya','correcto','sipi'].indexOf(t) !== -1;
-  const esNo = ['no','nop','cancelar','cancela','anular','nel','negativo'].indexOf(t) !== -1;
-  if (esSi) return [{ json: { accion:'confirmar', chatId, filas: pendiente.filas, resumen: pendiente.resumen } }];
-  if (esNo) return [{ json: { accion:'cancelar', chatId } }];
+  if (ES_SI.indexOf(t) !== -1) return [{ json: { accion:'confirmar', chatId, filas: pendiente.filas, resumen: pendiente.resumen } }];
+  if (ES_NO.indexOf(t) !== -1) return [{ json: { accion:'cancelar', chatId } }];
   // Si escribio otra cosa, lo tratamos como un mensaje NUEVO (sobrescribe el pendiente).
+}
+
+// Dijo "si"/"no" pero NO hay nada guardado: hay que decirselo CLARO. Antes caia al parser y
+// respondia "no pude leer las tasas", que confunde un monton (parece que el formato esta mal).
+if (ES_SI.indexOf(t) !== -1 || ES_NO.indexOf(t) !== -1){
+  return [{ json: { accion:'sinPendiente', chatId } }];
 }
 
 // ===== 2) Interpretar tasas nuevas =====
@@ -197,6 +261,17 @@ function resolverPais(nombre, estricto){
   return null;
 }
 
+// Si lo escrito no es un pais pero SI es un proveedor con regla, devuelve su regla.
+// Asi "jesus 955" se entiende como Venezuela, aunque Jesus nunca escriba el pais.
+function reglaDeProveedor(nombre){
+  const nq = norm(nombre);
+  if(!nq) return null;
+  for(const r of REGLAS_AUTO){
+    if(nq === norm(r.proveedor) || nq.indexOf(norm(r.proveedor)) !== -1) return r;
+  }
+  return null;
+}
+
 // FORMATO A: "<pais> [marca] <num> [marca] <num>" en UNA linea.
 function parseUnaLinea(linea){
   const l = String(linea||'').trim().replace(/[;,.\-]+$/,'');
@@ -218,7 +293,13 @@ function parseUnaLinea(linea){
   const crudoPais = toks.join(' ').trim();
   if(!/^[a-zA-ZÀ-ɏ.\s]+$/.test(crudoPais)) return null;
   if(crudoPais.split(/\s+/).filter(Boolean).length > 3) return null;
-  const pais = resolverPais(crudoPais, true);
+  let pais = resolverPais(crudoPais, true);
+  let regla = null;
+  if(!pais){
+    // No es un pais: puede ser un proveedor con regla ("jesus 955" -> Venezuela 955 / 975).
+    regla = reglaDeProveedor(crudoPais);
+    if(regla) pais = resolverPais(regla.pais, false);
+  }
   if(!pais) return { errorPais: crudoPais };
 
   let envio = null, recibo = null;
@@ -243,12 +324,17 @@ function parseUnaLinea(linea){
     }
   }
   if(envio === null && recibo === null) return null;
-  return { pais, envio, recibo };
+  // Regla del proveedor: si solo mando el envio, el recibo se calcula (ej. Jesus, +20).
+  let autoSuma = 0;
+  if(regla && envio !== null && recibo === null){ recibo = envio + regla.sumar; autoSuma = regla.sumar; }
+  return { pais, envio, recibo, autoSuma };
 }
 
 const bloques = texto.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
 const filas = [];
 const errores = [];
+const autoSumaPorPais = {};   // pais -> puntos que se le sumaron al envio para sacar el recibo
+let reglaPendiente = null;    // proveedor con regla nombrado en un bloque, cuyo numero viene en el siguiente
 
 function agregarFila(pais, envio, recibo){
   let f = filas.find(x => x.Pais === pais);
@@ -262,23 +348,45 @@ for (const bloque of bloques){
   const lineas = bloque.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lineas.length) continue;
   // Un bloque SIN ningun numero es un encabezado o un saludo ("Actualizacion", "Buen dia"):
-  // se ignora en silencio, no es un error del usuario.
-  if (!/\d/.test(bloque)) continue;
+  // se ignora en silencio, no es un error del usuario. PERO si es el nombre de un proveedor con
+  // regla, se recuerda: Jesus manda "Jesus", linea en blanco, y en otro bloque el numero suelto.
+  if (!/\d/.test(bloque)){
+    const rg = reglaDeProveedor(bloque.trim());
+    if (rg) reglaPendiente = rg;
+    continue;
+  }
 
   // Si la PRIMERA linea ya trae numeros -> formato A (cada linea es un pais).
   if (/\d/.test(lineas[0])){
-    let ultima = null;
+    let ultima = null, algo = false;
     for (const ln of lineas){
       const r = parseUnaLinea(ln);
-      if (r && r.pais){ ultima = agregarFila(r.pais, r.envio, r.recibo); continue; }
+      if (r && r.pais){ ultima = agregarFila(r.pais, r.envio, r.recibo); if(r.autoSuma) autoSumaPorPais[r.pais] = r.autoSuma; algo = true; continue; }
       if (r && r.errorPais){ errores.push('"' + r.errorPais + '": no existe en la hoja.'); continue; }
       // No es un pais: puede ser una linea suelta "recibo: 3130" del pais anterior.
       const mk = ln.match(/^([a-zA-Zñáéíóúü]+)\s*:?\s*(.+)$/);
       if (mk && ultima){
         const marca = tipoClave(mk[1]);
         const val = numLatino(mk[2]);
-        if (marca && val !== null) ultima[marca === 'envio' ? 'Tasa Envio' : 'Tasa Recibo'] = val;
+        if (marca && val !== null){ ultima[marca === 'envio' ? 'Tasa Envio' : 'Tasa Recibo'] = val; algo = true; }
       }
+    }
+    // Bloque de PUROS numeros que venia despues del nombre de un proveedor con regla.
+    if (!algo && reglaPendiente){
+      const sueltos = [];
+      for (const ln of lineas){
+        for (const tk of ln.split(/[\s\/|;]+/)){ const v = numLatino(tk); if (v !== null) sueltos.push(v); }
+      }
+      const paisRegla = sueltos.length ? resolverPais(reglaPendiente.pais, false) : null;
+      if (paisRegla){
+        let env = sueltos[0];
+        let rec = sueltos.length >= 2 ? sueltos[1] : null;
+        let suma = 0;
+        if (rec === null){ rec = env + reglaPendiente.sumar; suma = reglaPendiente.sumar; }
+        agregarFila(paisRegla, env, rec);
+        if (suma) autoSumaPorPais[paisRegla] = suma;
+      }
+      reglaPendiente = null;
     }
     continue;
   }
@@ -297,13 +405,36 @@ for (const bloque of bloques){
     if (!marca || val === null) continue;
     if (marca === 'envio') envio = val; else recibo = val;
   }
+  // Si no habia ninguna linea con "envio:"/"recibo:", se aceptan NUMEROS SUELTOS:
+  // el primero es el envio y el segundo el recibo. Cubre "Jesus / 955" y tambien
+  // "Colombia / 3100 / 3130", que es una forma natural de escribirlo.
+  if (envio === null && recibo === null){
+    const sueltos = [];
+    for (let i=1; i<lineas.length; i++){
+      for (const tk of lineas[i].split(/[\s\/|;]+/)){
+        const v = numLatino(tk);
+        if (v !== null) sueltos.push(v);
+      }
+    }
+    if (sueltos.length >= 1) envio = sueltos[0];
+    if (sueltos.length >= 2) recibo = sueltos[1];
+  }
   if (envio === null && recibo === null){
     errores.push('"' + nombrePais + '": no encontre ninguna tasa (envio o recibo).');
     continue;
   }
-  const pais = resolverPais(nombrePais, false);
+
+  let pais = resolverPais(nombrePais, false);
+  let sumaRegla = 0;
+  if (!pais){
+    // No es un pais: puede ser el nombre de un proveedor con regla (ej. "Jesus" -> Venezuela).
+    const regla = reglaDeProveedor(nombrePais);
+    if (regla) pais = resolverPais(regla.pais, false);
+    if (pais && regla && envio !== null && recibo === null){ recibo = envio + regla.sumar; sumaRegla = regla.sumar; }
+  }
   if (!pais){ errores.push('"' + nombrePais + '": no existe en la hoja de tasas.'); continue; }
   agregarFila(pais, envio, recibo);
+  if (sumaRegla) autoSumaPorPais[pais] = sumaRegla;
 }
 
 // ===== 3) Nada reconocido: si tiene numeros, que lo lea la IA =====
@@ -322,7 +453,7 @@ if (!filas.length){
       paisesValidos.join(' | '),
       '',
       'REGLAS:',
-      '- El nombre del proveedor: si el texto empieza con "Proveedor: X" usa X. Si no, usa el titulo del mensaje (ej. "*CORPORACION GRUPO ELITE*"). Si no hay ninguno, usa "Proveedor".',
+      '- El nombre del proveedor, en este orden: 1) si el texto empieza con "Proveedor: X" o la primera linea es solo un nombre corto, usa ese; 2) si no, el titulo del mensaje (ej. "*CORPORACION GRUPO ELITE*"); 3) si no hay ninguno, mira si te pasaron un "NOMBRE YA CONOCIDO" mas abajo y usa ese; 4) si tampoco, usa "Proveedor".',
       '- MUY IMPORTANTE: un mismo mensaje suele traer DOS listas separadas, una de ENVIO y otra de RECIBO (a veces con un titulo tipo "*RECIBO*"). Tenes que extraer las DOS. Recorre el mensaje linea por linea de arriba a abajo y no te saltees ninguna seccion.',
       '- NUNCA asignes un numero a un pais que no aparece en ESA misma linea. Si la linea dice COP es Colombia, si dice ARS es Argentina, etc. No inventes paises.',
       '',
@@ -341,6 +472,17 @@ if (!filas.length){
       '  "RECIBIENDO DEPOSITOS" / "recibo COP" / "recibo pesos" -> el proveedor recibe MONEDA LOCAL -> RECIBO.',
       '  "RETIROS" / "retiros sin tarjeta" (el destinatario retira alla) -> ENVIO.',
       '  "pagando usdt x COP" / "pago usdt por pesos"      -> se pagan dolares para entregar pesos -> ENVIO.',
+      '',
+      'EJEMPLOS YA RESUELTOS (son lineas REALES de estos proveedores; respetalos al pie de la letra):',
+      '  "🇧🇷 5.08*USDT* RECIBO"              -> Brasil,   envio 5.08   (el proveedor RECIBE usdt y entrega reales)',
+      '  "🇨🇴 3060 *USDT* RECIBO"             -> Colombia, envio 3060   (idem: recibe usdt)',
+      '  "🇲🇽 18.80 *USDT* DOY"               -> Mexico,   recibo 18.80 (el proveedor DA usdt y cobra pesos)',
+      '  "USDT🌐/COP🇨🇴 2989"                 -> Colombia, envio 2989',
+      '  "🇨🇴COP /USDT 🌐 DOLAR BCP 3193"     -> Colombia, recibo 3193',
+      '  "RETIROS SIN TARJETA 16.30"          -> envio 16.30',
+      '  "RECIBIENDO MEXICO DEPOSITOS 18.20"  -> recibo 18.20',
+      'Fijate que en "USDT RECIBO" y "USDT DOY" la palabra habla del USDT, NO de la moneda local:',
+      'si el proveedor RECIBE usdt es ENVIO nuestro; si el proveedor DA usdt es RECIBO nuestro.',
       '',
       'Pista 3 - CONTROL FINAL: para un mismo pais el numero de ENVIO SIEMPRE es MENOR que el de RECIBO',
       '(esa diferencia es la ganancia del proveedor). Si te quedo un ENVIO mas alto que un RECIBO del mismo',
@@ -362,7 +504,15 @@ if (!filas.length){
       if (c && Array.isArray(c.mensajes)) partes = c.mensajes.filter(x => String(x||'').trim().length > 10);
     } catch(e){}
     if (!partes.length) partes = [texto];
-    return partes.map(p => ({ json: { accion:'ia', chatId, textoOriginal: String(p).trim(), promptSistema, errores: errores.join('\n') } }));
+    return partes.map(p => {
+      const t1 = String(p).trim();
+      const conocido = reconocerProveedor(t1);
+      // El nombre reconocido va como pista al final del prompt, para ese mensaje en concreto.
+      const prompt = conocido
+        ? (promptSistema + '\n\nNOMBRE YA CONOCIDO para este formato de mensaje: "' + conocido + '". Usalo si el mensaje no trae uno propio.')
+        : promptSistema;
+      return { json: { accion:'ia', chatId, textoOriginal: t1, promptSistema: prompt, nombreConocido: conocido, errores: errores.join('\n') } };
+    });
   }
   return [{ json: { accion:'error', chatId, errores: errores.join('\n') } }];
 }
@@ -374,13 +524,16 @@ const lineasResumen = filas.map(f => {
   if (f['Tasa Recibo'] !== undefined) partes.push('recibo ' + f['Tasa Recibo']);
   const noTocado = (f['Tasa Envio'] === undefined) ? ' (envio no se toca)'
                  : (f['Tasa Recibo'] === undefined) ? ' (recibo no se toca)' : '';
-  return '• ' + f.Pais + ': ' + partes.join(', ') + noTocado;
+  const auto = autoSumaPorPais[f.Pais] ? ' (recibo calculado: envio +' + autoSumaPorPais[f.Pais] + ')' : '';
+  return '• ' + f.Pais + ': ' + partes.join(', ') + noTocado + auto;
 });
 let resumen = lineasResumen.join('\n');
 if (errores.length) resumen += '\n\n⚠️ Ignorado:\n' + errores.join('\n');
 
 return [{ json: { accion:'nuevo', chatId, filas, resumen, pendienteJson: JSON.stringify({ filas, resumen }) } }];
 '@
+# Se inyectan las reglas de proveedor (el heredoc @'...'@ no expande variables de PowerShell).
+$interpretarCode = $interpretarCode.Replace('__REGLAS_AUTO__', $REGLAS_AUTO_JS)
 
 # ===================== CODIGO: EXPANDIR FILAS =====================
 # Convierte las filas confirmadas en 1 item por pais, para que Google Sheets actualice fila por fila.
@@ -403,6 +556,8 @@ return [{ json: { texto: '✅ Listo, actualice ' + n + ' ' + (n === 1 ? 'pais' :
 # Toma la respuesta de OpenAI (mensaje crudo de un proveedor ya interpretado) y arma el mismo
 # formato que produce "Interpretar Mensaje", para reusar el flujo de confirmacion.
 $armarBorradorCode = @'
+// Reglas de recibo automatico (se inyectan desde el script, ver $REGLAS_AUTO arriba).
+const REGLAS_AUTO = __REGLAS_AUTO__;
 function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,''); }
 function parseCSV(text){
   const Q = '"';
@@ -418,31 +573,123 @@ function parseCSV(text){
 
 const chatId = String($('Interpretar Mensaje').first().json.chatId || '');
 
-// Paises reales de la hoja (para no escribir uno inventado por la IA).
+// Paises reales de la hoja (para no escribir uno inventado por la IA) y las tasas que tiene HOY,
+// que sirven de referencia para avisar de cambios raros.
+// Columnas del CSV: 0=Pais, 1=Tasa Envio, 2=Margen Envio, 3=Tasa Recibo.
 const paisesValidos = [];
+const tasaActual = {};
 try {
+  const numCSV = (s) => { const v = parseFloat(String(s||'').replace(/\s/g,'').replace(',','.')); return isNaN(v) ? null : v; };
   const filas0 = parseCSV(String($('Leer Paises').first().json.data || ''));
-  for (let i=1; i<filas0.length; i++){ const p=(filas0[i][0]||'').trim(); if(p) paisesValidos.push(p); }
+  for (let i=1; i<filas0.length; i++){
+    const p=(filas0[i][0]||'').trim();
+    if(!p) continue;
+    paisesValidos.push(p);
+    tasaActual[p] = { envio: numCSV(filas0[i][1]), recibo: numCSV(filas0[i][3]) };
+  }
 } catch(e){}
+
+// Si una tasa se mueve mas que esto respecto a la hoja, se avisa. Los cambios normales del dia a
+// dia rondan el 1-2%; un salto grande suele ser un error de lectura (ej. un envio leido como
+// recibo) o un tipeo. No bloquea nada: solo lo marca para que Kelvin lo mire antes de confirmar.
+const UMBRAL_CAMBIO = 0.05;
+const cambiosRaros = [];
+function revisarCambio(pais, tipo, valor){
+  const act = tasaActual[pais];
+  if (!act) return '';
+  const antes = tipo === 'envio' ? act.envio : act.recibo;
+  if (!antes || !valor) return '';
+  const dif = (valor - antes) / antes;
+  if (Math.abs(dif) <= UMBRAL_CAMBIO) return '';
+  const pct = (dif * 100).toFixed(1);
+  cambiosRaros.push(pais + ' ' + tipo + ': ' + antes + ' -> ' + valor + ' (' + (dif > 0 ? '+' : '') + pct + '%)');
+  return '  <-- OJO, cambio de ' + (dif > 0 ? '+' : '') + pct + '%';
+}
+
+// ===== APRENDER LA FORMA DE CADA PROVEEDOR =====
+// Misma logica que en "Interpretar Mensaje": se guarda el conjunto de palabras del mensaje junto
+// al nombre, para reconocerlo la proxima vez sin que Kelvin tenga que escribirlo.
+const IGNORAR_PAL = ['lunes','martes','miercoles','jueves','viernes','sabado','domingo',
+  'buen','buenos','buena','dias','dia','tardes','noches','hoy','ayer',
+  'enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+  'septiembre','octubre','noviembre','diciembre','tasa','tasas','actualizacion'];
+function palabrasClave(txt){
+  const limpio = String(txt||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]+/g,' ');
+  const out = [];
+  for (const w of limpio.split(' ')){
+    if (w.length >= 4 && IGNORAR_PAL.indexOf(w) === -1 && out.indexOf(w) === -1) out.push(w);
+  }
+  return out;
+}
+const esNombreUtil = (s) => {
+  const n = String(s||'').trim();
+  return n.length >= 3 && !/^proveedor\s*\d*$/i.test(n);
+};
+
+// Lo que ya habia guardado
+let provFormatos = [];
+try {
+  const crudo = $('Redis Leer Proveedores').first().json.provFormatos;
+  if (crudo) provFormatos = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo;
+  if (!Array.isArray(provFormatos)) provFormatos = [];
+} catch(e){ provFormatos = []; }
+
+// Los mensajes originales, en el MISMO orden que las respuestas de la IA (una llamada por mensaje)
+let origenes = [];
+try { origenes = $('Interpretar Mensaje').all().map(i => i.json); } catch(e){ origenes = []; }
 
 // Respuestas de OpenAI: puede venir UNA por cada mensaje de proveedor (una llamada por mensaje).
 const gruposIA = [];
 let items = [];
 try { items = $input.all(); } catch(e){ items = [{ json: $json }]; }
 let n = 0;
-for (const it of items){
+for (let idx = 0; idx < items.length; idx++){
+  const it = items[idx];
   let cont = '';
   try { cont = String(it.json.choices[0].message.content || ''); } catch(e){ continue; }
   cont = cont.replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
   let data = null;
   try { data = JSON.parse(cont); } catch(e){ continue; }
   n++;
-  if (data && Array.isArray(data.proveedores)) {
-    for (const g of data.proveedores) gruposIA.push(g);
-  } else if (data && Array.isArray(data.filas)) {
-    gruposIA.push({ nombre: data.nombre || ('Proveedor ' + n), filas: data.filas });
+  let deEsteMensaje = [];
+  if (data && Array.isArray(data.proveedores)) deEsteMensaje = data.proveedores;
+  else if (data && Array.isArray(data.filas)) deEsteMensaje = [{ nombre: data.nombre || ('Proveedor ' + n), filas: data.filas }];
+
+  // Proveedor con regla que NO escribe el pais: Jesus manda literalmente "955" y la IA no tiene
+  // como saber que son bolivares, asi que devuelve filas vacias. Aca se arma la fila con el pais
+  // de la regla y los numeros del mensaje (1 numero = envio; 2 = envio y recibo).
+  const origPrev = origenes[idx];
+  if (deEsteMensaje.length === 1 && (!deEsteMensaje[0].filas || !deEsteMensaje[0].filas.length) && origPrev && origPrev.textoOriginal){
+    const nom = String(deEsteMensaje[0].nombre || '');
+    let regla = null;
+    for (const rg of REGLAS_AUTO){ if (norm(nom).indexOf(norm(rg.proveedor)) !== -1){ regla = rg; break; } }
+    if (regla){
+      const nums = [];
+      for (const tk of String(origPrev.textoOriginal).split(/[\s\/|;,]+/)){
+        const limpio = tk.replace(/[^\d.]/g,'');
+        if (!limpio) continue;
+        const v = Number(limpio.split('.').length > 2 ? limpio.replace(/\./g,'') : limpio);
+        if (!isNaN(v) && v > 0) nums.push(v);
+      }
+      if (nums.length >= 1){
+        deEsteMensaje[0].filas = [{ pais: regla.pais, envio: nums[0], recibo: nums.length >= 2 ? nums[1] : null }];
+      }
+    }
+  }
+  for (const g of deEsteMensaje) gruposIA.push(g);
+
+  // Aprender: si de este mensaje salio UN proveedor con nombre util, se guarda su forma.
+  const orig = origenes[idx];
+  if (deEsteMensaje.length === 1 && orig && orig.textoOriginal && esNombreUtil(deEsteMensaje[0].nombre)){
+    const nombre = String(deEsteMensaje[0].nombre).trim().slice(0,40);
+    const palabras = palabrasClave(orig.textoOriginal);
+    if (palabras.length >= 3){
+      provFormatos = provFormatos.filter(x => x && x.nombre && x.nombre.toLowerCase() !== nombre.toLowerCase());
+      provFormatos.unshift({ nombre, palabras });
+    }
   }
 }
+provFormatos = provFormatos.slice(0, 30);   // tope, para que no crezca sin control
 
 // Aplana: una entrada por (proveedor, pais).
 const entradas = [];
@@ -454,9 +701,22 @@ for (const g of gruposIA){
     const pais = paisesValidos.find(p => norm(p) === nq) || paisesValidos.find(p => norm(p).indexOf(nq) === 0);
     if (!pais){ if(f.pais && omitidos.indexOf(String(f.pais)) === -1) omitidos.push(String(f.pais)); continue; }
     const e = (f.envio  === null || f.envio  === undefined || isNaN(Number(f.envio)))  ? null : Number(f.envio);
-    const r = (f.recibo === null || f.recibo === undefined || isNaN(Number(f.recibo))) ? null : Number(f.recibo);
+    let   r = (f.recibo === null || f.recibo === undefined || isNaN(Number(f.recibo))) ? null : Number(f.recibo);
     if (e === null && r === null) continue;
-    entradas.push({ pais, prov, envio: e, recibo: r });
+
+    // REGLAS AUTOMATICAS: hay proveedores que mandan SOLO el envio y el recibo lo pone Kelvin
+    // siempre sumando los mismos puntos. Ej: Jesus manda "Venezuela 955" y el recibo va en 975.
+    let autoSuma = 0;
+    if (e !== null && r === null){
+      for (const regla of REGLAS_AUTO){
+        if (norm(prov).indexOf(norm(regla.proveedor)) !== -1 && norm(pais) === norm(regla.pais)){
+          r = e + regla.sumar;
+          autoSuma = regla.sumar;
+          break;
+        }
+      }
+    }
+    entradas.push({ pais, prov, envio: e, recibo: r, autoSuma });
   }
 }
 
@@ -468,7 +728,7 @@ const porPais = {};
 for (const x of entradas){
   if (!porPais[x.pais]) porPais[x.pais] = { envios: [], recibos: [] };
   if (x.envio  !== null) porPais[x.pais].envios.push({ v: x.envio,  prov: x.prov });
-  if (x.recibo !== null) porPais[x.pais].recibos.push({ v: x.recibo, prov: x.prov });
+  if (x.recibo !== null) porPais[x.pais].recibos.push({ v: x.recibo, prov: x.prov, autoSuma: x.autoSuma || 0 });
 }
 
 const filas = [];
@@ -491,13 +751,15 @@ for (const pais of Object.keys(porPais)){
   const lin = [pais + (invertido ? '   <-- REVISAR: el envio quedo mayor o igual que el recibo' : '')];
   if (mejorEnvio){
     const otros = g.envios.filter(x => x !== mejorEnvio).sort((a,b) => b.v - a.v);
-    lin.push('   envio  ' + mejorEnvio.v + '  <- ' + mejorEnvio.prov
+    lin.push('   envio  ' + mejorEnvio.v + '  <- ' + mejorEnvio.prov + revisarCambio(pais, 'envio', mejorEnvio.v)
       + (otros.length ? '\n            otros: ' + otros.map(o => o.v + ' (' + o.prov + ')').join(', ') : ''));
   } else lin.push('   envio  -- (ninguno lo trae)');
   if (mejorRecibo){
     const otros = g.recibos.filter(x => x !== mejorRecibo).sort((a,b) => a.v - b.v);
-    lin.push('   recibo ' + mejorRecibo.v + '  <- ' + mejorRecibo.prov
-      + (otros.length ? '\n            otros: ' + otros.map(o => o.v + ' (' + o.prov + ')').join(', ') : ''));
+    // Si el recibo lo calculo el bot (regla automatica) se avisa, para que no parezca del proveedor.
+    const nota = mejorRecibo.autoSuma ? ' (calculado: envio +' + mejorRecibo.autoSuma + ')' : '';
+    lin.push('   recibo ' + mejorRecibo.v + '  <- ' + mejorRecibo.prov + nota + revisarCambio(pais, 'recibo', mejorRecibo.v)
+      + (otros.length ? '\n            otros: ' + otros.map(o => o.v + ' (' + o.prov + ')' + (o.autoSuma ? ' calculado' : '')).join(', ') : ''));
   } else lin.push('   recibo -- (ninguno lo trae)');
   detalle.push(lin.join('\n'));
 }
@@ -514,6 +776,7 @@ const cuantosProv = [];
 for (const x of entradas){ if (cuantosProv.indexOf(x.prov) === -1) cuantosProv.push(x.prov); }
 
 let resumen = detalle.join('\n\n');
+if (cambiosRaros.length) resumen += '\n\n⚠️ Estas se movieron mas de lo normal (contra lo que hay en la hoja):\n' + cambiosRaros.map(x => '  - ' + x).join('\n');
 if (sospechosos.length) resumen += '\n\n⚠️ Revisa ' + sospechosos.join(', ')
   + ': el envio deberia ser MENOR que el recibo. Puede que el proveedor lo haya escrito al reves.';
 if (omitidos.length) resumen += '\n\n(Omiti, no estan en tu hoja: ' + omitidos.join(', ') + ')';
@@ -538,8 +801,11 @@ const resumenCorto = filas.map(f => {
 }).join('\n');
 
 return [{ json: { chatId, filas, resumen, resumenCorto, borrador, proveedores: cuantosProv,
+                  provFormatosJson: JSON.stringify(provFormatos),
                   pendienteJson: JSON.stringify({ filas, resumen: resumenCorto }) } }];
 '@
+# Se inyectan las reglas de recibo automatico (el heredoc @'...'@ no expande variables).
+$armarBorradorCode = $armarBorradorCode.Replace('__REGLAS_AUTO__', $REGLAS_AUTO_JS)
 
 # ===================== CODIGO: TEXTO PEDIR CONFIRMACION =====================
 # Sirve para las dos ramas: la del parser normal y la de la IA.
@@ -580,6 +846,13 @@ return [{ json: { texto: b } }];
 # ===================== CODIGO: TEXTO ERROR / AYUDA =====================
 $textoErrorCode = @'
 const d = $('Interpretar Mensaje').first().json;
+
+// Caso aparte: dijo "si"/"no" pero ya no hay nada pendiente (se vencio o nunca se guardo).
+// Antes caia en el mensaje de "no pude leer las tasas" y parecia un problema de formato.
+if (d.accion === 'sinPendiente'){
+  return [{ json: { texto: 'No tengo ninguna actualizacion esperando confirmacion, asi que ese "si" no aplica nada.\n\nMandame las tasas de nuevo y te las confirmo.' } }];
+}
+
 const detalle = d.errores ? ('\n\nDetalle:\n' + d.errores) : '';
 const ayuda = 'No pude leer las tasas.' + detalle
   + '\n\nFormas que entiendo:\n'
@@ -675,6 +948,14 @@ $nodes = @(
     credentials = $redisCred
   },
   [ordered]@{
+    # Memoria de proveedores: {nombre, palabras[]} por cada formato ya visto. Sin vencimiento:
+    # es lo que evita tener que escribir el nombre del proveedor cada dia.
+    parameters = @{ operation = 'get'; key = 'provFormatos:tasas'; propertyName = 'provFormatos'; keyType = 'string'; options = @{} }
+    id = 'a7000000-0000-4000-9000-rgetprov00001'; name = 'Redis Leer Proveedores'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(300,300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = $redisCred
+  },
+  [ordered]@{
     parameters = @{ jsCode = $interpretarCode }
     id = 'a5000000-0000-4000-9000-interpretar01'; name = 'Interpretar Mensaje'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(400,300)
   },
@@ -685,7 +966,8 @@ $nodes = @(
         [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-canc'; leftValue = '={{ $json.accion }}'; rightValue = 'cancelar'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'cancelar' },
         [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-nuevo'; leftValue = '={{ $json.accion }}'; rightValue = 'nuevo'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'nuevo' },
         [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-err'; leftValue = '={{ $json.accion }}'; rightValue = 'error'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'error' },
-        [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-ia'; leftValue = '={{ $json.accion }}'; rightValue = 'ia'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'ia' }
+        [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-ia'; leftValue = '={{ $json.accion }}'; rightValue = 'ia'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'ia' },
+        [ordered]@{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'r-sinpend'; leftValue = '={{ $json.accion }}'; rightValue = 'sinPendiente'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'sinPendiente' }
       ) }
       options = @{}
     }
@@ -724,7 +1006,7 @@ $nodes = @(
     executeOnce = $true
   },
   [ordered]@{
-    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{} }
+    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{ append_attribution = $false } }
     id = 'b5000000-0000-4000-9000-tgok00000001'; name = 'Avisar Actualizado'; type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = @(1620,60)
     executeOnce = $true; retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000
     credentials = $telegramCred
@@ -738,7 +1020,7 @@ $nodes = @(
     credentials = $redisCred
   },
   [ordered]@{
-    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = $txtCancelado; additionalFields = @{} }
+    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = $txtCancelado; additionalFields = @{ append_attribution = $false } }
     id = 'c2000000-0000-4000-9000-tgcancel00001'; name = 'Avisar Cancelado'; type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = @(1020,220)
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000
     credentials = $telegramCred
@@ -746,7 +1028,11 @@ $nodes = @(
 
   # ---------- RAMA: TASAS NUEVAS (guarda pendiente y pregunta) ----------
   [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ 'pendiente:tasas:' + `$json.chatId }}"; value = '={{ $json.pendienteJson }}'; keyType = 'string'; expire = $true; ttl = 900 }
+    # TTL 6 horas. Antes eran 15 min y era MUY poco: Kelvin se toma 20-25 min revisando las tasas
+    # antes de responder "si", y para entonces lo pendiente ya se habia borrado -> el bot leia ese
+    # "si" como si fuera un mensaje de tasas nuevo y contestaba "no pude leer las tasas".
+    # (Casos reales: 23 min el 01/09 11:04->11:27 y 22.8 min el mismo dia 13:16->13:38.)
+    parameters = @{ operation = 'set'; key = "={{ 'pendiente:tasas:' + `$json.chatId }}"; value = '={{ $json.pendienteJson }}'; keyType = 'string'; expire = $true; ttl = 21600 }
     id = 'd1000000-0000-4000-9000-rsetpend00001'; name = 'Redis Guardar Pendiente'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(820,380)
     credentials = $redisCred
   },
@@ -755,7 +1041,7 @@ $nodes = @(
     id = 'd2000000-0000-4000-9000-textoask00001'; name = 'Texto Pregunta'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1020,380)
   },
   [ordered]@{
-    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{} }
+    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{ append_attribution = $false } }
     id = 'd3000000-0000-4000-9000-tgask00000001'; name = 'Pedir Confirmacion'; type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = @(1220,380)
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000
     credentials = $telegramCred
@@ -766,7 +1052,7 @@ $nodes = @(
   },
   [ordered]@{
     # 2do mensaje: SOLO el borrador, listo para copiar/editar/reenviar.
-    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{} }
+    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{ append_attribution = $false } }
     id = 'd5000000-0000-4000-9000-tgborrador001'; name = 'Enviar Borrador'; type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = @(1620,380)
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000
     credentials = $telegramCred
@@ -778,7 +1064,7 @@ $nodes = @(
     id = 'e1000000-0000-4000-9000-textoerr00001'; name = 'Texto Ayuda'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(820,540)
   },
   [ordered]@{
-    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{} }
+    parameters = @{ chatId = "={{ `$('Telegram Trigger').first().json.message.chat.id }}"; text = '={{ $json.texto }}'; additionalFields = @{ append_attribution = $false } }
     id = 'e2000000-0000-4000-9000-tgerr00000001'; name = 'Avisar Formato'; type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = @(1020,540)
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000
     credentials = $telegramCred
@@ -806,6 +1092,13 @@ $nodes = @(
   [ordered]@{
     parameters = @{ jsCode = $armarBorradorCode }
     id = 'f2000000-0000-4000-9000-borradoria001'; name = 'Armar Borrador IA'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1020,700)
+  },
+  [ordered]@{
+    # Guarda la memoria de proveedores actualizada. Sin TTL: se conserva entre dias.
+    parameters = @{ operation = 'set'; key = 'provFormatos:tasas'; value = '={{ $json.provFormatosJson }}'; keyType = 'string' }
+    id = 'f3000000-0000-4000-9000-rsetprov00001'; name = 'Redis Guardar Proveedores'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1220,820)
+    onError = 'continueRegularOutput'
+    credentials = $redisCred
   }
 )
 
@@ -827,17 +1120,20 @@ $connections = [ordered]@{
   'Redis Borrar Buffer'  = @{ main = @( ,@( @{ node='Combinar Mensajes'; type='main'; index=0 } ) ) }
   'Combinar Mensajes'    = @{ main = @( ,@( @{ node='Leer Paises'; type='main'; index=0 } ) ) }
   'Leer Paises'          = @{ main = @( ,@( @{ node='Redis Leer Pendiente'; type='main'; index=0 } ) ) }
-  'Redis Leer Pendiente' = @{ main = @( ,@( @{ node='Interpretar Mensaje'; type='main'; index=0 } ) ) }
+  'Redis Leer Pendiente' = @{ main = @( ,@( @{ node='Redis Leer Proveedores'; type='main'; index=0 } ) ) }
+  'Redis Leer Proveedores' = @{ main = @( ,@( @{ node='Interpretar Mensaje'; type='main'; index=0 } ) ) }
   'Interpretar Mensaje'  = @{ main = @( ,@( @{ node='Router'; type='main'; index=0 } ) ) }
   'Router'               = @{ main = (
       @( ,@( @{ node='Expandir Filas'; type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Borrar (Cancelar)'; type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Guardar Pendiente'; type='main'; index=0 } ) ) +
       @( ,@( @{ node='Texto Ayuda'; type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Leer con IA'; type='main'; index=0 } ) )
+      @( ,@( @{ node='Leer con IA'; type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Texto Ayuda'; type='main'; index=0 } ) )
     ) }
   'Leer con IA'          = @{ main = @( ,@( @{ node='Armar Borrador IA'; type='main'; index=0 } ) ) }
-  'Armar Borrador IA'    = @{ main = @( ,@( @{ node='Redis Guardar Pendiente'; type='main'; index=0 } ) ) }
+  # Sale a los dos lados: guarda lo pendiente (para el si/no) y ademas aprende el formato del proveedor.
+  'Armar Borrador IA'    = @{ main = @( ,@( @{ node='Redis Guardar Pendiente'; type='main'; index=0 }, @{ node='Redis Guardar Proveedores'; type='main'; index=0 } ) ) }
   'Expandir Filas'          = @{ main = @( ,@( @{ node='Actualizar Hoja'; type='main'; index=0 } ) ) }
   'Actualizar Hoja'         = @{ main = @( ,@( @{ node='Redis Borrar Pendiente'; type='main'; index=0 } ) ) }
   'Redis Borrar Pendiente'  = @{ main = @( ,@( @{ node='Texto Confirmado'; type='main'; index=0 } ) ) }
