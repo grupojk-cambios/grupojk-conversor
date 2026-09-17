@@ -233,12 +233,18 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
     const destDolar = isCajaDolar(destino)
 
     if (origFuerte) {
-      // Para Monedas Fuertes (EUR, GBP): 1 EUR = X USD (multiplicador directo)
-      tasaOrigenParaDolares = 1 / Math.max(tasaOrigenParaDolares, 0.00001)
+      // Para Monedas Fuertes (EUR, GBP) como origen:
+      // Al recibir Euros, el margen descuenta al cliente: montoEUR * tBase * (1 - mO / 100)
+      let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+        ? parseFloat(origen.margenReciboMayor)
+        : (parseFloat(origen.margenRecibo) || 0);
+      const rawBaseO = origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 1);
+      const tBaseO = parseFloat(rawBaseO) || 1;
+      const factorEurNeto = Math.max(tBaseO * (1 - mO / 100), 0.00001);
+      tasaOrigenParaDolares = 1 / factorEurNeto;
     }
-    if (destFuerte) {
-      tasaDestinoDesdeDolares = 1 / Math.max(tasaDestinoDesdeDolares, 0.00001)
-    }
+    // Para destFuerte (entregar Euros), calcularTasaEnvio ya calcula tBase * (1 - mD / 100).
+    // Con base 1 y margen 20%, da 0.80 directo (500 USD * 0.80 = 400 EUR). NO SE INVIERTE.
 
     if (origDolar) {
       // CAJA DÓLAR ORIGEN (USDT, Zelle, Efectivo Venezuela, Ecuador):
