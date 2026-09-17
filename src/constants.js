@@ -484,7 +484,7 @@ export async function sincronizarGoogleSheets() {
         const valFactorUSDT = idxUSDT !== -1 && row.length > idxUSDT ? parseVal(row[idxUSDT]) : 0;
 
         datosNuevos.push({
-          id: base ? base.id : Date.now() + i, // Generar ID único si es nuevo
+          id: base ? base.id : (100 + i), // ID determinista y estable para que persista entre recargas
           nombre: base ? base.nombre : nombreCol, // Respetar nombre capitalizado de base
           iso2: isoCustom || (base ? base.iso2 : 'un'), // Prioridad al Custom ISO, luego al base, luego genérico
           bandera: base ? base.bandera : '🌐',

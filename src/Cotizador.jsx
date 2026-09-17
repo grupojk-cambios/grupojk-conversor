@@ -226,6 +226,30 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     }
   }, [destino])
 
+  const guardarSeleccionOrigen = (p) => {
+    if (p) {
+      localStorage.setItem('jk_last_origen', p.id)
+      localStorage.setItem('jk_last_origen_nombre', p.nombre || '')
+      localStorage.setItem('jk_last_origen_codigo', p.codigo || '')
+    } else {
+      localStorage.removeItem('jk_last_origen')
+      localStorage.removeItem('jk_last_origen_nombre')
+      localStorage.removeItem('jk_last_origen_codigo')
+    }
+  }
+
+  const guardarSeleccionDestino = (p) => {
+    if (p) {
+      localStorage.setItem('jk_last_destino', p.id)
+      localStorage.setItem('jk_last_destino_nombre', p.nombre || '')
+      localStorage.setItem('jk_last_destino_codigo', p.codigo || '')
+    } else {
+      localStorage.removeItem('jk_last_destino')
+      localStorage.removeItem('jk_last_destino_nombre')
+      localStorage.removeItem('jk_last_destino_codigo')
+    }
+  }
+
   useEffect(() => {
     const todos = cargarPaises()
     const selectorPaises = getPaisesParaSelector(todos)
@@ -236,24 +260,41 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     // Opciones completas (base + sub-items como Zelle/EV/etc)
     const opcionesGlobales = [...todos, ...selectorPaises];
 
-    // Buscar en memoria, sino usar valores por defecto (Ecuador -> Colombia)
+    const findSavedPais = (savedId, savedNombre, savedCodigo, fallbackId) => {
+      let found = null
+      if (savedId) {
+        found = opcionesGlobales.find(x => String(x.id) === String(savedId))
+      }
+      if (!found && savedNombre) {
+        found = opcionesGlobales.find(x => x.nombre?.toLowerCase() === savedNombre.toLowerCase())
+      }
+      if (!found && savedCodigo) {
+        found = opcionesGlobales.find(x => x.codigo?.toUpperCase() === savedCodigo.toUpperCase())
+      }
+      if (!found && fallbackId) {
+        found = todos.find(p => p.id === fallbackId)
+      }
+      return found
+    }
+
     const savedOrigenId = localStorage.getItem('jk_last_origen')
+    const savedOrigenNombre = localStorage.getItem('jk_last_origen_nombre')
+    const savedOrigenCodigo = localStorage.getItem('jk_last_origen_codigo')
+
     const savedDestinoId = localStorage.getItem('jk_last_destino')
+    const savedDestinoNombre = localStorage.getItem('jk_last_destino_nombre')
+    const savedDestinoCodigo = localStorage.getItem('jk_last_destino_codigo')
 
-    let defaultOrigen = todos.find(p => p.id === 9)
-    let defaultDestino = todos.find(p => p.id === 8)
-
-    if (savedOrigenId) {
-      const p = opcionesGlobales.find(x => String(x.id) === String(savedOrigenId))
-      if (p) defaultOrigen = p
-    }
-    if (savedDestinoId) {
-      const p = opcionesGlobales.find(x => String(x.id) === String(savedDestinoId))
-      if (p) defaultDestino = p
-    }
+    const defaultOrigen = findSavedPais(savedOrigenId, savedOrigenNombre, savedOrigenCodigo, 9)
+    const defaultDestino = findSavedPais(savedDestinoId, savedDestinoNombre, savedDestinoCodigo, 8)
 
     setOrigen(defaultOrigen)
     setDestino(defaultDestino)
+
+    const savedMonto = localStorage.getItem('jk_last_monto')
+    if (savedMonto) {
+      setMonto(formatearMontoInput(savedMonto))
+    }
   }, [])
 
   useEffect(() => {
@@ -301,13 +342,16 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     if (valStr === '') {
       setMonto('')
       setMontoRecibir('')
+      localStorage.removeItem('jk_last_monto')
       return
     }
     // Permitir solo números y comas (una sola)
     let limpio = valStr.replace(/[^0-9,]/g, '')
     if ((limpio.match(/,/g) || []).length > 1) return
     
-    setMonto(formatearMontoInput(limpio))
+    const formatted = formatearMontoInput(limpio)
+    setMonto(formatted)
+    localStorage.setItem('jk_last_monto', limpio)
   }
 
   const handleMontoRecibirChange = (valStr) => {
@@ -315,6 +359,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     if (valStr === '') {
       setMontoRecibir('')
       setMonto('')
+      localStorage.removeItem('jk_last_monto')
       return
     }
     let limpio = valStr.replace(/[^0-9,]/g, '')
@@ -334,14 +379,14 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     const p = paises.find(p => String(p.id) === String(id)) || paisesSelector.find(p => String(p.id) === String(id))
     if (!p) return
     setOrigen(p)
-    localStorage.setItem('jk_last_origen', p.id)
+    guardarSeleccionOrigen(p)
     
     setErrorDismissed(false)
 
     // No permitir mismo país en ambos lados
     if (destino && String(destino.id) === String(p.id)) {
       setDestino(null)
-      localStorage.removeItem('jk_last_destino')
+      guardarSeleccionDestino(null)
     }
   }
 
@@ -355,13 +400,13 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     }
     const p = paises.find(p => String(p.id) === String(id)) || paisesSelector.find(p => String(p.id) === String(id))
     setDestino(p)
-    if (p) localStorage.setItem('jk_last_destino', p.id)
+    guardarSeleccionDestino(p)
 
     setErrorDismissed(false)
 
     if (origen && String(origen.id) === String(p.id)) {
       setOrigen(null)
-      localStorage.removeItem('jk_last_origen')
+      guardarSeleccionOrigen(null)
     }
   }
 
@@ -369,10 +414,10 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
   const handleEVSelect = (paisEV) => {
     if (evSelectTarget === 'origen') {
       setOrigen(paisEV)
-      localStorage.setItem('jk_last_origen', paisEV.id)
+      guardarSeleccionOrigen(paisEV)
     } else {
       setDestino(paisEV)
-      localStorage.setItem('jk_last_destino', paisEV.id)
+      guardarSeleccionDestino(paisEV)
     }
     setShowEVMenu(false)
     setEvEstadoSeleccionado(null)
@@ -387,11 +432,8 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
 
     setErrorDismissed(false)
 
-    if (tempD) localStorage.setItem('jk_last_origen', tempD.id)
-    else localStorage.removeItem('jk_last_origen')
-
-    if (tempO) localStorage.setItem('jk_last_destino', tempO.id)
-    else localStorage.removeItem('jk_last_destino')
+    guardarSeleccionOrigen(tempD)
+    guardarSeleccionDestino(tempO)
   }
 
   const tasaPublicaOrigen = origen ? calcularTasaPublica(origen) : 0
