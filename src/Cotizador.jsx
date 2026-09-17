@@ -345,8 +345,8 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
       localStorage.removeItem('jk_last_monto')
       return
     }
-    // Permitir dígitos y punto decimal (convertir comas ingresadas a puntos)
-    let limpio = valStr.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    // Quitar comas de miles y permitir solo dígitos y un punto decimal
+    let limpio = valStr.replace(/,/g, '').replace(/[^0-9.]/g, '')
     if ((limpio.match(/\./g) || []).length > 1) return
     
     const formatted = formatearMontoInput(limpio)
@@ -362,7 +362,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
       localStorage.removeItem('jk_last_monto')
       return
     }
-    let limpio = valStr.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    let limpio = valStr.replace(/,/g, '').replace(/[^0-9.]/g, '')
     if ((limpio.match(/\./g) || []).length > 1) return
 
     setMontoRecibir(formatearMontoInput(limpio))
