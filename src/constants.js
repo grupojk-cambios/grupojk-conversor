@@ -227,8 +227,8 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
   }
 
   if (!factorAplicado) {
-    const origFuerte = MONEDAS_FUERTES.includes(origen.codigo)
-    const destFuerte = MONEDAS_FUERTES.includes(destino.codigo)
+    const origFuerte = MONEDAS_FUERTES.includes(origen.codigo) || isCajaDolar(origen)
+    const destFuerte = MONEDAS_FUERTES.includes(destino.codigo) || isCajaDolar(destino)
 
     // CORRECCIÓN MATEMÁTICA MONEDAS FUERTES (EUR, GBP, EU)
     // Estas monedas se cotizan "USD por unidad" (Ej: 1 EUR = 1.08 USD).
