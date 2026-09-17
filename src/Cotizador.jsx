@@ -321,14 +321,14 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
       if (lastEdited === 'enviar' && monto !== '') {
         if (isDisp && numMonto > 0) {
           const res = calcularConversion(origen, destino, numMonto, paises, modo)
-          setMontoRecibir(formatearMontoInput(res.toFixed(2).replace('.', ',')))
+          setMontoRecibir(formatearMontoInput(res.toFixed(2)))
         } else if (numMonto === 0) {
           setMontoRecibir('0')
         }
       } else if (lastEdited === 'recibir' && montoRecibir !== '') {
         if (isDisp && numMontoRecibir > 0) {
           const nuevoMonto = calcularConversionInversa(origen, destino, numMontoRecibir, paises, modo)
-          setMonto(formatearMontoInput(nuevoMonto.toFixed(2).replace('.', ',')))
+          setMonto(formatearMontoInput(nuevoMonto.toFixed(2)))
         } else {
           setMonto('0')
         }
@@ -345,9 +345,9 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
       localStorage.removeItem('jk_last_monto')
       return
     }
-    // Permitir solo números y comas (una sola)
-    let limpio = valStr.replace(/[^0-9,]/g, '')
-    if ((limpio.match(/,/g) || []).length > 1) return
+    // Permitir dígitos y punto decimal (convertir comas ingresadas a puntos)
+    let limpio = valStr.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    if ((limpio.match(/\./g) || []).length > 1) return
     
     const formatted = formatearMontoInput(limpio)
     setMonto(formatted)
@@ -362,8 +362,8 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
       localStorage.removeItem('jk_last_monto')
       return
     }
-    let limpio = valStr.replace(/[^0-9,]/g, '')
-    if ((limpio.match(/,/g) || []).length > 1) return
+    let limpio = valStr.replace(/,/g, '.').replace(/[^0-9.]/g, '')
+    if ((limpio.match(/\./g) || []).length > 1) return
 
     setMontoRecibir(formatearMontoInput(limpio))
   }

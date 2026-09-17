@@ -218,7 +218,7 @@ export default function MisOperaciones({ modo = 'detal' }) {
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto 1fr', gap: '1rem', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '0.8rem' }}>
                 <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
                   <p style={{ fontSize: '0.7rem', color: 'var(--text-low)', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Envías ({tr.pais_origen})</p>
-                  <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white' }}>{new Intl.NumberFormat('es-ES').format(tr.monto_enviado)} {tr.moneda_origen}</p>
+                  <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white' }}>{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(tr.monto_enviado)} {tr.moneda_origen}</p>
                 </div>
                 
                 <div style={{ textAlign: 'center', color: 'var(--primary-color)', fontSize: '1.2rem', opacity: 0.5 }}>
@@ -227,7 +227,7 @@ export default function MisOperaciones({ modo = 'detal' }) {
 
                 <div>
                   <p style={{ fontSize: '0.7rem', color: 'var(--text-low)', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Recibes ({tr.pais_destino})</p>
-                  <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary-color)' }}>{new Intl.NumberFormat('es-ES').format(tr.monto_recibir)} {tr.moneda_destino}</p>
+                  <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--primary-color)' }}>{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(tr.monto_recibir)} {tr.moneda_destino}</p>
                 </div>
               </div>
 

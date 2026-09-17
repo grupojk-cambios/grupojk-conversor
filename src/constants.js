@@ -322,7 +322,7 @@ export function formatearMonto(valor, codigo, maxDigits) {
 
   // Si nos piden decimales específicos explícitos, los respetamos
   if (maxDigits !== undefined) {
-    return valor.toLocaleString('es-CO', {
+    return valor.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: maxDigits,
     })
@@ -335,42 +335,41 @@ export function formatearMonto(valor, codigo, maxDigits) {
   else if (valAbs > 0 && valAbs < 0.001) decimales = 5
   else if (valAbs > 0 && valAbs < 0.005) decimales = 4
 
-  return valor.toLocaleString('es-CO', {
+  return valor.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: decimales,
   })
 }
 
 /**
- * Limpia y parsea un string con formato regional (1.234,56) a un float (1234.56)
+ * Limpia y parsea un string numérico estándar (1,234.56 o 1234.56) a float (1234.56)
  */
 export function parsearMonto(valStr) {
   if (!valStr && valStr !== 0) return 0;
   if (typeof valStr === 'number') return valStr;
   
-  // Eliminamos los puntos (miles) y cambiamos la coma por punto (decimal)
-  let s = valStr.toString().replace(/\./g, '');
-  s = s.replace(',', '.');
+  // Eliminamos las comas (separador de miles)
+  let s = valStr.toString().replace(/,/g, '');
   const res = parseFloat(s);
   return isNaN(res) ? 0 : res;
 }
 
 /**
- * Formatea un número o string numérico para mostrarlo en un input con puntos de miles
+ * Formatea un número o string numérico para mostrarlo en un input con comas de miles y punto decimal
  */
 export function formatearMontoInput(valor) {
   if (valor === '' || valor === null || valor === undefined) return '';
   
-  // Separamos parte entera de la decimal para no perder la coma mientras se escribe
-  const partes = valor.toString().replace(/\./g, '').split(',');
+  // Separamos parte entera de la decimal usando el punto
+  const partes = valor.toString().replace(/,/g, '').split('.');
   const entera = partes[0];
-  const decimal = partes.length > 1 ? ',' + partes[1] : '';
+  const decimal = partes.length > 1 ? '.' + partes[1] : '';
 
-  // Formatear la parte entera con puntos
+  // Formatear la parte entera con comas
   const enteraNum = parseInt(entera);
   if (isNaN(enteraNum)) return decimal ? '0' + decimal : '';
   
-  const enteraFormateada = enteraNum.toLocaleString('de-DE'); // de-DE usa punto para miles
+  const enteraFormateada = enteraNum.toLocaleString('en-US'); // en-US usa coma para miles
   
   return enteraFormateada + decimal;
 }

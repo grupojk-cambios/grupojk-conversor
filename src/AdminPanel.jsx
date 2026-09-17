@@ -66,7 +66,7 @@ export default function AdminPanel({ onLogout }) {
     setTimeout(() => setMensaje(null), 3000)
   }
 
-  const formatearMonto = (monto) => Number(monto).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const formatearMonto = (monto) => Number(monto).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   
   const formatearFecha = (fechaUtc) => {
     const d = new Date(fechaUtc)
