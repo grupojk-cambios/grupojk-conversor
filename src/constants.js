@@ -227,22 +227,51 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
   }
 
   if (!factorAplicado) {
-    const origFuerte = MONEDAS_FUERTES.includes(origen.codigo) || isCajaDolar(origen)
-    const destFuerte = MONEDAS_FUERTES.includes(destino.codigo) || isCajaDolar(destino)
+    const origFuerte = MONEDAS_FUERTES.includes(origen.codigo)
+    const destFuerte = MONEDAS_FUERTES.includes(destino.codigo)
+    const origDolar = isCajaDolar(origen)
+    const destDolar = isCajaDolar(destino)
 
-    // CORRECCIÓN MATEMÁTICA MONEDAS FUERTES (EUR, GBP, EU)
-    // Estas monedas se cotizan "USD por unidad" (Ej: 1 EUR = 1.08 USD).
-    // El sistema por defecto divide; para convertirlo a multiplicador directo, invertimos la base.
     if (origFuerte) {
+      // Para Monedas Fuertes (EUR, GBP): 1 EUR = X USD (multiplicador directo)
       tasaOrigenParaDolares = 1 / Math.max(tasaOrigenParaDolares, 0.00001)
     }
     if (destFuerte) {
       tasaDestinoDesdeDolares = 1 / Math.max(tasaDestinoDesdeDolares, 0.00001)
     }
 
-    // Ya no agrupamos los márgenes artificialmente para USDT/Zelle/Efectivo.
-    // Dejamos que la división estándar aplique a la tasa individual de cada divisa
-    // logrando que 100 / 1.02 dé el resultado exacto del sistema contable.
+    if (origDolar) {
+      // CAJA DÓLAR ORIGEN (USDT, Zelle, Efectivo Venezuela, Ecuador):
+      // Al recibir USDT/Dólar, el margen de recibo (mO) descuenta al cliente.
+      // 100 USDT con 5% de comisión equivalen a 95 USD netos.
+      // Ecuador (id 9) siempre tiene mO = 0 (base neutra).
+      let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+        ? parseFloat(origen.margenReciboMayor)
+        : (parseFloat(origen.margenRecibo) || 0);
+      if (origen.id === 9) mO = 0;
+
+      const rawBaseO = origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 1);
+      const tBaseO = parseFloat(rawBaseO) || 1;
+
+      // Factor neto recibido en dólares: tBaseO * (1 - mO / 100)
+      const factorDolarNeto = Math.max(tBaseO * (1 - mO / 100), 0.00001);
+      tasaOrigenParaDolares = 1 / factorDolarNeto;
+    }
+
+    if (destDolar) {
+      // CAJA DÓLAR DESTINO (USDT, Zelle, Efectivo Venezuela, Ecuador):
+      // Al entregar USDT/Dólar, el margen de envío (mD) descuenta lo que recibe el cliente:
+      // 100 USD con margen 7% entrega 93 USDT exactos (100 * 0.93 = 93).
+      let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+        ? parseFloat(destino.margenEnvioMayor)
+        : (parseFloat(destino.margenEnvio) || 0);
+      if (destino.id === 9) mD = 0;
+
+      const rawBaseD = destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 1);
+      const tBaseD = parseFloat(rawBaseD) || 1;
+
+      tasaDestinoDesdeDolares = tBaseD * (1 - mD / 100);
+    }
   }
 
   if (tasaOrigenParaDolares === 0) tasaOrigenParaDolares = 1; // Seguridad matemática
