@@ -242,35 +242,29 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
 
     if (origDolar) {
       // CAJA DÓLAR ORIGEN (USDT, Zelle, Efectivo Venezuela, Ecuador):
-      // Al recibir USDT/Dólar, el margen de recibo (mO) descuenta al cliente.
-      // 100 USDT con 5% de comisión equivalen a 95 USD netos.
-      // Ecuador (id 9) siempre tiene mO = 0 (base neutra).
+      // El margen de recibo (mO) se calcula sobre base 1 fija e independiente.
+      // Así puedes anotar tu costo real (ej. 1.01) en Excel para tu sistema contable,
+      // y la app descontará el margen limpio sobre 100 (ej: 8% -> 92.00 USD exactos).
       let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
         ? parseFloat(origen.margenReciboMayor)
         : (parseFloat(origen.margenRecibo) || 0);
-      if (origen.id === 9) mO = 0;
+      if (origen.id === 9) mO = 0; // Ecuador siempre neutro
 
-      const rawBaseO = origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 1);
-      const tBaseO = parseFloat(rawBaseO) || 1;
-
-      // Factor neto recibido en dólares: tBaseO * (1 - mO / 100)
-      const factorDolarNeto = Math.max(tBaseO * (1 - mO / 100), 0.00001);
+      // Base 1 fija para el cálculo público del margen
+      const factorDolarNeto = Math.max(1 * (1 - mO / 100), 0.00001);
       tasaOrigenParaDolares = 1 / factorDolarNeto;
     }
 
     if (destDolar) {
       // CAJA DÓLAR DESTINO (USDT, Zelle, Efectivo Venezuela, Ecuador):
-      // Al entregar USDT/Dólar, el margen de envío (mD) descuenta lo que recibe el cliente:
-      // 100 USD con margen 7% entrega 93 USDT exactos (100 * 0.93 = 93).
+      // Al entregar, el margen de envío (mD) se calcula sobre base 1 fija:
+      // Si el margen es 7%, entrega 93.00 USDT exactos (100 * 0.93 = 93.00).
       let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
         ? parseFloat(destino.margenEnvioMayor)
         : (parseFloat(destino.margenEnvio) || 0);
-      if (destino.id === 9) mD = 0;
+      if (destino.id === 9) mD = 0; // Ecuador siempre neutro
 
-      const rawBaseD = destino.tasaProveedorEnvio !== undefined ? destino.tasaProveedorEnvio : (destino.tasaProveedor || 1);
-      const tBaseD = parseFloat(rawBaseD) || 1;
-
-      tasaDestinoDesdeDolares = tBaseD * (1 - mD / 100);
+      tasaDestinoDesdeDolares = 1 * (1 - mD / 100);
     }
   }
 
