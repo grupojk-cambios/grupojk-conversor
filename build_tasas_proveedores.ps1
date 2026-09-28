@@ -128,11 +128,17 @@ function palabrasClave(txt){
   }
   return out;
 }
+// Cuanto del proveedor GUARDADO aparece en el mensaje nuevo ("containment"), no el parecido
+// mutuo (Jaccard). Es lo correcto aca porque los proveedores a veces agregan texto extra:
+// el 14/09 Solano sumo "(COLEGAS CON MONTOS PENDIENTES...)" y con Jaccard cayo a 0.44 y dejo
+// de reconocerse, aunque TODAS sus palabras de siempre seguian ahi.
+// a = palabras del mensaje nuevo | b = palabras guardadas del proveedor
 function parecidoPal(a, b){
   if (!a.length || !b.length) return 0;
   let comunes = 0;
-  for (const w of a) if (b.indexOf(w) !== -1) comunes++;
-  return comunes / (a.length + b.length - comunes);   // Jaccard
+  for (const w of b) if (a.indexOf(w) !== -1) comunes++;
+  if (comunes < 3) return 0;          // con menos de 3 palabras en comun no se arriesga
+  return comunes / b.length;
 }
 // Proveedores ya conocidos (guardados en Redis por el nodo "Redis Guardar Proveedores")
 let provConocidos = [];
@@ -150,7 +156,9 @@ function reconocerProveedor(txt){
     const s = parecidoPal(p, c.palabras);
     if (s > punt){ punt = s; mejor = c; }
   }
-  return punt >= 0.5 ? mejor.nombre : '';   // 0.5 validado contra los mensajes reales de 08/25 a 09/07
+  // 0.7 = que aparezca al menos el 70% de las palabras con las que se aprendio ese proveedor
+  // (mas el minimo de 3 palabras en comun). Validado con los mensajes reales de 09/10 al 23/09.
+  return punt >= 0.7 ? mejor.nombre : '';
 }
 
 // ===== Entradas =====
@@ -327,13 +335,25 @@ function parseUnaLinea(linea){
   // Regla del proveedor: si solo mando el envio, el recibo se calcula (ej. Jesus, +20).
   let autoSuma = 0;
   if(regla && envio !== null && recibo === null){ recibo = envio + regla.sumar; autoSuma = regla.sumar; }
-  return { pais, envio, recibo, autoSuma };
+  return { pais, envio, recibo, autoSuma, prov: regla ? regla.proveedor : '' };
 }
 
-const bloques = texto.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+// Se analiza MENSAJE POR MENSAJE, no todo el pegote junto. Antes se miraba el texto completo y
+// bastaba con entender UNA cosa (ej. "Jesus 960") para dar por leido todo y no llamar a la IA:
+// el 23/09 eso hizo que se perdieran 3 proveedores enteros (Grupo Elite, Miguelacho y Solano).
+// Ahora cada mensaje que el parser no entiende se manda por separado a la IA.
+let mensajesSueltos = [];
+try {
+  const c = $('Combinar Mensajes').first().json;
+  if (c && Array.isArray(c.mensajes) && c.mensajes.length) mensajesSueltos = c.mensajes;
+} catch(e){}
+if (!mensajesSueltos.length) mensajesSueltos = [texto];
+
 const filas = [];
 const errores = [];
 const autoSumaPorPais = {};   // pais -> puntos que se le sumaron al envio para sacar el recibo
+const provPorPais = {};       // pais -> de quien salio (para el resumen comparativo)
+const noEntendidos = [];      // mensajes que el parser no pudo leer -> van a la IA
 let reglaPendiente = null;    // proveedor con regla nombrado en un bloque, cuyo numero viene en el siguiente
 
 function agregarFila(pais, envio, recibo){
@@ -343,6 +363,12 @@ function agregarFila(pais, envio, recibo){
   if(recibo !== null && recibo !== undefined) f['Tasa Recibo'] = recibo;
   return f;
 }
+
+for (const mensaje of mensajesSueltos){
+const filasAntes = filas.length;
+const erroresAntes = errores.length;
+const bloques = String(mensaje||'').split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+reglaPendiente = null;
 
 for (const bloque of bloques){
   const lineas = bloque.split('\n').map(l => l.trim()).filter(Boolean);
@@ -361,7 +387,7 @@ for (const bloque of bloques){
     let ultima = null, algo = false;
     for (const ln of lineas){
       const r = parseUnaLinea(ln);
-      if (r && r.pais){ ultima = agregarFila(r.pais, r.envio, r.recibo); if(r.autoSuma) autoSumaPorPais[r.pais] = r.autoSuma; algo = true; continue; }
+      if (r && r.pais){ ultima = agregarFila(r.pais, r.envio, r.recibo); if(r.autoSuma){ autoSumaPorPais[r.pais] = r.autoSuma; provPorPais[r.pais] = r.prov || 'Regla'; } algo = true; continue; }
       if (r && r.errorPais){ errores.push('"' + r.errorPais + '": no existe en la hoja.'); continue; }
       // No es un pais: puede ser una linea suelta "recibo: 3130" del pais anterior.
       const mk = ln.match(/^([a-zA-Zñáéíóúü]+)\s*:?\s*(.+)$/);
@@ -384,7 +410,7 @@ for (const bloque of bloques){
         let suma = 0;
         if (rec === null){ rec = env + reglaPendiente.sumar; suma = reglaPendiente.sumar; }
         agregarFila(paisRegla, env, rec);
-        if (suma) autoSumaPorPais[paisRegla] = suma;
+        if (suma){ autoSumaPorPais[paisRegla] = suma; provPorPais[paisRegla] = reglaPendiente.proveedor; }
       }
       reglaPendiente = null;
     }
@@ -434,16 +460,27 @@ for (const bloque of bloques){
   }
   if (!pais){ errores.push('"' + nombrePais + '": no existe en la hoja de tasas.'); continue; }
   agregarFila(pais, envio, recibo);
-  if (sumaRegla) autoSumaPorPais[pais] = sumaRegla;
+  if (sumaRegla){ autoSumaPorPais[pais] = sumaRegla; provPorPais[pais] = nombrePais.trim(); }
+}
+
+// Cierre del mensaje: si de este mensaje no salio NINGUNA fila y tiene pinta de traer tasas,
+// se lo pasamos a la IA. Asi un mensaje entendido no tapa a los demas.
+const txtMsg = String(mensaje||'').trim();
+if (filas.length === filasAntes){
+  const cuantosNum = (txtMsg.match(/\d+[.,]?\d*/g) || []).length;
+  if (cuantosNum >= 1 && txtMsg.length >= 12) noEntendidos.push(txtMsg);
+} else {
+  // Salio algo de este mensaje: sus "errores" son ruido del propio mensaje, no fallas del usuario.
+  errores.length = erroresAntes;
+}
 }
 
 // ===== 3) Nada reconocido: si tiene numeros, que lo lea la IA =====
 // Los "errores" NO bloquean a la IA: frases sueltas de un mensaje de proveedor
 // (ej. "Pedidos +573219343265") generaban errores falsos y tapaban el mensaje entero.
 // Se pasan igual, para mostrarlos solo si la IA tampoco encuentra nada.
-if (!filas.length){
-  const cuantosNumeros = (texto.match(/\d+[.,]?\d*/g) || []).length;
-  if (cuantosNumeros >= 1 && texto.length >= 12){
+if (noEntendidos.length){
+  {
     const promptSistema = [
       'Sos un extractor de tasas de cambio. Te paso el texto CRUDO del mensaje de UN proveedor de remesas.',
       'Devolve SOLO JSON valido con esta forma exacta:',
@@ -489,31 +526,66 @@ if (!filas.length){
       'pais, casi seguro invertiste la direccion: revisala antes de responder.',
       '',
       '- IGNORA por completo las lineas cuya moneda base NO sea dolar o USDT (ej. "SOL/CHILE" es base sol peruano: ignorala).',
-      '- IGNORA lineas sin numero claro ("CONSULTAR AL MOMENTO", tachadas, vacias) y los telefonos de contacto.',
+      '',
+      '=== RUIDO QUE HAY QUE IGNORAR (estos mensajes traen mucho texto que NO son tasas) ===',
+      'Saca UNICAMENTE tasas. Todo lo demas se ignora, aunque tenga numeros. En concreto:',
+      '  - FECHAS Y DIAS: "*MIERCOLES* 23/09/26", "*HOY* *lunes*", "14/09/26". Un numero de fecha NUNCA es una tasa.',
+      '  - TELEFONOS y contactos: "Pedidos +573219343265", "+57 323 3947051", "wpp", "escribeme al...".',
+      '  - AVISOS y recordatorios, normalmente entre parentesis o guiones bajos:',
+      '    "(_COLEGAS CON MONTOS PENDIENTES PONERSE AL DIA POR FAVOR_)", "horario de atencion", promociones.',
+      '  - SALUDOS y encabezados: "Buen dia", "Actualizacion", "Tasa", "TASA HOY".',
+      '  - Emojis decorativos (🚀, ⏬, 📌, ✅) y lineas de guiones o simbolos.',
+      '  - "CONSULTAR AL MOMENTO", ❌, tachados, o cualquier linea sin un numero claro de tasa.',
+      'Si dudas entre si un numero es una tasa o parte de una fecha/telefono: NO lo pongas.',
+      'Es mejor devolver menos tasas y que sean correctas, que inventar una de mas.',
       '- Numeros en formato latino: la coma es decimal y el punto es de miles. "1.668" = 1668. "4,82" = 4.82. Devolvelos como numero JSON normal (punto decimal).',
       '- Los digitos pueden venir como emoji (1️⃣9️⃣.4️⃣0️⃣ = 19.40). Convertilos a numero normal.',
       '- Si de un pais solo hay envio o solo recibo, pone null en el otro.',
       '- Si un pais del mensaje no esta en la lista de validos, omitilo.',
       '- No inventes ningun numero: si no esta en el mensaje, no lo pongas.'
     ].join('\n');
-    // UN item por mensaje original -> UNA llamada a la IA por proveedor. Juntarlos en una sola
+    // UN item por mensaje NO entendido -> UNA llamada a la IA por proveedor. Juntarlos en una sola
     // llamada le baja mucho la precision (se salteo una lista entera de envios y se invento un pais).
-    let partes = [];
-    try {
-      const c = $('Combinar Mensajes').first().json;
-      if (c && Array.isArray(c.mensajes)) partes = c.mensajes.filter(x => String(x||'').trim().length > 10);
-    } catch(e){}
-    if (!partes.length) partes = [texto];
-    return partes.map(p => {
+    // Las filas que el parser SI entendio (ej. "Jesus 960") viajan aparte en "filasPrevias" para que
+    // "Armar Borrador IA" las sume al resultado y no se pierdan.
+    const previas = filas.map(f => ({
+      Pais: f.Pais,
+      envio:  f['Tasa Envio']  !== undefined ? f['Tasa Envio']  : null,
+      recibo: f['Tasa Recibo'] !== undefined ? f['Tasa Recibo'] : null,
+      prov:   provPorPais[f.Pais] || 'Tu mensaje',
+      autoSuma: autoSumaPorPais[f.Pais] || 0
+    }));
+    // ¿Kelvin le puso el nombre a mano arriba del mensaje? ("Solano", "Proveedor: Caballo"...).
+    // Tiene que ser una primera linea corta, solo letras, y con mas mensaje debajo. Se descartan
+    // los saludos y encabezados ("Buen dia", "Actualizacion", "Tasa"), que NO son nombres.
+    function nombrePuestoAMano(txt){
+      const ls = String(txt||'').split('\n').map(l => l.trim()).filter(Boolean);
+      if (ls.length < 2) return '';
+      const cand = ls[0].replace(/^(?:proveedor|nombre)\s*:\s*/i, '').trim();
+      if (!cand || cand.length > 30) return '';
+      if (!/^[a-zA-ZÀ-ɏ.\s]+$/.test(cand)) return '';          // con emojis/asteriscos NO es etiqueta
+      const pal = cand.split(/\s+/).filter(Boolean);
+      if (pal.length > 3) return '';
+      const utiles = pal.filter(w => IGNORAR_PAL.indexOf(w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')) === -1);
+      return utiles.length ? cand : '';                         // "Buen dia" / "Actualizacion" -> no
+    }
+
+    return noEntendidos.map((p, i) => {
       const t1 = String(p).trim();
       const conocido = reconocerProveedor(t1);
+      const puesto = nombrePuestoAMano(t1);
       // El nombre reconocido va como pista al final del prompt, para ese mensaje en concreto.
       const prompt = conocido
         ? (promptSistema + '\n\nNOMBRE YA CONOCIDO para este formato de mensaje: "' + conocido + '". Usalo si el mensaje no trae uno propio.')
         : promptSistema;
-      return { json: { accion:'ia', chatId, textoOriginal: t1, promptSistema: prompt, nombreConocido: conocido, errores: errores.join('\n') } };
+      return { json: { accion:'ia', chatId, textoOriginal: t1, promptSistema: prompt,
+                       nombreConocido: conocido, nombrePuesto: puesto,
+                       filasPrevias: i === 0 ? previas : [], errores: errores.join('\n') } };
     });
   }
+}
+
+if (!filas.length){
   return [{ json: { accion:'error', chatId, errores: errores.join('\n') } }];
 }
 
@@ -592,18 +664,28 @@ try {
 // Si una tasa se mueve mas que esto respecto a la hoja, se avisa. Los cambios normales del dia a
 // dia rondan el 1-2%; un salto grande suele ser un error de lectura (ej. un envio leido como
 // recibo) o un tipeo. No bloquea nada: solo lo marca para que Kelvin lo mire antes de confirmar.
-const UMBRAL_CAMBIO = 0.05;
+const UMBRAL_CAMBIO = 0.05;   // 5%  -> "revisalo"
+const UMBRAL_ABSURDO = 0.40;  // 40% -> eso no es una tasa (suele ser una fecha o un telefono colado)
 const cambiosRaros = [];
+const absurdos = [];
 function revisarCambio(pais, tipo, valor){
   const act = tasaActual[pais];
   if (!act) return '';
   const antes = tipo === 'envio' ? act.envio : act.recibo;
   if (!antes || !valor) return '';
   const dif = (valor - antes) / antes;
-  if (Math.abs(dif) <= UMBRAL_CAMBIO) return '';
+  const abs = Math.abs(dif);
+  if (abs <= UMBRAL_CAMBIO) return '';
   const pct = (dif * 100).toFixed(1);
-  cambiosRaros.push(pais + ' ' + tipo + ': ' + antes + ' -> ' + valor + ' (' + (dif > 0 ? '+' : '') + pct + '%)');
-  return '  <-- OJO, cambio de ' + (dif > 0 ? '+' : '') + pct + '%';
+  const signo = dif > 0 ? '+' : '';
+  // Un salto asi de grande casi nunca es una tasa de verdad: lo normal es que se haya colado un
+  // numero de una fecha ("23/09/26") o de un telefono. Se marca aparte y bien visible.
+  if (abs >= UMBRAL_ABSURDO){
+    absurdos.push(pais + ' ' + tipo + ': la hoja tiene ' + antes + ' y llego ' + valor + ' (' + signo + pct + '%)');
+    return '  <== ESTO NO PARECE UNA TASA (la hoja tiene ' + antes + ')';
+  }
+  cambiosRaros.push(pais + ' ' + tipo + ': ' + antes + ' -> ' + valor + ' (' + signo + pct + '%)');
+  return '  <-- OJO, cambio de ' + signo + pct + '%';
 }
 
 // ===== APRENDER LA FORMA DE CADA PROVEEDOR =====
@@ -655,6 +737,16 @@ for (let idx = 0; idx < items.length; idx++){
   if (data && Array.isArray(data.proveedores)) deEsteMensaje = data.proveedores;
   else if (data && Array.isArray(data.filas)) deEsteMensaje = [{ nombre: data.nombre || ('Proveedor ' + n), filas: data.filas }];
 
+  // COMO SE DECIDE EL NOMBRE (en este orden):
+  //   1. El que Kelvin escribio arriba del mensaje hoy    (manda siempre)
+  //   2. El que ya se aprendio para ese formato           (lo que el eligio otro dia)
+  //   3. El titulo del mensaje, que es lo que saca la IA
+  // Antes el titulo iba SEGUNDO y le ganaba al nombre aprendido: por eso Solano salia siempre como
+  // "ACTIVOS X PERU" aunque Kelvin lo llamara Solano; el nombre que el ponia nunca se quedaba.
+  const og = origenes[idx] || {};
+  const nombreMando = String(og.nombrePuesto || '').trim() || String(og.nombreConocido || '').trim();
+  if (nombreMando && deEsteMensaje.length === 1) deEsteMensaje[0].nombre = nombreMando;
+
   // Proveedor con regla que NO escribe el pais: Jesus manda literalmente "955" y la IA no tiene
   // como saber que son bolivares, asi que devuelve filas vacias. Aca se arma la fila con el pais
   // de la regla y los numeros del mensaje (1 numero = envio; 2 = envio y recibo).
@@ -694,6 +786,20 @@ provFormatos = provFormatos.slice(0, 30);   // tope, para que no crezca sin cont
 // Aplana: una entrada por (proveedor, pais).
 const entradas = [];
 const omitidos = [];
+
+// Filas que el parser normal YA entendio antes de llamar a la IA (ej. "Jesus 960"). Entran a la
+// comparacion como un proveedor mas, para que no se pierdan cuando en la misma tanda hay mensajes
+// que si necesitan IA.
+try {
+  const previas = $('Interpretar Mensaje').first().json.filasPrevias || [];
+  for (const f of previas){
+    if (!f || !f.Pais) continue;
+    entradas.push({ pais: f.Pais, prov: f.prov || 'Tu mensaje',
+                    envio: (f.envio === null || f.envio === undefined) ? null : Number(f.envio),
+                    recibo: (f.recibo === null || f.recibo === undefined) ? null : Number(f.recibo),
+                    autoSuma: f.autoSuma || 0 });
+  }
+} catch(e){}
 for (const g of gruposIA){
   const prov = String((g && g.nombre) || 'Proveedor').trim().slice(0,40);
   for (const f of ((g && g.filas) || [])){
@@ -776,6 +882,9 @@ const cuantosProv = [];
 for (const x of entradas){ if (cuantosProv.indexOf(x.prov) === -1) cuantosProv.push(x.prov); }
 
 let resumen = detalle.join('\n\n');
+if (absurdos.length) resumen += '\n\n⛔ OJO, esto NO parece una tasa (revisalo antes de confirmar).\n'
+  + 'Suele pasar cuando se cuela un numero de una FECHA o un TELEFONO del mensaje:\n'
+  + absurdos.map(x => '  - ' + x).join('\n');
 if (cambiosRaros.length) resumen += '\n\n⚠️ Estas se movieron mas de lo normal (contra lo que hay en la hoja):\n' + cambiosRaros.map(x => '  - ' + x).join('\n');
 if (sospechosos.length) resumen += '\n\n⚠️ Revisa ' + sospechosos.join(', ')
   + ': el envio deberia ser MENOR que el recibo. Puede que el proveedor lo haya escrito al reves.';

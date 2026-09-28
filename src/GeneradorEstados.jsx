@@ -495,7 +495,21 @@ export default function GeneradorEstados() {
               </div>
               <div className="dest-info">
                 <div className="dest-rate">{formatearTasa(pais.displayRate)}</div>
-                <div className="dest-name">{pais.isInverse ? `x 1 ${pais.codigo}` : pais.displayUnit}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3em', justifyContent: 'center' }}>
+                  <span className="dest-name">{pais.isInverse ? `x 1 ${pais.codigo}` : pais.displayUnit}</span>
+                  <span style={{
+                    fontSize: '0.65em',
+                    fontWeight: 700,
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    color: '#10b981',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '0.05em 0.3em',
+                    borderRadius: '0.3em',
+                    lineHeight: 1
+                  }}>
+                    Mín: ${pais.montoMinimo || 20}
+                  </span>
+                </div>
               </div>
             </div>
           ))}
@@ -513,9 +527,9 @@ export default function GeneradorEstados() {
         fontWeight: 'bold',
         letterSpacing: '0.05em'
       }}>
-        <div>Todos monto mínimo de $20</div>
+        <div>Mínimos referenciales por país</div>
         <div style={{ fontSize: '0.8em', color: 'rgba(255,255,255,0.25)', marginTop: '0.2em', fontWeight: 500 }}>
-          Tasas referenciales sujetas a cambio • Grupo JK
+          Tasas sujetas a cambio • Grupo JK
         </div>
       </div>
     </div>
@@ -681,7 +695,21 @@ export default function GeneradorEstados() {
                   />
                   <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
                     <span style={{ fontSize: '0.85em', fontWeight: 700, color: 'rgba(255,255,255,0.95)', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>{pais.nombre}</span>
-                    <span style={{ fontSize: '0.65em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>{pais.codigo}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4em' }}>
+                      <span style={{ fontSize: '0.65em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>{pais.codigo}</span>
+                      <span style={{
+                        fontSize: '0.55em',
+                        fontWeight: 700,
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        padding: '0.1em 0.35em',
+                        borderRadius: '0.3em',
+                        lineHeight: 1
+                      }}>
+                        Mín: ${pais.montoMinimo || 20}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -720,9 +748,9 @@ export default function GeneradorEstados() {
           fontWeight: 'bold',
           letterSpacing: '0.05em'
         }}>
-          <div>Todos monto mínimo de $20</div>
+          <div>Mínimos referenciales por país</div>
           <div style={{ fontSize: '0.8em', color: 'rgba(255,255,255,0.25)', marginTop: '0.2em', fontWeight: 500 }}>
-            Tasas referenciales sujetas a cambio • Grupo JK
+            Tasas sujetas a cambio • Grupo JK
           </div>
         </div>
       </div>

@@ -1,24 +1,24 @@
 // Datos de los 19 países — tasas expresadas como "unidades de moneda por 1 USD"
 export const PAISES_INICIALES = [
-  { id: 1, nombre: 'Argentina', iso2: 'ar', bandera: '🇦🇷', codigo: 'ARS', moneda: 'Peso Argentino', tasaProveedorEnvio: 1050, margenEnvio: 6, tasaProveedorRecibo: 1050, margenRecibo: 9, factorEUR: 0, factorUSDT: 0 },
-  { id: 2, nombre: 'Uruguay', iso2: 'uy', bandera: '🇺🇾', codigo: 'UYU', moneda: 'Peso Uruguayo', tasaProveedorEnvio: 42, margenEnvio: 6, tasaProveedorRecibo: 42, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 3, nombre: 'Chile', iso2: 'cl', bandera: '🇨🇱', codigo: 'CLP', moneda: 'Peso Chileno', tasaProveedorEnvio: 950, margenEnvio: 6, tasaProveedorRecibo: 950, margenRecibo: 9, factorEUR: 0, factorUSDT: 0 },
-  { id: 4, nombre: 'Paraguay', iso2: 'py', bandera: '🇵🇾', codigo: 'PYG', moneda: 'Guaraní Paraguayo', tasaProveedorEnvio: 7800, margenEnvio: 6, tasaProveedorRecibo: 7800, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 5, nombre: 'Brasil', iso2: 'br', bandera: '🇧🇷', codigo: 'BRL', moneda: 'Real Brasileño', tasaProveedorEnvio: 5.1, margenEnvio: 6, tasaProveedorRecibo: 5.83, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 6, nombre: 'Bolivia', iso2: 'bo', bandera: '🇧🇴', codigo: 'BOB', moneda: 'Boliviano', tasaProveedorEnvio: 6.9, margenEnvio: 6, tasaProveedorRecibo: 6.9, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 7, nombre: 'Perú', iso2: 'pe', bandera: '🇵🇪', codigo: 'PEN', moneda: 'Sol Peruano', tasaProveedorEnvio: 3.41, margenEnvio: 6, tasaProveedorRecibo: 3.6, margenRecibo: 9, factorEUR: 0, factorUSDT: 0 },
-  { id: 8, nombre: 'Colombia', iso2: 'co', bandera: '🇨🇴', codigo: 'COP', moneda: 'Peso Colombiano', tasaProveedorEnvio: 3640, margenEnvio: 3.0219, tasaProveedorRecibo: 3640, margenRecibo: 4, factorEUR: 0, factorUSDT: 0 },
-  { id: 9, nombre: 'Ecuador', iso2: 'ec', bandera: '🇪🇨', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0 },
-  { id: 10, nombre: 'Venezuela', iso2: 've', bandera: '🇻🇪', codigo: 'VES', moneda: 'Bolívar Digital', tasaProveedorEnvio: 645, margenEnvio: 3.411, tasaProveedorRecibo: 645, margenRecibo: 6, factorEUR: 1, factorUSDT: 1 },
-  { id: 11, nombre: 'Panamá', iso2: 'pa', bandera: '🇵🇦', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0 },
-  { id: 12, nombre: 'Costa Rica', iso2: 'cr', bandera: '🇨🇷', codigo: 'CRC', moneda: 'Colón Costarricense', tasaProveedorEnvio: 520, margenEnvio: 6, tasaProveedorRecibo: 520, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 13, nombre: 'Nicaragua', iso2: 'ni', bandera: '🇳🇮', codigo: 'NIO', moneda: 'Córdoba Nicaragüense', tasaProveedorEnvio: 36.5, margenEnvio: 6, tasaProveedorRecibo: 36.5, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 14, nombre: 'Honduras', iso2: 'hn', bandera: '🇭🇳', codigo: 'HNL', moneda: 'Lempira Hondureño', tasaProveedorEnvio: 25, margenEnvio: 6, tasaProveedorRecibo: 25, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 15, nombre: 'Guatemala', iso2: 'gt', bandera: '🇬🇹', codigo: 'GTQ', moneda: 'Quetzal Guatemalteco', tasaProveedorEnvio: 7.7, margenEnvio: 6, tasaProveedorRecibo: 7.7, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 16, nombre: 'Cuba', iso2: 'cu', bandera: '🇨🇺', codigo: 'CUP', moneda: 'Peso Cubano', tasaProveedorEnvio: 350, margenEnvio: 6, tasaProveedorRecibo: 350, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 17, nombre: 'México', iso2: 'mx', bandera: '🇲🇽', codigo: 'MXN', moneda: 'Peso Mexicano', tasaProveedorEnvio: 20, margenEnvio: 6, tasaProveedorRecibo: 20, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
-  { id: 18, nombre: 'EEUU', iso2: 'us', bandera: '🇺🇸', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0 },
-  { id: 19, nombre: 'Europa', iso2: 'eu', bandera: '🇪🇺', codigo: 'EUR', moneda: 'Euro', tasaProveedorEnvio: 0.92, margenEnvio: 6, tasaProveedorRecibo: 0.92, margenRecibo: 6, factorEUR: 0, factorUSDT: 0 },
+  { id: 1, nombre: 'Argentina', iso2: 'ar', bandera: '🇦🇷', codigo: 'ARS', moneda: 'Peso Argentino', tasaProveedorEnvio: 1050, margenEnvio: 6, tasaProveedorRecibo: 1050, margenRecibo: 9, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 2, nombre: 'Uruguay', iso2: 'uy', bandera: '🇺🇾', codigo: 'UYU', moneda: 'Peso Uruguayo', tasaProveedorEnvio: 42, margenEnvio: 6, tasaProveedorRecibo: 42, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 3, nombre: 'Chile', iso2: 'cl', bandera: '🇨🇱', codigo: 'CLP', moneda: 'Peso Chileno', tasaProveedorEnvio: 950, margenEnvio: 6, tasaProveedorRecibo: 950, margenRecibo: 9, factorEUR: 0, factorUSDT: 0, montoMinimo: 30 },
+  { id: 4, nombre: 'Paraguay', iso2: 'py', bandera: '🇵🇾', codigo: 'PYG', moneda: 'Guaraní Paraguayo', tasaProveedorEnvio: 7800, margenEnvio: 6, tasaProveedorRecibo: 7800, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 5, nombre: 'Brasil', iso2: 'br', bandera: '🇧🇷', codigo: 'BRL', moneda: 'Real Brasileño', tasaProveedorEnvio: 5.1, margenEnvio: 6, tasaProveedorRecibo: 5.83, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 6, nombre: 'Bolivia', iso2: 'bo', bandera: '🇧🇴', codigo: 'BOB', moneda: 'Boliviano', tasaProveedorEnvio: 6.9, margenEnvio: 6, tasaProveedorRecibo: 6.9, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 7, nombre: 'Perú', iso2: 'pe', bandera: '🇵🇪', codigo: 'PEN', moneda: 'Sol Peruano', tasaProveedorEnvio: 3.41, margenEnvio: 6, tasaProveedorRecibo: 3.6, margenRecibo: 9, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 8, nombre: 'Colombia', iso2: 'co', bandera: '🇨🇴', codigo: 'COP', moneda: 'Peso Colombiano', tasaProveedorEnvio: 3640, margenEnvio: 3.0219, tasaProveedorRecibo: 3640, margenRecibo: 4, factorEUR: 0, factorUSDT: 0, montoMinimo: 10 },
+  { id: 9, nombre: 'Ecuador', iso2: 'ec', bandera: '🇪🇨', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 10, nombre: 'Venezuela', iso2: 've', bandera: '🇻🇪', codigo: 'VES', moneda: 'Bolívar Digital', tasaProveedorEnvio: 645, margenEnvio: 3.411, tasaProveedorRecibo: 645, margenRecibo: 6, factorEUR: 1, factorUSDT: 1, montoMinimo: 5 },
+  { id: 11, nombre: 'Panamá', iso2: 'pa', bandera: '🇵🇦', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 12, nombre: 'Costa Rica', iso2: 'cr', bandera: '🇨🇷', codigo: 'CRC', moneda: 'Colón Costarricense', tasaProveedorEnvio: 520, margenEnvio: 6, tasaProveedorRecibo: 520, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 13, nombre: 'Nicaragua', iso2: 'ni', bandera: '🇳🇮', codigo: 'NIO', moneda: 'Córdoba Nicaragüense', tasaProveedorEnvio: 36.5, margenEnvio: 6, tasaProveedorRecibo: 36.5, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 14, nombre: 'Honduras', iso2: 'hn', bandera: '🇭🇳', codigo: 'HNL', moneda: 'Lempira Hondureño', tasaProveedorEnvio: 25, margenEnvio: 6, tasaProveedorRecibo: 25, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 15, nombre: 'Guatemala', iso2: 'gt', bandera: '🇬🇹', codigo: 'GTQ', moneda: 'Quetzal Guatemalteco', tasaProveedorEnvio: 7.7, margenEnvio: 6, tasaProveedorRecibo: 7.7, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 16, nombre: 'Cuba', iso2: 'cu', bandera: '🇨🇺', codigo: 'CUP', moneda: 'Peso Cubano', tasaProveedorEnvio: 350, margenEnvio: 6, tasaProveedorRecibo: 350, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 17, nombre: 'México', iso2: 'mx', bandera: '🇲🇽', codigo: 'MXN', moneda: 'Peso Mexicano', tasaProveedorEnvio: 20, margenEnvio: 6, tasaProveedorRecibo: 20, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 18, nombre: 'EEUU', iso2: 'us', bandera: '🇺🇸', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
+  { id: 19, nombre: 'Europa', iso2: 'eu', bandera: '🇪🇺', codigo: 'EUR', moneda: 'Euro', tasaProveedorEnvio: 0.92, margenEnvio: 6, tasaProveedorRecibo: 0.92, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
 ]
 
 // IDs de países destacados en el Dashboard (los más frecuentes)
@@ -384,11 +384,11 @@ export function cargarPaises() {
       const parsed = JSON.parse(guardados)
       // Fusionamos con los datos iniciales para asegurar que tengamos iso2 y banderas nuevas
       return parsed.map(p => {
-        const inicial = PAISES_INICIALES.find(ini => ini.id === p.id)
+        const inicial = PAISES_INICIALES.find(ini => ini.id === p.id || ini.nombre?.toLowerCase() === p.nombre?.toLowerCase())
         if (inicial) {
-          return { ...p, iso2: inicial.iso2, bandera: inicial.bandera }
+          return { ...p, iso2: p.iso2 || inicial.iso2, bandera: p.bandera || inicial.bandera, montoMinimo: p.montoMinimo || inicial.montoMinimo || 20 }
         }
-        return p
+        return { ...p, montoMinimo: p.montoMinimo || 20 }
       })
     }
   } catch (e) { }
@@ -425,6 +425,7 @@ export async function sincronizarGoogleSheets() {
     const idxMargenReciboMayor = headRow.findIndex(h => h.includes('MARGEN RECIBO MAYOR'));
     const idxCiudades = headRow.findIndex(h => h.includes('CIUDADES'));
     const idxMon = headRow.findIndex(h => h.includes('NOMBRE') || h.includes('MONEDA'));
+    const idxMinimo = headRow.findIndex(h => h.includes('MINIMO') || h.includes('MÍNIMO') || h.includes('MONTO MIN') || h === 'MIN');
 
     // Empezamos desde la línea 1 (omitiendo cabeceras País, Tasa Envio, etc)
     for (let i = 1; i < lineas.length; i++) {
@@ -481,6 +482,7 @@ export async function sincronizarGoogleSheets() {
         // Evaluamos factores dinámicamente según cabecera
         const valFactorEUR = idxEUR !== -1 && row.length > idxEUR ? parseVal(row[idxEUR]) : 0;
         const valFactorUSDT = idxUSDT !== -1 && row.length > idxUSDT ? parseVal(row[idxUSDT]) : 0;
+        const valMinimo = idxMinimo !== -1 && row.length > idxMinimo ? parseVal(row[idxMinimo]) : 0;
 
         datosNuevos.push({
           id: base ? base.id : (100 + i), // ID determinista y estable para que persista entre recargas
@@ -495,6 +497,7 @@ export async function sincronizarGoogleSheets() {
           margenRecibo: mR,
           factorEUR: valFactorEUR || (base ? base.factorEUR || 0 : 0),
           factorUSDT: valFactorUSDT || (base ? base.factorUSDT || 0 : 0),
+          montoMinimo: valMinimo > 0 ? valMinimo : (base ? base.montoMinimo || 20 : 20),
           margenEnvioMayor: idxMargenEnvioMayor !== -1 && row.length > idxMargenEnvioMayor ? parseValNullable(row[idxMargenEnvioMayor]) : null,
           margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseValNullable(row[idxMargenReciboMayor]) : null,
           ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : ''

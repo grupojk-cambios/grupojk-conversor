@@ -183,7 +183,12 @@ export default function ListaPaises({ modo = 'detal' }) {
                   </div>
                   {/* Nombre + moneda */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pais.nombre}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pais.nombre}</p>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.1rem 0.35rem', borderRadius: '0.3rem', flexShrink: 0 }}>
+                        Mín: ${pais.montoMinimo || 20}
+                      </span>
+                    </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-low)', marginTop: '1px' }}>{pais.moneda}</p>
                   </div>
                   {/* Código + tasa */}
@@ -254,7 +259,12 @@ export default function ListaPaises({ modo = 'detal' }) {
                     <img src={getFlagUrl(pais)} alt={pais.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div>
-                    <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem' }}>{pais.nombre}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <p style={{ fontWeight: 700, color: 'white', fontSize: '0.95rem' }}>{pais.nombre}</p>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.1rem 0.4rem', borderRadius: '0.3rem', flexShrink: 0 }}>
+                        Mín: ${pais.montoMinimo || 20}
+                      </span>
+                    </div>
                   </div>
                   <div style={{ color: 'var(--text-low)', fontSize: '0.875rem' }}>{pais.moneda}</div>
                   <div>

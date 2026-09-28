@@ -8,14 +8,19 @@
 
 import { readFileSync } from 'fs';
 
-const RUTA_MSGS = 'C:/Users/USER/AppData/Local/Temp/claude/C--Users-USER-Documents-APP-PARA-CAMBIOS-JK-CONVERSOR/8c796fe4-2b8d-4ce4-81b8-dda81e14fb6a/scratchpad/mensajes_reales.json';
-const msgs = JSON.parse(readFileSync(RUTA_MSGS, 'utf8')).map(m => ({ ...m, id: Number(m.id) }));
+// Set CURADO y fijo. Antes se usaban IDs de ejecucion, pero n8n solo guarda las ultimas 100
+// y al purgarse la prueba reventaba.
+const msgs = JSON.parse(readFileSync('pruebas/mensajes_proveedores.json', 'utf8'));
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^\uFEFF/, ''));
 const cod = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
 
 const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const csv = await (await fetch(CSV + '&n=' + Date.now())).text();
-const txt = id => msgs.find(m => m.id === id).texto;
+const txt = clave => {
+  const m = msgs.find(x => x.clave === clave);
+  if (!m) throw new Error('falta el mensaje de prueba: ' + clave);
+  return m.texto;
+};
 
 // --- Ejecuta "Interpretar Mensaje" con una memoria de proveedores dada ---
 function interpretar(textoMsg, memoria) {
@@ -53,7 +58,7 @@ const chk = (ok, etiqueta, detalle) => {
 // ================== PASO 1: aprende de los mensajes etiquetados del 28/08 ==================
 console.log('=== PASO 1: Kelvin pone el nombre a mano (28/08) -> el bot aprende la forma ===');
 let memoria = [];
-for (const [id, nombreEsperado] of [[1209, 'Unicambios'], [1208, 'Miguelacho'], [1207, 'Solano']]) {
+for (const [id, nombreEsperado] of [['unicambios1', 'Unicambios'], ['miguelacho1', 'Miguelacho'], ['solano1', 'Solano']]) {
   const its = interpretar(txt(id), memoria);
   const salida = aprender(its, [{ proveedores: [{ nombre: nombreEsperado, filas: [{ pais: 'México', envio: 16.2, recibo: 18.1 }] }] }], memoria);
   memoria = JSON.parse(salida.provFormatosJson);
@@ -69,11 +74,9 @@ console.log(`  Memoria: ${memoria.length} proveedores -> ${memoria.map(p => p.no
 console.log('');
 console.log('=== PASO 2: otros dias, SIN escribir el nombre -> lo reconoce solo? ===');
 const casos = [
-  [1318, 'Unicambios', '09-07'], [1188, 'Unicambios', '08-25'], [1246, 'Unicambios', '09-01'],
-  [1282, 'Unicambios', '09-03'], [1299, 'Unicambios', '09-04'],
-  [1319, 'Miguelacho', '09-07'], [1186, 'Miguelacho', '08-25'], [1245, 'Miguelacho', '09-01'],
-  [1281, 'Miguelacho', '09-03'], [1298, 'Miguelacho', '09-04'],
-  [1316, 'Solano', '09-07']
+  ['unicambios2', 'Unicambios', 'otro dia'],
+  ['miguelacho2', 'Miguelacho', 'otro dia'],
+  ['solano2',     'Solano',     'otro dia']
 ];
 for (const [id, esperado, fecha] of casos) {
   const its = interpretar(txt(id), memoria);
@@ -86,7 +89,7 @@ for (const [id, esperado, fecha] of casos) {
 // ================== PASO 3: no debe confundirse ==================
 console.log('');
 console.log('=== PASO 3: los que NO debe asociar a ningun proveedor conocido ===');
-for (const [id, quees] of [[1317, 'Grupo Elite (trae su nombre)'], [1320, 'formato corto Peru'], [1240, 'formato corto Cop']]) {
+for (const [id, quees] of [['elite1', 'Grupo Elite (trae su nombre)'], ['cortoKelvin1', 'formato corto de Kelvin'], ['caballo1', 'el de Colombia suelto']]) {
   const its = interpretar(txt(id), memoria);
   const it = its[0].json;
   chk(!it.nombreConocido, quees, `-> ${it.nombreConocido || 'ninguno (correcto)'}`);
@@ -183,6 +186,44 @@ chk(fc && fc['Tasa Envio'] === 3100 && fc['Tasa Recibo'] === 3130,
 const filaLimpia = Object.keys((porParser('jesus 955'), interpretar('jesus 955', memoria)[0].json.filas[0]));
 chk(filaLimpia.every(k => ['Pais','Tasa Envio','Tasa Recibo'].includes(k)),
     'la fila del Sheet no trae campos extra', '-> ' + filaLimpia.join(', '));
+
+// ====== PASO 7: el nombre que pone Kelvin le gana al titulo del mensaje (caso Solano 23/09) ======
+// Solano manda un mensaje titulado "*ACTIVOS X PERU*". La IA leia ese titulo y ese nombre le ganaba
+// al que Kelvin le puso, asi que nunca se quedaba "Solano".
+console.log('');
+console.log('=== PASO 7: "Solano" debe ganarle al titulo "ACTIVOS X PERU" ===');
+const textoSolano = txt('solano1');
+const conEtiqueta = 'Solano\n\n' + textoSolano;
+
+// a) Kelvin escribe "Solano" arriba -> ese nombre manda, aunque la IA lea el titulo
+const its1 = interpretar(conEtiqueta, []);
+chk(its1[0].json.nombrePuesto === 'Solano', 'detecta el nombre escrito a mano', `-> "${its1[0].json.nombrePuesto}"`);
+const r1 = aprender(its1, [{ proveedores: [{ nombre: 'ACTIVOS X PERÚ', filas: [{ pais: 'Perú', envio: 3.33, recibo: 3.41 }] }] }], []);
+chk(r1.proveedores.includes('Solano'), 'el resumen dice Solano, no el titulo', `-> ${r1.proveedores.join(', ')}`);
+
+// b) Se aprende "Solano" para ese formato
+const memSolano = JSON.parse(r1.provFormatosJson);
+chk(memSolano.some(p => p.nombre === 'Solano'), 'se aprende como "Solano"', `-> ${memSolano.map(p => p.nombre).join(', ')}`);
+
+// c) Otro dia SIN escribir el nombre: debe seguir diciendo Solano, no el titulo
+const its2 = interpretar(txt('solano2'), memSolano);
+chk(its2[0].json.nombreConocido === 'Solano', 'otro dia lo sigue llamando Solano', `-> "${its2[0].json.nombreConocido}"`);
+const r2 = aprender(its2, [{ proveedores: [{ nombre: 'ACTIVOS X PERÚ', filas: [{ pais: 'Perú', envio: 3.34, recibo: 3.42 }] }] }], memSolano);
+chk(r2.proveedores.includes('Solano') && !r2.proveedores.includes('ACTIVOS X PERÚ'),
+    'el titulo ya no le gana', `-> ${r2.proveedores.join(', ')}`);
+
+// d) Los saludos y encabezados NO son nombres
+for (const [t, etiqueta] of [
+  [txt('unicambios1'), '"Buen dia" no es un nombre'],
+  [txt('caballo1'),    '"Actualizacion" no es un nombre'],
+  [txt('elite1'),      'un titulo con asteriscos/emoji no es etiqueta'],
+]) {
+  const it = interpretar(t, [])[0].json;
+  chk(!it.nombrePuesto, etiqueta, `-> nombrePuesto="${it.nombrePuesto || '(ninguno, correcto)'}"`);
+}
+// Pero "Proveedor: Caballo" si
+const conPref = interpretar('Proveedor: Caballo\n\n' + txt('caballo1'), [])[0].json;
+chk(conPref.nombrePuesto === 'Caballo', '"Proveedor: Caballo" si se detecta', `-> "${conPref.nombrePuesto}"`);
 
 console.log('');
 console.log(fallos ? `❌ ${fallos} fallaron` : '✅ Todas las pruebas pasaron');

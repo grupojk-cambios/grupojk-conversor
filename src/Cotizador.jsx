@@ -69,7 +69,12 @@ function PaisSelector({ label, paises, selected, onSelect, noBottomRadius = fals
             style={{ width: isCustomFlag(p) ? '2.5rem' : '1.8rem', height: isCustomFlag(p) ? '2.5rem' : '1.2rem', objectFit: 'contain', borderRadius: isCustomFlag(p) ? '0' : '3px' }}
           />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '1rem', fontWeight: selected?.id === p.id ? 700 : 500, color: 'white' }}>{p.nombre}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '1rem', fontWeight: selected?.id === p.id ? 700 : 500, color: 'white' }}>{p.nombre}</span>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.1rem 0.4rem', borderRadius: '0.3rem' }}>
+                Mín: ${p.montoMinimo || 20}
+              </span>
+            </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-low)', textTransform: 'uppercase' }}>{p.moneda}</div>
           </div>
           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--primary-color)', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
@@ -871,6 +876,36 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                 </div>
               </div>
             </div>
+
+            {/* Aviso si el monto está por debajo del mínimo del destino */}
+            {(() => {
+              const minDestino = destino?.montoMinimo || 20;
+              const tRecibo = origen ? calcularTasaRecibo(origen, modo) : 1;
+              const numMonto = parsearMonto(monto);
+              const dolaresAprox = tRecibo > 0 ? (numMonto / tRecibo) : 0;
+              if (dolaresAprox > 0 && dolaresAprox < minDestino) {
+                return (
+                  <div style={{
+                    background: 'rgba(245, 158, 11, 0.12)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    borderRadius: '0.8rem',
+                    padding: '0.6rem 1rem',
+                    marginBottom: '1.2rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    color: '#fbbf24',
+                    fontSize: '0.85rem'
+                  }}>
+                    <span>⚠️</span>
+                    <span>
+                      Nota: El monto mínimo sugerido para envíos a <strong>{destino.nombre}</strong> es de <strong>${minDestino} USD</strong>.
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '1rem', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '1.2rem' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>

@@ -153,5 +153,24 @@ console.log(`  ${avisaCambio ? 'OK   ' : 'FALLO'} avisa del cambio raro en Brasi
 console.log('  --- resumen ---');
 console.log(viernes.resumen.split('\n').map(l => '  ' + l).join('\n'));
 
+// ===== Ruido: si se cuela un numero de FECHA o TELEFONO, hay que marcarlo fuerte =====
+// Solano manda "*MIERCOLES* 23/09/26" y Miguelacho "Pedidos +573219343265". Si la IA llegara a
+// tomar uno de esos numeros como tasa, el bot tiene que gritarlo (la hoja tiene Peru ~3.3).
+console.log('');
+console.log('=== Ruido colado como tasa: lo marca? ===');
+const conFecha = correr({ proveedores: [{ nombre: 'ACTIVOS X PERÚ', filas: [
+  { pais: 'Perú', envio: 23, recibo: 3.41 }   // 23 = el dia de "23/09/26"
+] }] });
+const gritó = /NO PARECE UNA TASA/.test(conFecha.resumen);
+if (!gritó) fallos++;
+console.log(`  ${gritó ? 'OK   ' : 'FALLO'} avisa fuerte con el numero de la fecha`);
+console.log('  ' + (conFecha.resumen.split('\n').find(l => /NO PARECE/.test(l)) || '').trim());
+
+// Un cambio NORMAL del dia a dia no debe dar la alarma fuerte
+const normal = correr({ proveedores: [{ nombre: 'X', filas: [{ pais: 'Perú', envio: 3.38, recibo: 3.45 }] }] });
+const tranquilo = !/NO PARECE UNA TASA/.test(normal.resumen);
+if (!tranquilo) fallos++;
+console.log(`  ${tranquilo ? 'OK   ' : 'FALLO'} un cambio normal NO dispara la alarma fuerte`);
+
 console.log('');
 console.log(fallos ? `❌ ${fallos} fallaron` : '✅ Todas las pruebas pasaron');

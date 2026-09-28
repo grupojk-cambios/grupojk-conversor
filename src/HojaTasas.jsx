@@ -132,6 +132,9 @@ export default function HojaTasas({ paisOrigen, paises, modo = 'detal', onBack }
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)' }}>{destino.codigo}</span>
                       <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>{destino.moneda}</span>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.1rem 0.35rem', borderRadius: '0.3rem' }}>
+                        Mín: ${destino.montoMinimo || 20}
+                      </span>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
