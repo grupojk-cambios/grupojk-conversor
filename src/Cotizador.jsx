@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput } from './constants'
+import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput, obtenerTasasProcesadas } from './constants'
 import { supabase } from './lib/supabase'
 
 // Componente interno para selector de países con buscador responsivo
@@ -880,10 +880,10 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
             {/* Aviso si el monto está por debajo del mínimo del destino */}
             {(() => {
               const minDestino = destino?.montoMinimo || 20;
-              const tRecibo = origen ? calcularTasaRecibo(origen, modo) : 1;
+              const { tasaOrigenParaDolares } = obtenerTasasProcesadas(origen, destino, paises, modo);
               const numMonto = parsearMonto(monto);
-              const dolaresAprox = tRecibo > 0 ? (numMonto / tRecibo) : 0;
-              if (dolaresAprox > 0 && dolaresAprox < minDestino) {
+              const dolaresReales = tasaOrigenParaDolares > 0 ? (numMonto / tasaOrigenParaDolares) : 0;
+              if (dolaresReales > 0 && dolaresReales < (minDestino - 0.001)) {
                 return (
                   <div style={{
                     background: 'rgba(245, 158, 11, 0.12)',
