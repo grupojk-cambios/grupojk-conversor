@@ -9,7 +9,7 @@ export const PAISES_INICIALES = [
   { id: 7, nombre: 'Perú', iso2: 'pe', bandera: '🇵🇪', codigo: 'PEN', moneda: 'Sol Peruano', tasaProveedorEnvio: 3.41, margenEnvio: 6, tasaProveedorRecibo: 3.6, margenRecibo: 9, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
   { id: 8, nombre: 'Colombia', iso2: 'co', bandera: '🇨🇴', codigo: 'COP', moneda: 'Peso Colombiano', tasaProveedorEnvio: 3640, margenEnvio: 3.0219, tasaProveedorRecibo: 3640, margenRecibo: 4, factorEUR: 0, factorUSDT: 0, montoMinimo: 10 },
   { id: 9, nombre: 'Ecuador', iso2: 'ec', bandera: '🇪🇨', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
-  { id: 10, nombre: 'Venezuela', iso2: 've', bandera: '🇻🇪', codigo: 'VES', moneda: 'Bolívar Digital', tasaProveedorEnvio: 645, margenEnvio: 3.411, tasaProveedorRecibo: 645, margenRecibo: 6, factorEUR: 1, factorUSDT: 1, montoMinimo: 5 },
+  { id: 10, nombre: 'Venezuela', iso2: 've', bandera: '🇻🇪', codigo: 'VES', moneda: 'Bolívar Digital', tasaProveedorEnvio: 645, margenEnvio: 3.411, tasaProveedorRecibo: 645, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 5 },
   { id: 11, nombre: 'Panamá', iso2: 'pa', bandera: '🇵🇦', codigo: 'USD', moneda: 'Dólar Americano', tasaProveedorEnvio: 1, margenEnvio: 0, tasaProveedorRecibo: 1, margenRecibo: 0, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
   { id: 12, nombre: 'Costa Rica', iso2: 'cr', bandera: '🇨🇷', codigo: 'CRC', moneda: 'Colón Costarricense', tasaProveedorEnvio: 520, margenEnvio: 6, tasaProveedorRecibo: 520, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
   { id: 13, nombre: 'Nicaragua', iso2: 'ni', bandera: '🇳🇮', codigo: 'NIO', moneda: 'Córdoba Nicaragüense', tasaProveedorEnvio: 36.5, margenEnvio: 6, tasaProveedorRecibo: 36.5, margenRecibo: 6, factorEUR: 0, factorUSDT: 0, montoMinimo: 20 },
@@ -386,7 +386,9 @@ export function cargarPaises() {
       return parsed.map(p => {
         const inicial = PAISES_INICIALES.find(ini => ini.id === p.id || ini.nombre?.toLowerCase() === p.nombre?.toLowerCase())
         if (inicial) {
-          return { ...p, iso2: p.iso2 || inicial.iso2, bandera: p.bandera || inicial.bandera, montoMinimo: p.montoMinimo || inicial.montoMinimo || 20 }
+          const factorEUR = (p.factorEUR !== undefined && p.factorEUR !== null && p.factorEUR !== 1) ? p.factorEUR : (inicial.factorEUR || 0);
+          const factorUSDT = (p.factorUSDT !== undefined && p.factorUSDT !== null && p.factorUSDT !== 1) ? p.factorUSDT : (inicial.factorUSDT || 0);
+          return { ...p, iso2: p.iso2 || inicial.iso2, bandera: p.bandera || inicial.bandera, factorEUR, factorUSDT, montoMinimo: p.montoMinimo || inicial.montoMinimo || 20 }
         }
         return { ...p, montoMinimo: p.montoMinimo || 20 }
       })

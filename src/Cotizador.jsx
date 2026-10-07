@@ -315,7 +315,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
         const tc = calcularConversion(origen, destino, 1, paises, modo)
         if (isCajaDolar(origen) && !isCajaDolar(destino)) {
           setTasaDisplay({ base: `1 ${origen.codigo}`, valor: tc, unidad: destino.codigo })
-        } else if (!isCajaDolar(origen) && isCajaDolar(destino)) {
+        } else if (!isCajaDolar(origen) && (isCajaDolar(destino) || ['EUR', 'GBP', 'EU'].includes(destino.codigo))) {
           const tcInverso = calcularConversionInversa(origen, destino, 1, paises, modo)
           setTasaDisplay({ base: `1 ${destino.codigo}`, valor: tcInverso, unidad: origen.codigo })
         } else {
