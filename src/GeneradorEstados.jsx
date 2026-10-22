@@ -9,6 +9,8 @@ import './GeneradorEstados.css'
  * Unica excepcion: una tasa tan chica que con 2 decimales quedaria en "0,00" (pasa en cruces
  * entre monedas muy distintas); ahi se deja el formato automatico para no mostrar un cero.
  */
+const FALLBACK_FLAG = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="38" fill="%231e293b" stroke="%233b82f6" stroke-width="2"/><text x="50%" y="54%" text-anchor="middle" fill="%23ffffff" font-size="28" font-family="sans-serif" font-weight="bold">🌐</text></svg>'
+
 const formatearTasa = (valor) => {
   if (!valor || isNaN(valor) || valor <= 0) return 'N/A'
   if (Math.abs(valor) < 0.005) return formatearMonto(valor)
@@ -25,6 +27,7 @@ export default function GeneradorEstados() {
   const [copiado, setCopiado] = useState(false)
   const [modoCalculo, setModoCalculo] = useState('detal') // 'detal' | 'mayor'
   const cardRefs = useRef([])
+  const captureRefs = useRef([])
 
   useEffect(() => {
     const loadData = async () => {
@@ -126,21 +129,17 @@ export default function GeneradorEstados() {
   }, [modoGlobal, todosPaises, modoCalculo])
 
   const descargarImagen = async (index) => {
-    // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
-    if (expandido !== index) {
-      toggleExpandido(index)
-      // Esperar un poco para que el DOM se actualice antes de capturar
-      await new Promise(r => setTimeout(r, 300))
-    }
-
-    const element = cardRefs.current[index]
+    const element = captureRefs.current[index] || cardRefs.current[index]
     if (!element) return
 
     try {
       const canvas = await html2canvas(element, {
         scale: 2, // Alta calidad
         useCORS: true,
-        backgroundColor: '#020813' // Color premium oscuro
+        allowTaint: false,
+        imageTimeout: 15000,
+        backgroundColor: '#020813',
+        logging: false
       })
       
       const image = canvas.toDataURL('image/png')
@@ -148,32 +147,29 @@ export default function GeneradorEstados() {
       link.href = image
       link.download = `JK_Estados_${paisOrigen.codigo}_Parte_${index + 1}_${Date.now()}.png`
       link.click()
-      
-      // Cerrar modal automáticamente después de descargar si lo abrimos solo para esto
-      toggleExpandido(null)
     } catch (error) {
       console.error('Error al generar la imagen:', error)
-      alert('Hubo un error al descargar la imagen.')
+      alert('Hubo un error al descargar la imagen: ' + (error?.message || 'Error desconocido'))
     }
   }
 
   const descargarPizarraImagen = async (index) => {
-    // Si no está expandido, lo expandimos para asegurar máxima calidad de renderizado
-    if (expandido !== index) {
-      toggleExpandido(index)
-      // Esperar un poco para que el DOM se actualice antes de capturar
-      await new Promise(r => setTimeout(r, 300))
+    // Usar la referencia oculta de captura limpia sin transforms si existe, o el elemento visible
+    const element = captureRefs.current[index] || cardRefs.current[index]
+    if (!element) {
+      alert('No se pudo encontrar el elemento para capturar.')
+      return
     }
-
-    const element = cardRefs.current[index]
-    if (!element) return
 
     try {
       const isSquare = formatoGlobal === 'square'
       const canvas = await html2canvas(element, {
         scale: 2, // Alta calidad
         useCORS: true,
-        backgroundColor: '#020813' // Color premium oscuro
+        allowTaint: false,
+        imageTimeout: 15000,
+        backgroundColor: '#020813',
+        logging: false
       })
       
       const image = canvas.toDataURL('image/png')
@@ -181,12 +177,9 @@ export default function GeneradorEstados() {
       link.href = image
       link.download = `JK_Pizarra_Global_${isSquare ? 'Cuadrado' : 'Historia'}_Parte_${index + 1}_${Date.now()}.png`
       link.click()
-      
-      // Cerrar modal automáticamente después de descargar si lo abrimos solo para esto
-      toggleExpandido(null)
     } catch (error) {
       console.error('Error al generar la imagen:', error)
-      alert('Hubo un error al descargar la imagen.')
+      alert('Hubo un error al descargar la imagen: ' + (error?.message || 'Error desconocido'))
     }
   }
 
@@ -414,10 +407,10 @@ export default function GeneradorEstados() {
   }
 
   // Función para renderizar el contenido exacto de la tarjeta
-  const renderCard = (chunk, isCaptureTarget, index) => (
+  const renderCard = (chunk, isCaptureTarget, index, isOffscreenCapture = false) => (
     <div 
       className="estado-card premium-tree" 
-      ref={isCaptureTarget ? (el => cardRefs.current[index] = el) : null}
+      ref={isOffscreenCapture ? (el => captureRefs.current[index] = el) : (isCaptureTarget ? (el => cardRefs.current[index] = el) : null)}
     >
       {/* Marca de Agua (Fondo muy visible) */}
       <div className="watermark-container">
@@ -490,7 +483,7 @@ export default function GeneradorEstados() {
                   alt={pais.nombre} 
                   className="dest-flag"
                   crossOrigin="anonymous" 
-                  onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/350/350965.png' }}
+                  onError={(e) => { e.target.src = FALLBACK_FLAG }}
                 />
               </div>
               <div className="dest-info">
@@ -536,7 +529,7 @@ export default function GeneradorEstados() {
   );
 
   // VISTA DE LA PIZARRA GLOBAL CARD (HISTORIA O CUADRADO)
-  const renderPizarraGlobalCard = (chunk, isCaptureTarget, index) => {
+  const renderPizarraGlobalCard = (chunk, isCaptureTarget, index, isOffscreenCapture = false) => {
     const isSquare = formatoGlobal === 'square';
     const cardClass = isSquare ? 'premium-pizarra-square' : 'premium-pizarra-story';
     const fechaHoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -544,7 +537,7 @@ export default function GeneradorEstados() {
     return (
       <div 
         className={`estado-card ${cardClass}`} 
-        ref={isCaptureTarget ? (el => cardRefs.current[index] = el) : null}
+        ref={isOffscreenCapture ? (el => captureRefs.current[index] = el) : (isCaptureTarget ? (el => cardRefs.current[index] = el) : null)}
         style={{
           width: isSquare ? '600px' : '450px',
           height: isSquare ? '600px' : '800px',
@@ -691,7 +684,7 @@ export default function GeneradorEstados() {
                       boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
                     }}
                     crossOrigin="anonymous" 
-                    onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/350/350965.png' }}
+                    onError={(e) => { e.target.src = FALLBACK_FLAG }}
                   />
                   <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
                     <span style={{ fontSize: '0.85em', fontWeight: 700, color: 'rgba(255,255,255,0.95)', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>{pais.nombre}</span>
@@ -1057,6 +1050,11 @@ export default function GeneradorEstados() {
                       </div>
                     </div>
                   )}
+
+                  {/* Renderizado sin escala fuera de pantalla para captura ultra nítida y segura */}
+                  <div style={{ position: 'fixed', left: '-99999px', top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
+                    {renderPizarraGlobalCard(chunk, false, index, true)}
+                  </div>
                 </div>
               )
             })
@@ -1206,6 +1204,11 @@ export default function GeneradorEstados() {
                 </div>
               </div>
             )}
+
+            {/* Renderizado sin escala fuera de pantalla para captura ultra nítida y segura */}
+            <div style={{ position: 'fixed', left: '-99999px', top: 0, opacity: 0, pointerEvents: 'none', zIndex: -1 }}>
+              {renderCard(chunk, false, index, true)}
+            </div>
           </div>
         )})}
       </div>
