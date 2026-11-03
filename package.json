@@ -9,8 +9,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "predeploy": "npm run verificar-motor && npm run build",
+    "deploy": "gh-pages -d dist",
+    "verificar-motor": "node compare_motor.mjs",
+    "buscar-secretos": "node scripts/buscar_secretos.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.0",

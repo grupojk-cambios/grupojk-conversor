@@ -2,7 +2,7 @@
 // y lo ejecuta simulando cómo n8n/el agente lo invoca.
 import { readFile } from "node:fs/promises";
 
-const wf = JSON.parse((await readFile(new URL("./workflow_bot_whatsapp_v3.json", import.meta.url), "utf8")).replace(/^﻿/, ""));
+const wf = JSON.parse((await readFile(new URL("./workflow_bot_whatsapp_v12.json", import.meta.url), "utf8")).replace(/^﻿/, ""));
 const tool = wf.nodes.find((n) => n.name === "Calculadora de Conversion");
 const code = tool.parameters.jsCode;
 

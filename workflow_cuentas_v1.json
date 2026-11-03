@@ -1,0 +1,837 @@
+﻿{
+    "name":  "Bot Cuentas JK",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "updates":  [
+                                                         "message"
+                                                     ],
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "id":  "c1000000-0000-4000-9000-tgtrigger0001",
+                      "name":  "Telegram Trigger",
+                      "type":  "n8n-nodes-base.telegramTrigger",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -400,
+                                       300
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "chat-auth-1",
+                                                                                   "leftValue":  "={{ [\u0027627887509\u0027].indexOf(String($json.message.chat.id)) !== -1 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "boolean"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "c2000000-0000-4000-9000-chatautorizado",
+                      "name":  "Chat Autorizado",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -200,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let texto = \u0027\u0027, chatId = \u0027\u0027;\ntry {\n  const msg = $(\u0027Telegram Trigger\u0027).first().json.message || {};\n  texto = String(msg.text || \u0027\u0027).trim();\n  chatId = String((msg.chat \u0026\u0026 msg.chat.id) || \u0027\u0027);\n} catch(e){}\n\nconst norm = s =\u003e String(s||\u0027\u0027).toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).replace(/[^a-z0-9]/g,\u0027\u0027);\nconst t = norm(texto);\nconst ES_SI = [\u0027si\u0027,\u0027sii\u0027,\u0027ok\u0027,\u0027oka\u0027,\u0027okey\u0027,\u0027dale\u0027,\u0027confirmo\u0027,\u0027confirmar\u0027,\u0027listo\u0027,\u0027ya\u0027,\u0027correcto\u0027,\u0027sipi\u0027];\nconst ES_NO = [\u0027no\u0027,\u0027nop\u0027,\u0027cancelar\u0027,\u0027cancela\u0027,\u0027anular\u0027,\u0027nel\u0027,\u0027negativo\u0027];\n\nconst esRespCorta = ES_SI.indexOf(t) !== -1 || ES_NO.indexOf(t) !== -1;\nconst esMayor = /^\\/mayor/i.test(texto);\nconst esDetal = /^\\/detal/i.test(texto);\nconst esComando = esMayor || esDetal;\nconst tipo = esMayor ? \u0027MAYOR\u0027 : (esDetal ? \u0027DETAL\u0027 : \u0027\u0027);\nconst textoCuenta = esComando ? texto.replace(/^\\/(mayor|detal)\\s*/i, \u0027\u0027).trim() : texto;\nconst keyPendiente = \u0027cuentas:pendiente:\u0027 + chatId;\n\nreturn [{ json: { chatId, texto, textoCuenta, tipo, esRespCorta, esComando, keyPendiente } }];"
+                                     },
+                      "id":  "c3000000-0000-4000-9000-detectarmsj01",
+                      "name":  "Detectar Mensaje",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $json.keyPendiente }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "pendienteRaw",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "c4000000-0000-4000-9000-rgetpendcuent",
+                      "name":  "Redis Leer Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       200,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const d = $(\u0027Detectar Mensaje\u0027).first().json;\nconst norm = s =\u003e String(s||\u0027\u0027).toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).replace(/[^a-z0-9]/g,\u0027\u0027);\nconst t = norm(d.texto);\nconst ES_SI = [\u0027si\u0027,\u0027sii\u0027,\u0027ok\u0027,\u0027oka\u0027,\u0027okey\u0027,\u0027dale\u0027,\u0027confirmo\u0027,\u0027confirmar\u0027,\u0027listo\u0027,\u0027ya\u0027,\u0027correcto\u0027,\u0027sipi\u0027];\n\nlet pendiente = null;\ntry {\n  const raw = $(\u0027Redis Leer Pendiente\u0027).first().json.pendienteRaw;\n  if (raw) pendiente = typeof raw === \u0027string\u0027 ? JSON.parse(raw) : raw;\n} catch(e){}\n\nif (d.esRespCorta) {\n  if (pendiente \u0026\u0026 pendiente.fila) {\n    const esOk = ES_SI.indexOf(t) !== -1;\n    return [{ json: { accion: esOk ? \u0027confirmar\u0027 : \u0027cancelar\u0027, chatId: d.chatId, pendiente, keyPendiente: d.keyPendiente } }];\n  }\n  return [{ json: { accion: \u0027sinPendiente\u0027, chatId: d.chatId, keyPendiente: d.keyPendiente } }];\n}\nif (d.esComando) {\n  if (!d.textoCuenta) {\n    return [{ json: { accion: \u0027ayuda\u0027, chatId: d.chatId, tipo: d.tipo } }];\n  }\n  return [{ json: { accion: \u0027nueva\u0027, chatId: d.chatId, textoCuenta: d.textoCuenta, tipo: d.tipo, keyPendiente: d.keyPendiente } }];\n}\nreturn [{ json: { accion: \u0027ignorar\u0027, chatId: d.chatId } }];"
+                                     },
+                      "id":  "c5000000-0000-4000-9000-interpretarcue",
+                      "name":  "Interpretar",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       400,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-conf",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "confirmar",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "confirmar"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-canc",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "cancelar",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "cancelar"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-nueva",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "nueva",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "nueva"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-sinp",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "sinPendiente",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "sinPendiente"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "r-ayuda",
+                                                                                                                    "leftValue":  "={{ $json.accion }}",
+                                                                                                                    "rightValue":  "ayuda",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "ayuda"
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "id":  "c6000000-0000-4000-9000-routercuentas",
+                      "name":  "Router",
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       600,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Manda EXACTAMENTE las 6 columnas de la hoja y nada mas: el nodo de Sheets usa\n// autoMapInputData, que casa los campos por nombre de columna. Antes aqui tambien\n// iban chatId y keyPendiente, que no son columnas de la hoja.\n// No hace falta pasarlos: los nodos de abajo (Redis Borrar, Texto OK) los leen\n// directo de $(\u0027Interpretar\u0027), no de este nodo.\n// Todo se manda como texto y sin espacios de sobra, para que la hoja no reciba\n// nulls ni \"undefined\".\nconst d = $(\u0027Interpretar\u0027).first().json;\nconst fila = (d.pendiente \u0026\u0026 d.pendiente.fila) ? d.pendiente.fila : {};\nconst txt = v =\u003e (v === undefined || v === null) ? \u0027\u0027 : String(v).trim();\nreturn [{ json: {\n  Pais:       txt(fila.Pais),\n  Metodo:     txt(fila.Metodo),\n  Disponible: txt(fila.Disponible),\n  Datos:      txt(fila.Datos),\n  Notas:      txt(fila.Notas),\n  Tipo:       txt(fila.Tipo)\n} }];"
+                                     },
+                      "id":  "d1000000-0000-4000-9000-prepparahoja1",
+                      "name":  "Preparar Para Hoja",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       800,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "sheetName":  {
+                                                           "__rl":  true,
+                                                           "value":  "908170655",
+                                                           "mode":  "id"
+                                                       },
+                                         "columns":  {
+                                                         "mappingMode":  "autoMapInputData",
+                                                         "matchingColumns":  [
+
+                                                                             ],
+                                                         "schema":  [
+
+                                                                    ],
+                                                         "value":  {
+
+                                                                   }
+                                                     },
+                                         "documentId":  {
+                                                            "__rl":  true,
+                                                            "value":  "1bkLLIh0i1ml9KOEl_QiCNIWlQVFErfjtPTnLNYfAp5s",
+                                                            "mode":  "id"
+                                                        },
+                                         "authentication":  "serviceAccount",
+                                         "options":  {
+
+                                                     },
+                                         "operation":  "append"
+                                     },
+                      "id":  "d2000000-0000-4000-9000-agregarahoja01",
+                      "name":  "Agregar a Hoja",
+                      "type":  "n8n-nodes-base.googleSheets",
+                      "typeVersion":  4.5,
+                      "position":  [
+                                       1000,
+                                       60
+                                   ],
+                      "credentials":  {
+                                          "googleApi":  {
+                                                            "id":  "U7Rjn3kLCG7tpE3G",
+                                                            "name":  "Google Sheets Tasas JK proveedores"
+                                                        }
+                                      },
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ $(\u0027Interpretar\u0027).first().json.keyPendiente }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "d3000000-0000-4000-9000-rborrarpend001",
+                      "name":  "Redis Borrar Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1200,
+                                       60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const d = $(\u0027Interpretar\u0027).first().json;\nconst fila = (d.pendiente \u0026\u0026 d.pendiente.fila) ? d.pendiente.fila : {};\nconst pais   = fila.Pais   || \u0027?\u0027;\nconst metodo = fila.Metodo || \u0027?\u0027;\nreturn [{ json: { chatId: d.chatId, texto: String.fromCodePoint(9989) + \u0027 Cuenta guardada en la hoja.\\n\\n\u0027 + String.fromCodePoint(128204) + \u0027 \u0027 + pais + \u0027 — \u0027 + metodo } }];"
+                                     },
+                      "id":  "d4000000-0000-4000-9000-textook000001",
+                      "name":  "Texto OK",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1400,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false
+                                                              },
+                                         "text":  "={{ $json.texto }}"
+                                     },
+                      "id":  "d5000000-0000-4000-9000-avisarok00001",
+                      "name":  "Avisar OK",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1600,
+                                       60
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ $json.keyPendiente }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "e1000000-0000-4000-9000-rborrarcncel1",
+                      "name":  "Redis Borrar (Cancelar)",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       800,
+                                       180
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false
+                                                              },
+                                         "text":  "Cancelado. No se guardo nada."
+                                     },
+                      "id":  "e2000000-0000-4000-9000-avisarcncel01",
+                      "name":  "Avisar Cancelado",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1000,
+                                       180
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false
+                                                              },
+                                         "text":  "No tengo ninguna cuenta esperando confirmacion.\n\nUsame con /mayor o /detal seguido de los datos."
+                                     },
+                      "id":  "f1000000-0000-4000-9000-avisarsinpend",
+                      "name":  "Avisar Sin Pendiente",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       800,
+                                       300
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const d = $(\u0027Interpretar\u0027).first().json;\nconst promptSistema = \u0027Eres un extractor de datos de cuentas bancarias para una empresa de remesas venezolana.\\nTe llega un mensaje con los datos de UNA cuenta. Devuelve SOLO este JSON, sin markdown y sin texto extra:\\n{\"pais\":\"\",\"metodo\":\"\",\"notas\":\"\",\"numeroCuenta\":\"\",\"banco\":\"\",\"identificacion\":\"\",\"titular\":\"\",\"extra\":\"\"}\\n\\nQue va en cada campo:\\n- pais: nombre del pais en espanol.\\n- metodo: banco + tipo de cuenta. Ej: Bancolombia Ahorro, Pichincha Ahorro, Nequi, Zelle, PayPal.\\n- notas: banco + SOLO el primer nombre del titular. Ej: Bancolombia Enrique, Pichincha Dario.\\n- numeroCuenta: SOLO el numero de la cuenta, tal cual aparece, sin puntos ni espacios de adorno.\\n- banco: el banco y el tipo de cuenta como se escribe en el mensaje. Ej: Bancolombia ahorro, Pichincha ahorro.\\n- identificacion: la cedula, C.I., CC, DNI, RUC o pasaporte CON su etiqueta si la trae. Ej: C.I: 8536509, Cedula: 25760445, Pasaporte 5181234067. Si en el mensaje el documento viene como un numero suelto sin etiqueta, ponlo igual, solo el numero. Si no hay, cadena vacia.\\n- titular: nombre completo de la persona.\\n- extra: CUALQUIER otra linea del mensaje que no encaje en los campos de arriba, copiada TAL CUAL con sus saltos de linea. Ej: MOTIVO DE PAGO ES: ... , Codigo de Cuenta Interbancario: ... , Tipo de cuenta: ... . Si no sobra nada, cadena vacia.\\n\\nREGLA CRITICA: no inventes, no corrijas y no acortes ningun numero. Copialos digito por digito.\\nNo pongas el titulo CUENTA AUTORIZADA en ningun campo: ese lo agrega el sistema.\\n\\nPara deducir el pais fijate en el banco, la moneda o la ciudad. Pistas de banco:\\nBancolombia, Nequi, Daviplata, Davivienda = Colombia. Pichincha, Guayaquil, Produbanco, Pacifico, Bolivariano = Ecuador.\\nBanesco, Mercantil, Provincial, Banco de Venezuela, Pago Movil = Venezuela. BCP, Interbank, Scotiabank, Yape, Plin = Peru.\\nNubank, Itau, Bradesco, Pix = Brasil. Mercado Pago, Santander Rio = Argentina. BBVA Mexico, Banorte, Spin = Mexico.\\nPor codigo de moneda: COP=Colombia, VES=Venezuela, BRL=Brasil, ARS=Argentina, PEN=Peru, MXN=Mexico, CLP=Chile,\\nDOP=Republica Dominicana, GTQ=Guatemala, BOB=Bolivia, PYG=Paraguay, UYU=Uruguay. USD puede ser Ecuador, Panama o EEUU:\\ndecidelo por el banco (Pichincha/Guayaquil/Produbanco = Ecuador; Zelle = EEUU).\\n\\nSi de verdad no puedes deducir el pais o el metodo, devuelve ese campo como cadena vacia. Nunca inventes.\u0027;\nreturn [{ json: { ...d, promptSistema } }];"
+                                     },
+                      "id":  "g1000000-0000-4000-9000-prepllmadaia1",
+                      "name":  "Preparar Llamada IA",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       800,
+                                       440
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.openai.com/v1/chat/completions",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "openAiApi",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: \u0027gpt-4o\u0027, temperature: 0, response_format: { type: \u0027json_object\u0027 }, messages: [{ role: \u0027system\u0027, content: $json.promptSistema }, { role: \u0027user\u0027, content: $json.textoCuenta }] }) }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "g2000000-0000-4000-9000-parsearconiai",
+                      "name":  "Parsear con GPT-4o",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1000,
+                                       440
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let iaRaw = \u0027\u0027;\ntry { iaRaw = String($(\u0027Parsear con GPT-4o\u0027).first().json.choices[0].message.content || \u0027\u0027); } catch(e){}\niaRaw = iaRaw.replace(/^```(?:json)?[\\s]*/i,\u0027\u0027).replace(/[\\s]*```$/,\u0027\u0027).trim();\n\nlet ia = {};\ntry { ia = JSON.parse(iaRaw); } catch(e){}\n\nconst d = $(\u0027Preparar Llamada IA\u0027).first().json;\nconst chatId = d.chatId || \u0027\u0027;\nconst tipo = d.tipo || \u0027\u0027;\nconst keyPendiente = d.keyPendiente || (\u0027cuentas:pendiente:\u0027 + chatId);\nconst original = String(d.textoCuenta || \u0027\u0027).trim();\n\nconst txt = v =\u003e String(v === undefined || v === null ? \u0027\u0027 : v).trim();\nconst pais       = txt(ia.pais);\nconst metodo     = txt(ia.metodo);\nconst notas      = txt(ia.notas);\nconst disponible = \u0027SI\u0027;\n\nif (!original || !pais || !metodo) {\n  const falta = [];\n  if (!pais)     falta.push(\u0027el pais\u0027);\n  if (!metodo)   falta.push(\u0027el metodo/banco\u0027);\n  if (!original) falta.push(\u0027los datos de la cuenta\u0027);\n  return [{ json: {\n    chatId, tipo, keyPendiente, error: true,\n    resumen: String.fromCodePoint(9888) + \u0027 No pude deducir \u0027 + falta.join(\u0027 ni \u0027) + \u0027.\\n\\n\u0027\n      + \u0027Reenviame el mensaje agregando el banco, o escribelo asi:\\n\\n\u0027\n      + \u0027/mayor\\n*CUENTA AUTORIZADA COP*\\n\\n1) 55458142571\\n*Bancolombia ahorro*\\nC.I: 8536509\\n*Enrique Rodriguez*\u0027\n  }}];\n}\n\n// Moneda del titulo: se saca del PAIS en codigo, no de la IA, para que nunca se\n// cuele una moneda que no corresponde (ej. mandar Ecuador y que diga COP).\nconst MONEDAS = {\n  colombia:\u0027COP\u0027, venezuela:\u0027VES\u0027, ecuador:\u0027USD\u0027, peru:\u0027PEN\u0027, brasil:\u0027BRL\u0027,\n  argentina:\u0027ARS\u0027, mexico:\u0027MXN\u0027, chile:\u0027CLP\u0027, bolivia:\u0027BOB\u0027, panama:\u0027USD\u0027,\n  uruguay:\u0027UYU\u0027, paraguay:\u0027PYG\u0027, guatemala:\u0027GTQ\u0027, \u0027republica dominicana\u0027:\u0027DOP\u0027,\n  \u0027costa rica\u0027:\u0027CRC\u0027, nicaragua:\u0027NIO\u0027, honduras:\u0027HNL\u0027, cuba:\u0027CUP\u0027,\n  eeuu:\u0027USD\u0027, \u0027estados unidos\u0027:\u0027USD\u0027, espana:\u0027EUR\u0027, europa:\u0027EUR\u0027\n};\nconst sinTildes = s =\u003e s.toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027).trim();\nconst moneda = MONEDAS[sinTildes(pais)] || \u0027\u0027;\n\n// Se arma el texto en CODIGO (no lo formatea la IA) para que todas las filas\n// queden exactamente iguales. La IA solo entrego las piezas sueltas.\nconst BANCO = String.fromCodePoint(127974);   // emoji del banco\nconst piezas = [];\npiezas.push(\u0027*CUENTA AUTORIZADA\u0027 + (moneda ? \u0027 \u0027 + moneda : \u0027\u0027) + \u0027*\u0027);\npiezas.push(\u0027\u0027);\npiezas.push(BANCO + \u00271) \u0027 + txt(ia.numeroCuenta));\nif (txt(ia.banco))          piezas.push(\u0027*\u0027 + txt(ia.banco) + \u0027*\u0027);\nif (txt(ia.identificacion)) piezas.push(txt(ia.identificacion));\nif (txt(ia.titular))        piezas.push(\u0027*\u0027 + txt(ia.titular) + \u0027*\u0027);\nif (txt(ia.extra))          { piezas.push(\u0027\u0027); piezas.push(txt(ia.extra)); }\nlet datos = piezas.join(\u0027\\n\u0027);\n\n// ===== RED DE SEGURIDAD =====\n// La IA esta reescribiendo numeros de cuenta y cedulas. Si al reordenar se le\n// pierde o se le cambia algun numero de 4 digitos o mas, NO se guarda su version:\n// se guarda el mensaje ORIGINAL tal cual y se avisa. Mas vale una fila desordenada\n// que una fila con el numero de cuenta equivocado.\nconst numerosDe = s =\u003e (String(s).match(/\\d{4,}/g) || []);\nconst enOriginal = numerosDe(original);\nconst enNuevo = numerosDe(datos);\nconst perdidos = enOriginal.filter(n =\u003e enNuevo.indexOf(n) === -1);\n\nlet aviso = \u0027\u0027;\nif (perdidos.length \u003e 0) {\n  datos = original;\n  aviso = String.fromCodePoint(9888) + \u0027 No pude reordenarla sin perder datos, asi que la guardo TAL CUAL me la mandaste.\\n\\n\u0027;\n}\n\nconst lineas = [];\nif (aviso) lineas.push(aviso.trim(), \u0027\u0027);\nlineas.push(\n  String.fromCodePoint(128203) + \u0027 Cuenta detectada:\u0027,\n  \u0027\u0027,\n  String.fromCodePoint(127758) + \u0027 Pais: \u0027 + pais + (moneda ? \u0027 (\u0027 + moneda + \u0027)\u0027 : \u0027\u0027),\n  String.fromCodePoint(127970) + \u0027 Metodo: \u0027 + metodo,\n  String.fromCodePoint(9989) + \u0027 Disponible: \u0027 + disponible,\n  String.fromCodePoint(128221) + \u0027 Notas: \u0027 + notas,\n  String.fromCodePoint(128202) + \u0027 Tipo: \u0027 + tipo,\n  \u0027\u0027,\n  String.fromCodePoint(128196) + \u0027 Asi queda en la hoja:\u0027,\n  \u0027- - - - - - - - - - - - - - -\u0027,\n  datos,\n  \u0027- - - - - - - - - - - - - - -\u0027,\n  \u0027\u0027,\n  \u0027La agrego a la hoja? Responde si o no.\u0027\n);\nconst resumen = lineas.join(\u0027\\n\u0027);\nconst fila = { Pais: pais, Metodo: metodo, Disponible: disponible, Datos: datos, Notas: notas, Tipo: tipo };\nconst pendienteJson = JSON.stringify({ fila, tipo });\n\nreturn [{ json: { chatId, resumen, fila, keyPendiente, pendienteJson, error: false, reordenada: perdidos.length === 0 } }];"
+                                     },
+                      "id":  "g3000000-0000-4000-9000-prepararfila1",
+                      "name":  "Preparar Fila",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1200,
+                                       440
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "extr-ok-1",
+                                                                                   "leftValue":  "={{ $json.error }}",
+                                                                                   "rightValue":  false,
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "boolean"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "g4000000-0000-4000-9000-extraccionok1",
+                      "name":  "Extraccion OK",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1400,
+                                       440
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "set",
+                                         "key":  "={{ $json.keyPendiente }}",
+                                         "keyType":  "string",
+                                         "value":  "={{ $json.pendienteJson }}",
+                                         "options":  {
+                                                         "ttl":  3600,
+                                                         "expire":  true
+                                                     }
+                                     },
+                      "id":  "g5000000-0000-4000-9000-rguardarpend1",
+                      "name":  "Redis Guardar Pendiente",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1600,
+                                       380
+                                   ],
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false
+                                                              },
+                                         "text":  "={{ $json.resumen }}"
+                                     },
+                      "id":  "g6000000-0000-4000-9000-pedirconfirm1",
+                      "name":  "Pedir Confirmacion",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1800,
+                                       380
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false
+                                                              },
+                                         "text":  "={{ $json.resumen }}"
+                                     },
+                      "id":  "g7000000-0000-4000-9000-avisarerror01",
+                      "name":  "Avisar Error IA",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1600,
+                                       540
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "chatId":  "={{ $json.chatId }}",
+                                         "additionalFields":  {
+                                                                  "append_attribution":  false,
+                                                                  "parse_mode":  "Markdown"
+                                                              },
+                                         "text":  "Usa /mayor o /detal seguido de los datos de la cuenta. Ejemplo:\n\n/mayor\n*CUENTA AUTORIZADA COP*\n\n1) 55458142571\n*Bancolombia ahorro*\nC.I: 8536509\n*Enrique Rodriguez*"
+                                     },
+                      "id":  "h1000000-0000-4000-9000-avisarayuda01",
+                      "name":  "Avisar Ayuda",
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       800,
+                                       580
+                                   ],
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "SvDJc9Nnwylt8TOz",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Telegram Trigger":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Chat Autorizado",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Chat Autorizado":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Detectar Mensaje",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Detectar Mensaje":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Redis Leer Pendiente",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Redis Leer Pendiente":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Interpretar",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Interpretar":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Router",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Router":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "node":  "Preparar Para Hoja",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Redis Borrar (Cancelar)",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Preparar Llamada IA",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Avisar Sin Pendiente",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "node":  "Avisar Ayuda",
+                                                            "type":  "main",
+                                                            "index":  0
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Preparar Para Hoja":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Agregar a Hoja",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Agregar a Hoja":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Redis Borrar Pendiente",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Redis Borrar Pendiente":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Texto OK",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Texto OK":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Avisar OK",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Redis Borrar (Cancelar)":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Avisar Cancelado",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Preparar Llamada IA":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Parsear con GPT-4o",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Parsear con GPT-4o":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Preparar Fila",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Preparar Fila":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Extraccion OK",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Extraccion OK":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Redis Guardar Pendiente",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "node":  "Avisar Error IA",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Redis Guardar Pendiente":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Pedir Confirmacion",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

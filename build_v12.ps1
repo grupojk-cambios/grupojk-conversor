@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
 $mainCode = @'
@@ -74,32 +74,14 @@ for(let i=1;i<filas.length;i++){
   const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6;
   if(tE===0 && tR===0) continue;
   const codigo = idx.cod!==-1 && row[idx.cod] ? row[idx.cod].toUpperCase() : nombre.substring(0,3).toUpperCase();
-  paises.push({ nombre, codigo, moneda: idx.moneda!==-1 && row[idx.moneda] ? row[idx.moneda] : 'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1 && row[idx.ciudades] ? String(row[idx.ciudades]).trim() : '' });
+  paises.push({ nombre, codigo, moneda: idx.moneda!==-1 && row[idx.moneda] ? row[idx.moneda] : 'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0), ciudades: idx.ciudades!==-1 && row[idx.ciudades] ? String(row[idx.ciudades]).trim() : '' });
 }
 
 // Guardar datos crudos para la calculadora (mismo dato que el prompt)
 try { const sd=$getWorkflowStaticData('global'); sd.paisesData = paises; } catch(e){}
 
-function mEnv(p){ return modo==='mayor'&&p.margenEnvioMayor!=null&&!isNaN(parseFloat(p.margenEnvioMayor))?parseFloat(p.margenEnvioMayor):(p.margenEnvio||0); }
-function mRec(p){ return modo==='mayor'&&p.margenReciboMayor!=null&&!isNaN(parseFloat(p.margenReciboMayor))?parseFloat(p.margenReciboMayor):(p.margenRecibo||0); }
-function mRecO(p){ return (p.nombre||'').toLowerCase()==='ecuador'?0:mRec(p); } // Ecuador (base USD referencia) recibo siempre 0
-function tEnv(p){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p)/100):0; }
-function tRec(p){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p)/100):0; }
-function esDolar(p){ const c=(p.codigo||'').toUpperCase(); const n=(p.nombre||'').toUpperCase(); return ['USD','USDT'].includes(c)||n.includes('USDT')||n.includes('ZELLE')||n.includes('EFECTIVO VEN'); }
-// obtenerTasasProcesadas: MISMA logica que el Cotizador de la app (suma de margenes mO+mD, factores EUR/USDT, monedas fuertes).
-function obtenerTP(o,d){
-  let tO=tRec(o), tD=tEnv(d);
-  const BASES=['EUR','USDT','GBP','EU'], FU=['EUR','GBP','EU'];
-  const oc=(o.codigo||'').toUpperCase(), dc=(d.codigo||'').toUpperCase(); let fa=false;
-  if(BASES.includes(oc)&&!esDolar(d)&&!BASES.includes(dc)){ const f=parseFloat(d['factor'+oc]); if(f>0&&!isNaN(f)){ tO=1/f; fa=true; } }
-  else if(!BASES.includes(oc)&&!esDolar(o)&&BASES.includes(dc)){ const f=parseFloat(o['factor'+dc]); if(f>0&&!isNaN(f)){ tD=1/f; fa=true; } }
-  if(!fa){ const oF=FU.includes(oc),dF=FU.includes(dc),oD=esDolar(o),dD=esDolar(d);
-    if(oF||dF){ if(oF&&!oD)tO=1/Math.max(tO,0.001); if(oF&&dD)tD=1; if(oD&&dF)tO=1; }
-    else { if(oD&&!dD){ const mO=mRecO(o),mD=mEnv(d); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
-      else if(oD&&dD){ const mO=mRecO(o),mD=mEnv(d); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
-      else if(!oD&&dD){ const mO=mRecO(o),mD=mEnv(d); const tB=o.tasaProveedorRecibo||0; tO=tB*(1+(mO+mD)/100); tD=1; } } }
-  if(tO===0)tO=1; return {tO,tD};
-}
+// ---- MOTOR DE CALCULO: inyectado desde src/motor.js (fuente unica, compartida con la app) ----
+__MOTOR_JK__
 // Pais de referencia = Ecuador (la base USD del operador). Las tasas de la tabla se cruzan contra Ecuador,
 // IGUAL que el Cotizador/Pizarra de la app (GeneradorEstados.jsx): suma de margenes, sin exceptuar ningun pais.
 const ecuRef = paises.find(p => (p.nombre||'').toLowerCase()==='ecuador');
@@ -107,9 +89,9 @@ const lista = paises
   .filter(p => !/^efectivo venezuela/i.test(p.nombre))
   .map(p => {
     let envio, recibo;
-    if (!ecuRef || (p.nombre||'').toLowerCase()==='ecuador') { envio = tEnv(p); recibo = tRec(p); }
-    else { const rE = obtenerTP(ecuRef, p); envio = (1/rE.tO)*rE.tD; const rR = obtenerTP(p, ecuRef); recibo = rR.tO; }
-    return { Pais:p.nombre, Codigo:p.codigo, Moneda:p.moneda, Envio: envio? Number(envio.toFixed(2)):'N/D', Recibo: recibo? Number(recibo.toFixed(2)):'N/D', EsDolar: esDolar(p) };
+    if (!ecuRef || (p.nombre||'').toLowerCase()==='ecuador') { envio = calcularTasaEnvio(p, modo); recibo = calcularTasaRecibo(p, modo); }
+    else { envio = calcularConversion(ecuRef, p, 1, paises, modo); recibo = obtenerTasasProcesadas(p, ecuRef, paises, modo).tasaOrigenParaDolares; }
+    return { Pais:p.nombre, Codigo:p.codigo, Moneda:p.moneda, Envio: envio? Number(envio.toFixed(2)):'N/D', Recibo: recibo? Number(recibo.toFixed(2)):'N/D', EsDolar: isCajaDolar(p) };
   });
 
 // Efectivo Venezuela = dolares en efectivo. El CSV trae varias filas "Efectivo Venezuela-Estado" con sus Ciudades.
@@ -121,7 +103,7 @@ if (evEntries.length) {
   evUbicaciones = evEntries.map(p => {
     const estado = (String(p.nombre).split('-')[1]||'').trim();
     const ciudades = p.ciudades ? String(p.ciudades).split(',').map(c=>c.trim()).filter(Boolean) : [];
-    return { estado, ciudades, envio: tEnv(p)? Number(tEnv(p).toFixed(2)) : 'N/D', recibo: tRec(p)? Number(tRec(p).toFixed(2)) : 'N/D' };
+    return { estado, ciudades, envio: calcularTasaEnvio(p, modo)? Number(calcularTasaEnvio(p, modo).toFixed(2)) : 'N/D', recibo: calcularTasaRecibo(p, modo)? Number(calcularTasaRecibo(p, modo).toFixed(2)) : 'N/D' };
   });
 }
 const hayEfectivoVe = evEntries.length>0;
@@ -164,19 +146,68 @@ if (cuentasCsv) {
 // sin importar cuantos bancos haya en la hoja para ese pais. Al dia siguiente
 // rota a otra cuenta del mismo pais (puede ser de otro banco). Misma cuenta
 // para TODOS los clientes de ese dia (el indice depende de la fecha, no del cliente).
+const normTxt = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 const porPais = {};
 for (const c of cuentasTodas) {
-  const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
-  const k = norm(c.Pais);
+  const k = normTxt(c.Pais);
   (porPais[k] = porPais[k] || []).push(c);
 }
 // Indice del dia segun hora de Ecuador (UTC-5): cambia a la medianoche de Ecuador
 const diaIndex = Math.floor((Date.now() - 5*3600000) / 86400000);
+
+// ===== REGLA DE FIN DE SEMANA PARA ECUADOR =====
+// Viernes, sabado y domingo solo se entregan cuentas de Banco de Guayaquil o Banco Pichincha
+// (son los que mueven el dinero el fin de semana). Ademas el DOMINGO se repite exactamente la
+// misma cuenta que se dio el sabado, por eso usa el indice del dia anterior.
+const BANCOS_FINDE_EC = ['guayaquil','pichincha'];
+const diaSemanaEc = new Date(Date.now() - 5*3600000).getUTCDay();   // 0=domingo ... 5=viernes, 6=sabado
+const esFindeEc = (diaSemanaEc === 5 || diaSemanaEc === 6 || diaSemanaEc === 0);
+
 const cuentas = [];
+const avisosCuentas = [];
 for (const k in porPais) {
-  const arr = porPais[k];
-  const idx = ((diaIndex % arr.length) + arr.length) % arr.length; // ciclico 0,1,2,...
+  let arr = porPais[k];
+  let idxDia = diaIndex;
+
+  if (k === 'ecuador' && esFindeEc) {
+    arr = arr.filter(c => BANCOS_FINDE_EC.some(b => normTxt(c.Metodo).indexOf(b) !== -1));
+    if (diaSemanaEc === 0) idxDia = diaIndex - 1;   // domingo = la misma del sabado
+    if (!arr.length) {
+      // Sin cuentas de esos bancos NO se entrega ninguna de Ecuador: dar una de otro banco en
+      // fin de semana haria que el dinero no llegue. El bot responde que un asesor la pasa.
+      avisosCuentas.push('Ecuador fin de semana: no hay ninguna cuenta de Guayaquil ni Pichincha marcada Disponible=si');
+      continue;
+    }
+  }
+
+  const idx = ((idxDia % arr.length) + arr.length) % arr.length; // ciclico 0,1,2,...
   cuentas.push(arr[idx]);
+}
+
+// ===== FECHA DE HOY EN LA CUENTA =====
+// La cuenta cambia todos los dias, asi que al cliente hay que decirle que la que
+// recibe es la de HOY. La fecha NO se guarda en la hoja (quedaria congelada y
+// manana el cliente veria la de ayer): se agrega aqui, al momento de enviarla.
+// Se usa la misma hora de Ecuador (UTC-5) que decide cual cuenta toca, para que
+// la fecha y la rotacion nunca se contradigan.
+const DIAS_SEM = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const hoyEc = new Date(Date.now() - 5*3600000);
+const fechaHoy = DIAS_SEM[hoyEc.getUTCDay()] + ' ' + hoyEc.getUTCDate() + ' de ' + MESES_ES[hoyEc.getUTCMonth()];
+const selloFecha = '_Válida solo hoy, ' + fechaHoy + '_';
+
+for (const c of cuentas) {
+  const texto = String(c.Datos || '').trim();
+  if (!texto) continue;
+  const renglones = texto.split('\n');
+  if (/^\*CUENTA AUTORIZADA/i.test(renglones[0].trim())) {
+    // Formato nuevo (lo arma el bot de Cuentas): la fecha va debajo del titulo.
+    renglones.splice(1, 0, selloFecha);
+    c.Datos = renglones.join('\n');
+  } else {
+    // Filas viejas, guardadas con otro formato: se le antepone el encabezado.
+    c.Datos = '*CUENTA AUTORIZADA*\n' + selloFecha + '\n\n' + texto;
+  }
 }
 
 // ===== PERFIL DEL CLIENTE (historial de transacciones en Supabase) =====
@@ -198,7 +229,7 @@ try {
   }
 } catch(e){}
 
-return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, clienteContexto, error: paises.length? null : 'Lista vacia' } }];
+return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, error: paises.length? null : 'Lista vacia' } }];
 '@
 
 # ===================== CODIGO DE LA CALCULADORA (Code Tool) =====================
@@ -241,40 +272,11 @@ function construirPaises(text){
   const head=(filas[0]||[]).map(h=>String(h||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''));
   const idx={ factorEUR:head.findIndex(h=>h.includes('FACTOR EUR')||h.includes('VALOR EUR')), factorUSDT:head.findIndex(h=>h.includes('FACTOR USDT')||h.includes('VALOR USDT')), cod:head.findIndex(h=>h.includes('CODIGO')||h.includes('BANCO')), moneda:head.findIndex(h=>h.includes('NOMBRE')||h.includes('MONEDA')), mEMayor:head.findIndex(h=>h.includes('MARGEN ENVIO MAYOR')), mRMayor:head.findIndex(h=>h.includes('MARGEN RECIBO MAYOR')) };
   const paises=[];
-  for(let i=1;i<filas.length;i++){ const row=filas[i]; const nombre=(row[0]||'').trim(); if(!nombre) continue; const tE=num(row[1]); const mE=(row[2]!==undefined)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6; if(tE===0&&tR===0) continue; const codigo=idx.cod!==-1&&row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase(); paises.push({ nombre, codigo, moneda: idx.moneda!==-1&&row[idx.moneda]?row[idx.moneda]:'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0), ciudades: idx.ciudades!==-1&&row[idx.ciudades]?String(row[idx.ciudades]).trim():'' }); }
+  for(let i=1;i<filas.length;i++){ const row=filas[i]; const nombre=(row[0]||'').trim(); if(!nombre) continue; const tE=num(row[1]); const mE=(row[2]!==undefined)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6; if(tE===0&&tR===0) continue; const codigo=idx.cod!==-1&&row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase(); paises.push({ nombre, codigo, moneda: idx.moneda!==-1&&row[idx.moneda]?row[idx.moneda]:'Divisa local', tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0), ciudades: idx.ciudades!==-1&&row[idx.ciudades]?String(row[idx.ciudades]).trim():'' }); }
   return paises;
 }
-function isCajaDolar(p){ const c=(p.codigo||'').toUpperCase(); const n=(p.nombre||'').toUpperCase(); return ['USD','USDT'].includes(c)||n.includes('USDT')||n.includes('ZELLE')||n.includes('EFECTIVO VEN'); }
-function mEnv(p,modo){ return modo==='mayor'&&p.margenEnvioMayor!=null&&!isNaN(parseFloat(p.margenEnvioMayor))?parseFloat(p.margenEnvioMayor):(p.margenEnvio||0); }
-function mRec(p,modo){ return modo==='mayor'&&p.margenReciboMayor!=null&&!isNaN(parseFloat(p.margenReciboMayor))?parseFloat(p.margenReciboMayor):(p.margenRecibo||0); }
-function mRecO(p,modo){ return (p.nombre||'').toLowerCase()==='ecuador'?0:mRec(p,modo); } // Ecuador (base USD referencia) recibo siempre 0
-function tEnv(p,modo){ const t=p.tasaProveedorEnvio||0; return t? t*(1-mEnv(p,modo)/100):0; }
-function tRec(p,modo){ const t=p.tasaProveedorRecibo||0; return t? t*(1+mRec(p,modo)/100):0; }
-function obtenerTasasProcesadas(origen,destino,modo){
-  let tasaOrigenParaDolares=tRec(origen,modo);
-  let tasaDestinoDesdeDolares=tEnv(destino,modo);
-  const BASES=['EUR','USDT','GBP','EU']; const FUERTES=['EUR','GBP','EU'];
-  const oc=(origen.codigo||'').toUpperCase(); const dc=(destino.codigo||'').toUpperCase();
-  let factorAplicado=false;
-  if(BASES.includes(oc) && !isCajaDolar(destino) && !BASES.includes(dc)){ const f=parseFloat(destino['factor'+oc]); if(f>0&&!isNaN(f)){ tasaOrigenParaDolares=1/f; factorAplicado=true; } }
-  else if(!BASES.includes(oc) && !isCajaDolar(origen) && BASES.includes(dc)){ const f=parseFloat(origen['factor'+dc]); if(f>0&&!isNaN(f)){ tasaDestinoDesdeDolares=1/f; factorAplicado=true; } }
-  if(!factorAplicado){
-    const oF=FUERTES.includes(oc), dF=FUERTES.includes(dc), oD=isCajaDolar(origen), dD=isCajaDolar(destino);
-    if(oF||dF){
-      if(oF && !oD) tasaOrigenParaDolares=1/Math.max(tasaOrigenParaDolares,0.001);
-      if(oF && dD) tasaDestinoDesdeDolares=1;
-      if(oD && dF) tasaOrigenParaDolares=1;
-    } else {
-      if(oD && !dD){ const mO=mRecO(origen,modo), mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }
-      else if(oD && dD){ const mO=mRecO(origen,modo),mD=mEnv(destino,modo); tasaOrigenParaDolares=1; const tBaseD=destino.tasaProveedorEnvio||0; tasaDestinoDesdeDolares=tBaseD*(1-(mO+mD)/100); }
-      else if(!oD && dD){ const mO=mRecO(origen,modo), mD=mEnv(destino,modo); const tBaseO=origen.tasaProveedorRecibo||0; tasaOrigenParaDolares=tBaseO*(1+(mO+mD)/100); tasaDestinoDesdeDolares=1; }
-    }
-  }
-  if(tasaOrigenParaDolares===0) tasaOrigenParaDolares=1;
-  return { tasaOrigenParaDolares, tasaDestinoDesdeDolares };
-}
-function calcularConversion(origen,destino,monto,modo){ const r=obtenerTasasProcesadas(origen,destino,modo); return (monto/r.tasaOrigenParaDolares)*r.tasaDestinoDesdeDolares; }
-function calcularConversionInversa(origen,destino,montoRecibir,modo){ const r=obtenerTasasProcesadas(origen,destino,modo); if(r.tasaDestinoDesdeDolares===0) return 0; const tBaseD=destino.tasaProveedorEnvio||0; if(tBaseD>0 && r.tasaDestinoDesdeDolares<tBaseD){ const md=(tBaseD-r.tasaDestinoDesdeDolares)/tBaseD; return (montoRecibir/tBaseD)*(1+md)*r.tasaOrigenParaDolares; } return (montoRecibir/r.tasaDestinoDesdeDolares)*r.tasaOrigenParaDolares; }
+// ---- MOTOR DE CALCULO: inyectado desde src/motor.js (fuente unica, compartida con la app) ----
+__MOTOR_JK__
 function evMatch(evList, nq){
   // Casar por ESTADO (ej "zulia") o por CIUDAD del campo Ciudades (ej "maracaibo" -> Zulia).
   for (const x of evList) { const e=norm(String(x.nombre).split('-')[1]||''); if (e && (nq===e || nq.indexOf(e)!==-1)) return x; }
@@ -298,13 +300,13 @@ function compute(paises){
   if(!o) return JSON.stringify({ ok:false, error:'No encontre el pais/moneda de ORIGEN: '+origenQ+'. Pide al cliente que lo aclare.' });
   if(!d) return JSON.stringify({ ok:false, error:'No encontre el pais/moneda de DESTINO: '+destinoQ+'. Pide al cliente que lo aclare.' });
   if(!(montoN>0)) return JSON.stringify({ ok:false, error:'Falta el monto a convertir o no es valido.' });
-  const cross = calcularConversion(o,d,1,modoN);
+  const cross = calcularConversion(o,d,1,paises,modoN);
   let resultado, explicacion;
   if(direccion==='inversa'){
-    resultado = calcularConversionInversa(o,d,montoN,modoN);
+    resultado = calcularConversionInversa(o,d,montoN,paises,modoN);
     explicacion = 'Para que el destinatario reciba '+montoN+' '+d.codigo+' en '+d.nombre+', el cliente debe enviar aprox. '+resultado.toFixed(2)+' '+o.codigo+' desde '+o.nombre+'.';
   } else {
-    resultado = calcularConversion(o,d,montoN,modoN);
+    resultado = calcularConversion(o,d,montoN,paises,modoN);
     explicacion = 'Enviando '+montoN+' '+o.codigo+' ('+o.nombre+') el destinatario recibe '+resultado.toFixed(2)+' '+d.codigo+' ('+d.nombre+').';
   }
   // La tasa se entrega con 2 decimales, IGUAL que la app y la pizarra, para que el cliente nunca
@@ -324,6 +326,39 @@ if(typeof fetch !== 'function') return JSON.stringify({ ok:false, error:'No pude
 const _url='https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 return (async () => { try { const res = await fetch(_url + '&nocache=' + Date.now()); const text = await res.text(); return compute(construirPaises(text)); } catch(e){ return JSON.stringify({ ok:false, error:'No pude descargar las tasas: '+e.message }); } })();
 '@
+
+# ===================== INYECCION DEL MOTOR DE CALCULO =====================
+# FUENTE UNICA: src/motor.js es el mismo archivo que usa la app (React).
+# Aqui se lee, se le quitan los "export" y se mete tal cual donde dice __MOTOR_JK__.
+# Asi no existe una segunda copia de las matematicas que se pueda despegar.
+# Si esto falla, el build se detiene: mejor no desplegar que desplegar con el motor viejo.
+$motorPath = Join-Path $PSScriptRoot 'src\motor.js'
+if(-not (Test-Path $motorPath)){ throw "No encontre el motor en $motorPath. El bot NO se puede construir sin el." }
+$motorJs = [System.IO.File]::ReadAllText($motorPath, [System.Text.Encoding]::UTF8)
+
+# Quitar los "export " (en n8n las funciones van sueltas, no es un modulo).
+$motorJs = $motorJs -replace '(?m)^export\s+function\s+', 'function '
+if($motorJs -match '(?m)^\s*(export|import)\s'){ throw 'src/motor.js tiene import/export que no supe quitar. Revisalo antes de desplegar.' }
+
+# Red de seguridad: el motor se inyecta en n8n, donde no existe el navegador.
+foreach($prohibido in @('import.meta', 'window.', 'document.', 'localStorage')){
+  # Se ignoran los comentarios (ahi se nombran a proposito en las reglas del archivo).
+  $sinComentarios = ($motorJs -split "`n" | Where-Object { $_ -notmatch '^\s*(//|\*|/\*)' }) -join "`n"
+  if($sinComentarios.Contains($prohibido)){ throw "src/motor.js usa '$prohibido', que no existe en n8n. El bot no puede recibirlo." }
+}
+
+$funcionesMotor = ([regex]::Matches($motorJs, '(?m)^function\s+(\w+)')) | ForEach-Object { $_.Groups[1].Value }
+Write-Host ("Motor leido de src/motor.js: " + $funcionesMotor.Count + " funciones -> " + ($funcionesMotor -join ', '))
+foreach($obligatoria in @('calcularTasaEnvio','calcularTasaRecibo','isCajaDolar','esEcuador','obtenerTasasProcesadas','calcularConversion','calcularConversionInversa')){
+  if($funcionesMotor -notcontains $obligatoria){ throw "A src/motor.js le falta la funcion '$obligatoria'. El bot la necesita." }
+}
+
+# OJO: .Replace() literal, NO -replace. El motor trae template strings como
+# `factor${origen.codigo}` y en el reemplazo de -replace (regex de .NET) ${...}
+# se interpreta como referencia a un grupo con nombre y corrompe el codigo.
+$mainCode = $mainCode.Replace('__MOTOR_JK__', $motorJs)
+$toolCode = $toolCode.Replace('__MOTOR_JK__', $motorJs)
+if($mainCode.Contains('__MOTOR_JK__') -or $toolCode.Contains('__MOTOR_JK__')){ throw 'Quedo un __MOTOR_JK__ sin reemplazar.' }
 
 # ===================== INPUT SCHEMA DE LA CALCULADORA =====================
 $inputSchema = @'

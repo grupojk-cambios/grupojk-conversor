@@ -37,44 +37,58 @@ function appParse(csv){
   return out;
 }
 
-// ===== BOT: port del nodo (con los cambios nuevos: ESCENARIO B suma mO+mD, mayoristas nullable) =====
-function num(s){ if(s===undefined||s===null||s==='')return 0; let v=String(s).replace(/\s/g,'').replace(',', '.'); const n=parseFloat(v); return isNaN(n)?0:n; }
-function numN(s){ if(s===undefined||s===null||String(s).trim()==='') return null; const n=parseFloat(String(s).replace(/\s/g,'').replace(',', '.')); return isNaN(n)?null:n; }
-function botParse(csv){
-  const filas=csv.split(/\r?\n/).filter(l=>l.trim().length>0).map(parseCSVrow).map(r=>r.map(s=>s.trim()));
-  const head=(filas[0]||[]).map(h=>String(h||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,''));
-  const idx={ factorEUR:head.findIndex(h=>h.includes('FACTOR EUR')||h.includes('VALOR EUR')), factorUSDT:head.findIndex(h=>h.includes('FACTOR USDT')||h.includes('VALOR USDT')), cod:head.findIndex(h=>h.includes('CODIGO')||h.includes('BANCO')), moneda:head.findIndex(h=>h.includes('NOMBRE')||h.includes('MONEDA')), mEMayor:head.findIndex(h=>h.includes('MARGEN ENVIO MAYOR')), mRMayor:head.findIndex(h=>h.includes('MARGEN RECIBO MAYOR')) };
-  const paises=[];
-  for(let i=1;i<filas.length;i++){ const row=filas[i]; const nombre=(row[0]||'').trim(); if(!nombre)continue;
-    const tE=num(row[1]); const mE=(row[2]!==undefined)?num(row[2]):6; const tR=num(row[3]); const mR=(row[4]!==undefined)?num(row[4]):6;
-    if(tE===0&&tR===0)continue; const codigo=idx.cod!==-1&&row[idx.cod]?row[idx.cod].toUpperCase():nombre.substring(0,3).toUpperCase();
-    paises.push({ nombre, codigo, tasaProveedorEnvio:tE, margenEnvio:mE, tasaProveedorRecibo:tR, margenRecibo:mR, margenEnvioMayor: idx.mEMayor!==-1?numN(row[idx.mEMayor]):null, margenReciboMayor: idx.mRMayor!==-1?numN(row[idx.mRMayor]):null, factorEUR: (idx.factorEUR!==-1?num(row[idx.factorEUR]):0)||(nombre.toLowerCase()==='venezuela'?1:0), factorUSDT: (idx.factorUSDT!==-1?num(row[idx.factorUSDT]):0)||(nombre.toLowerCase()==='venezuela'?1:0) }); }
-  return paises;
+// ===== BOT: se extrae el CODIGO REAL del nodo del workflow (ya NO hay replica a mano) =====
+// Antes esta seccion era una copia escrita a mano del nodo; podia quedar desfasada y hacer que
+// la comparacion mintiera. Ahora se lee tal cual del JSON que se despliega.
+import { readFileSync } from 'fs';
+const WF = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^\uFEFF/, ''));
+const NODO = WF.nodes.find(n => n.name === 'Calculadora de Conversion');
+if (!NODO) throw new Error('No encontre el nodo "Calculadora de Conversion" en el workflow');
+const CODIGO_NODO = NODO.parameters.jsCode || NODO.parameters.code || '';
+
+// Saca el texto completo de "function <nombre>(...){ ... }" contando llaves.
+// Si el conteo se rompiera, el eval de abajo falla con error claro (nunca da numeros silenciosamente malos).
+function extraerFuncion(src, nombre) {
+  const firma = 'function ' + nombre + '(';
+  const pos = src.indexOf(firma);
+  if (pos === -1) throw new Error('No encontre la funcion "' + nombre + '" en el nodo del bot');
+  const ini = src.indexOf('{', pos);
+  let nivel = 0;
+  for (let j = ini; j < src.length; j++) {
+    if (src[j] === '{') nivel++;
+    else if (src[j] === '}') { nivel--; if (nivel === 0) return src.slice(pos, j + 1); }
+  }
+  throw new Error('Llaves sin cerrar en "' + nombre + '"');
 }
-const B={};
-B.isCajaDolar=(p)=>{ const c=(p.codigo||'').toUpperCase(); const n=(p.nombre||'').toUpperCase(); return ['USD','USDT'].includes(c)||n.includes('USDT')||n.includes('ZELLE')||n.includes('EFECTIVO VEN'); };
-B.mEnv=(p,modo)=>modo==='mayor'&&p.margenEnvioMayor!=null&&!isNaN(parseFloat(p.margenEnvioMayor))?parseFloat(p.margenEnvioMayor):(p.margenEnvio||0);
-B.mRec=(p,modo)=>modo==='mayor'&&p.margenReciboMayor!=null&&!isNaN(parseFloat(p.margenReciboMayor))?parseFloat(p.margenReciboMayor):(p.margenRecibo||0);
-B.mRecO=(p,modo)=>(p.nombre||'').toLowerCase()==='ecuador'?0:B.mRec(p,modo);
-B.tEnv=(p,modo)=>{ const t=p.tasaProveedorEnvio||0; return t?t*(1-B.mEnv(p,modo)/100):0; };
-B.tRec=(p,modo)=>{ const t=p.tasaProveedorRecibo||0; return t?t*(1+B.mRec(p,modo)/100):0; };
-B.obtener=(o,d,modo)=>{ let tO=B.tRec(o,modo),tD=B.tEnv(d,modo); const BASES=['EUR','USDT','GBP','EU'],FU=['EUR','GBP','EU']; const oc=(o.codigo||'').toUpperCase(),dc=(d.codigo||'').toUpperCase(); let fa=false;
-  if(BASES.includes(oc)&&!B.isCajaDolar(d)&&!BASES.includes(dc)){ const f=parseFloat(d['factor'+oc]); if(f>0&&!isNaN(f)){ tO=1/f; fa=true; } }
-  else if(!BASES.includes(oc)&&!B.isCajaDolar(o)&&BASES.includes(dc)){ const f=parseFloat(o['factor'+dc]); if(f>0&&!isNaN(f)){ tD=1/f; fa=true; } }
-  if(!fa){ const oF=FU.includes(oc),dF=FU.includes(dc),oD=B.isCajaDolar(o),dD=B.isCajaDolar(d);
-    if(oF||dF){ if(oF&&!oD)tO=1/Math.max(tO,0.001); if(oF&&dD)tD=1; if(oD&&dF)tO=1; }
-    else { if(oD&&!dD){ const mO=B.mRecO(o,modo),mD=B.mEnv(d,modo); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
-      else if(oD&&dD){ const mO=B.mRecO(o,modo),mD=B.mEnv(d,modo); tO=1; const tB=d.tasaProveedorEnvio||0; tD=tB*(1-(mO+mD)/100); }
-      else if(!oD&&dD){ const mO=B.mRecO(o,modo),mD=B.mEnv(d,modo); const tB=o.tasaProveedorRecibo||0; tO=tB*(1+(mO+mD)/100); tD=1; } } }
-  if(tO===0)tO=1; return {tO,tD}; };
-B.conv=(o,d,m,modo)=>{ const r=B.obtener(o,d,modo); return (m/r.tO)*r.tD; };
-B.convInv=(o,d,m,modo)=>{ const r=B.obtener(o,d,modo); if(r.tD===0)return 0; const tB=d.tasaProveedorEnvio||0; if(tB>0&&r.tD<tB){ const md=(tB-r.tD)/tB; return (m/tB)*(1+md)*r.tO; } return (m/r.tD)*r.tO; };
+
+const FUNCS = ['parseCSV', 'num', 'numN', 'norm', 'construirPaises',
+  'calcularTasaEnvio', 'calcularTasaRecibo', 'esEcuador', 'isCajaDolar',
+  'obtenerTasasProcesadas', 'calcularConversion', 'calcularConversionInversa'];
+const fuenteBot = FUNCS.map(f => extraerFuncion(CODIGO_NODO, f)).join('\n');
+const MB = new Function(fuenteBot + '\nreturn {' + FUNCS.join(',') + '};')();
+
+// Lo que de verdad se compara ahora: el motor es el MISMO archivo en los dos lados
+// (src/motor.js), asi que esta prueba vigila que la INYECCION del build no se rompa
+// y, sobre todo, que el parser del bot (construirPaises, lee el CSV) arme los paises
+// igual que el de la app (sincronizarGoogleSheets). Ese parser SI son dos
+// implementaciones distintas, y es donde puede volver a aparecer una diferencia.
+const botParse = (csv) => MB.construirPaises(csv);
+let paisesBot = [];
+const B = {
+  isCajaDolar: MB.isCajaDolar,
+  tEnv: MB.calcularTasaEnvio,
+  tRec: MB.calcularTasaRecibo,
+  obtener: (o, d, modo) => { const r = MB.obtenerTasasProcesadas(o, d, paisesBot, modo); return { tO: r.tasaOrigenParaDolares, tD: r.tasaDestinoDesdeDolares }; },
+  conv: (o, d, m, modo) => MB.calcularConversion(o, d, m, paisesBot, modo),
+  convInv: (o, d, m, modo) => MB.calcularConversionInversa(o, d, m, paisesBot, modo)
+};
 
 // ===== COMPARAR =====
 const res = await fetch(CSV_URL+"&nocache="+Date.now());
 const csv = await res.text();
 const ap = appParse(csv);
 const bp = botParse(csv);
+paisesBot = bp;   // el motor necesita la lista completa (firma igual a la de la app)
 const byNameA = {}; ap.forEach(p=>byNameA[normName(p.nombre)]=p);
 const byNameB = {}; bp.forEach(p=>byNameB[normName(p.nombre)]=p);
 const round=(x)=> (typeof x==='number'&&isFinite(x))? Math.round(x*100)/100 : x;
@@ -108,3 +122,17 @@ for(const oN of rutas){ for(const dN of rutas){ if(oN===dN) continue;
   }}}
 }}
 console.log(diffsCross? `  -> ${diffsCross} diferencias de cruce` : "  -> 0 diferencias de cruce (IDENTICO a la app) ✅");
+
+// ===== CANDADO =====
+// Sale con codigo de error si app y bot NO dan lo mismo, para que el deploy se
+// detenga solo. Antes esto siempre salia con exito y una diferencia podia pasar
+// desapercibida: asi llegamos a tener 581 diferencias en produccion sin notarlo.
+const total = diffsTasa + diffsCross;
+if (total > 0) {
+  console.log("");
+  console.log(`❌ El bot NO calcula igual que la app (${total} diferencias). NO despliegues asi.`);
+  console.log("   Revisa src/motor.js y que build_v12.ps1 lo este inyectando bien.");
+  process.exit(1);
+}
+console.log("");
+console.log("✅ El bot calcula EXACTAMENTE igual que la app.");
