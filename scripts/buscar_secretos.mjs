@@ -31,19 +31,34 @@ const REGLAS = [
 function uuidsQueSonIds(texto) {
   const ids = new Set();
   const agrega = (re) => { let m; while ((m = re.exec(texto)) !== null) ids.add(m[1]); };
-  agrega(/"id"\s*:\s*"([0-9A-Fa-f-]{36})"/g);
-  agrega(/"webhookId"\s*:\s*"([0-9A-Fa-f-]{36})"/g);
+  agrega(/"(?:id|webhookId|instanceId|versionId|creatorId|activeVersionId)"\s*:\s*"([0-9A-Fa-f-]{36})"/g);
   agrega(/\b(?:id|webhookId|instanceId)\s*=\s*'([0-9A-Fa-f-]{36})'/g);   // los build_*.ps1
-  agrega(/"instanceId"\s*:\s*"([0-9A-Fa-f-]{36})"/g);
+  agrega(/Ref:\s*([0-9A-Fa-f-]{36})/gi);                                 // referencias en los .md
+  agrega(/[\\/]([0-9A-Fa-f-]{36})(?=[\\/"'\s]|$)/g);                     // carpetas con nombre de UUID
   return ids;
 }
 
-const enStage = execSync('git diff --cached --name-only', { encoding: 'utf8' }).split('\n').filter(Boolean);
-const archivos = enStage.length
-  ? enStage
-  : execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean);
+// Que revisar, en orden de utilidad:
+//   1. Lo que esta en el stage (justo antes de commitear).
+//   2. Si no hay nada en stage, lo que falta por subir al remoto (antes del push).
+//   3. Si tampoco hay nada pendiente, TODO el repo (auditoria completa).
+// La diferencia importa: revisar todo el repo saca ruido de archivos viejos que
+// ya estaban subidos y que nadie va a tocar ahora.
+const git = (cmd) => { try { return execSync(cmd, { encoding: 'utf8', stdio: ['ignore','pipe','ignore'] }).split('\n').filter(Boolean); } catch { return []; } };
 
-console.log(`Revisando ${archivos.length} archivo(s)${enStage.length ? ' en el stage' : ' rastreados'}...`);
+let archivos = git('git diff --cached --name-only');
+let origen = 'en el stage (por commitear)';
+if (!archivos.length) {
+  const rama = (git('git rev-parse --abbrev-ref HEAD')[0] || 'HEAD');
+  archivos = git(`git diff origin/${rama}..HEAD --name-only`);
+  origen = `sin subir a origin/${rama}`;
+}
+if (!archivos.length) {
+  archivos = git('git ls-files');
+  origen = 'rastreados (auditoria completa del repo)';
+}
+
+console.log(`Revisando ${archivos.length} archivo(s) ${origen}...`);
 console.log('');
 
 let hallazgos = 0;
