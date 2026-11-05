@@ -1,0 +1,27 @@
+{
+  "short_name": "Grupo JK",
+  "name": "GRUPO JK - Conversor de Divisas",
+  "icons": [
+    {
+      "src": "./logo-jk.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./logo-jk.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "./logo-jk.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./",
+  "background_color": "#020813",
+  "theme_color": "#020813",
+  "display": "standalone",
+  "orientation": "portrait"
+}
