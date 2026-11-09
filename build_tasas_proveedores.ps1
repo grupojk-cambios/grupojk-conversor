@@ -17,10 +17,13 @@ $SHEET_GID = '0'
 #   8892262444 = Operador Uno
 $CHAT_IDS  = @('627887509', '8892262444')
 $CHAT_IDS_JS = "[" + (($CHAT_IDS | ForEach-Object { "'" + $_ + "'" }) -join ",") + "]"
-# ===== REGLAS AUTOMATICAS POR PROVEEDOR =====
-# Hay proveedores que mandan SOLO la tasa de envio, y el recibo Kelvin lo calcula siempre igual.
-# Ejemplo: Jesus manda "Jesus / Venezuela / 955" y el recibo va SIEMPRE 20 puntos arriba (975).
-# Para agregar otro proveedor o cambiar los puntos, se edita esta lista y se vuelve a desplegar.
+# ===== REGLAS AUTOMATICAS DE RECIBO (por pais) =====
+# Hay paises donde la tasa de RECIBO no la manda nadie: se saca del envio sumando siempre los
+# mismos puntos. Venezuela va +20 sobre el envio de Jesus, y Colombia +25 sobre el de Caballo.
+# La regla se aplica cuando llega el envio SIN recibo y el mensaje es del proveedor de la regla
+# O lo escribio Kelvin a mano ("Colombia 3200" -> 3200 / 3225). Si el envio es de OTRO proveedor
+# identificado no se toca: sus puntos no son estos.
+# Para agregar un pais o cambiar los puntos, se edita esta lista y se vuelve a desplegar.
 #
 # soloNumeros = $true  -> ese proveedor manda el numero PELADO, sin decir el pais (Jesus manda
 #                         "955" y nada mas). Entonces su NOMBRE vale como pais y el lector
@@ -449,18 +452,22 @@ function agregarFila(pais, envio, recibo){
     f['Tasa Recibo'] = recibo;
     delete autoSumaPorPais[pais];   // llego el recibo DE VERDAD: ya no es calculado
   }
-  // REGLA AUTOMATICA tambien por este camino. Si del mensaje de un proveedor con regla sale el
-  // envio de SU pais pero no el recibo, el recibo se calcula igual que cuando lo lee la IA.
-  // Ej: mensaje titulado "Caballo" con la linea "Colombia 3200" -> recibo 3225.
-  // Solo aplica si se sabe de quien es el mensaje: si Kelvin escribe "Colombia 3200" sin decir
-  // de quien es, provActual va vacio y NO se le inventa ningun recibo.
-  if (provActual && f['Tasa Envio'] !== undefined && f['Tasa Recibo'] === undefined){
+  // REGLA AUTOMATICA DE RECIBO: si de un pais con regla llega el ENVIO y no el RECIBO, el recibo
+  // se calcula sumando los puntos de la regla (Colombia +25, Venezuela +20).
+  // Aplica en DOS casos:
+  //   a) el mensaje es del proveedor de la regla (Caballo en Colombia, Jesus en Venezuela);
+  //   b) no se sabe de quien es el mensaje, que es justo lo que pasa cuando Kelvin la escribe
+  //      a mano: "Colombia 3200" o "Venezuela 1035". Ahi el que pone la tasa es el.
+  // NO aplica si el mensaje es de OTRO proveedor identificado: sus puntos no son estos, y su
+  // envio podria ser bajo y dejar un recibo que nos hace perder plata.
+  if (f['Tasa Envio'] !== undefined && f['Tasa Recibo'] === undefined){
     for (const rg of REGLAS_AUTO){
-      if (norm(provActual).indexOf(norm(rg.proveedor)) !== -1 && norm(pais) === norm(rg.pais)){
-        f['Tasa Recibo'] = f['Tasa Envio'] + rg.sumar;
-        autoSumaPorPais[pais] = rg.sumar;
-        break;
-      }
+      if (norm(pais) !== norm(rg.pais)) continue;
+      const deOtro = provActual && norm(provActual).indexOf(norm(rg.proveedor)) === -1;
+      if (deOtro) continue;
+      f['Tasa Recibo'] = f['Tasa Envio'] + rg.sumar;
+      autoSumaPorPais[pais] = rg.sumar;
+      break;
     }
   }
   return f;
@@ -499,7 +506,13 @@ for (const bloque of bloques){
       if (mk && ultima){
         const marca = tipoClave(mk[1]);
         const val = numLatino(mk[2]);
-        if (marca && val !== null){ ultima[marca === 'envio' ? 'Tasa Envio' : 'Tasa Recibo'] = val; algo = true; }
+        // Pasa por agregarFila (y no escribe la fila directo) para que valga lo mismo que en el
+        // resto: si llega el recibo DE VERDAD deja de contar como calculado, y si llega el envio
+        // se le puede calcular el recibo.
+        if (marca && val !== null){
+          ultima = agregarFila(ultima.Pais, marca === 'envio' ? val : null, marca === 'recibo' ? val : null);
+          algo = true;
+        }
       }
     }
     // Bloque de PUROS numeros que venia despues del nombre de un proveedor con regla.
@@ -1120,6 +1133,8 @@ const ayuda = 'No pude leer las tasas.' + detalle
   + '\n1) Corto (una linea por pais):\nColombia 3100 3130\nVenezuela 856 870\n   (primer numero = envio, segundo = recibo)\n'
   + '\n2) Con abreviatura:\ncol 3100 3130\nven 856 870\n'
   + '\n3) Solo una de las dos:\ncol 3100        (solo envio)\ncol r 3130      (solo recibo)\n'
+  + '\n   OJO: en Colombia y Venezuela, si mandas solo el envio el recibo se calcula solo\n'
+  + '   (Colombia envio +25, Venezuela envio +20). Si queres otro recibo, mandalo escrito.\n'
   + '\n4) Largo (como antes):\nColombia\nenvio: 3100\nrecibo: 3130\n'
   + '\nTambien podes pegarme el mensaje tal cual te lo manda un proveedor y lo interpreto.';
 return [{ json: { texto: ayuda } }];

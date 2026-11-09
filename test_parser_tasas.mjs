@@ -55,7 +55,11 @@ t('varios paises',        'Colombia 3100 3130\nVenezuela 856 870',         'Colo
 t('abreviatura',          'col 3100 3130\nven 856 870',                    'Colombia:3100/3130 Venezuela:856/870');
 t('codigo de moneda',     'cop 3100 3130\nves 856 870',                    'Colombia:3100/3130 Venezuela:856/870');
 t('con barra',            'col 3100/3130',                                 'Colombia:3100/3130');
-t('solo envio',           'col 3100',                                      'Colombia:3100/-');
+// Colombia y Venezuela tienen regla de recibo automatico (+25 y +20): si solo llega el envio,
+// el recibo se calcula. Lo pidio Kelvin para poder escribir solo "col 3100" a mano.
+// El detalle de esa regla se prueba aparte, en test_regla_colombia.mjs.
+t('solo envio (con regla)','col 3100',                                      'Colombia:3100/3125');
+t('solo envio (sin regla)','Uruguay 39',                                    'Uruguay:39/-');
 t('solo recibo (r)',      'col r 3130',                                    'Colombia:-/3130');
 t('marcas explicitas',    'col envio 3100 recibo 3130',                    'Colombia:3100/3130');
 t('pais de dos palabras', 'Republica Dominicana 56.66 66',                 'República Dominicana:56.66/66');

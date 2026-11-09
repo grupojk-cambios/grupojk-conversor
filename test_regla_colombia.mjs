@@ -160,10 +160,59 @@ console.log('=== 6) La regla vale tambien por el lector rapido ===');
   chk(f2['Tasa Recibo'] === 3150, 'si manda las dos, manda el proveedor', '-> ' + f2['Tasa Recibo']);
   chk(!/calculado/.test(r2.resumen || ''), 'y no dice "calculado"');
 
-  // Sin nombre de proveedor NO se inventa nada: puede ser Kelvin poniendo la tasa a mano.
-  const r3 = leerSinIA('Colombia 3200');
+  // Si viene de OTRO proveedor identificado NO se le aplican estos puntos.
+  const r3 = leerSinIA(['MIGUELACHO', '', 'Colombia 3100'].join(SALTO));
   chk(fila(r3, 'Colombia')['Tasa Recibo'] === undefined,
-      'sin proveedor no se inventa recibo', '-> ' + fila(r3, 'Colombia')['Tasa Recibo']);
+      'a otro proveedor no se le suman los +25', '-> ' + fila(r3, 'Colombia')['Tasa Recibo']);
+}
+
+console.log('');
+console.log('=== 7) Escribiendo la tasa A MANO, sin nombrar proveedor ===');
+{
+  // Esto es lo que pidio Kelvin: el escribe el envio y el recibo sale solo.
+  const r = leerSinIA(['Colombia 3200', 'Venezuela 1035'].join(SALTO));
+  mostrar(r.resumen || '(se fue a la IA)');
+  const co = fila(r, 'Colombia');
+  const ve = fila(r, 'Venezuela');
+  chk(co['Tasa Envio'] === 3200 && co['Tasa Recibo'] === 3225,
+      'Colombia 3200 -> 3225 (+25)', '-> ' + co['Tasa Envio'] + ' / ' + co['Tasa Recibo']);
+  chk(ve['Tasa Envio'] === 1035 && ve['Tasa Recibo'] === 1055,
+      'Venezuela 1035 -> 1055 (+20)', '-> ' + ve['Tasa Envio'] + ' / ' + ve['Tasa Recibo']);
+  chk(/Colombia.*\+25/.test(r.resumen || '') && /Venezuela.*\+20/.test(r.resumen || ''),
+      'el resumen avisa los puntos de cada uno');
+
+  // Una sola linea, con abreviatura.
+  const r2 = leerSinIA('col 3200');
+  chk(fila(r2, 'Colombia')['Tasa Recibo'] === 3225, 'tambien con abreviatura "col 3200"',
+      '-> ' + fila(r2, 'Colombia')['Tasa Recibo']);
+
+  // Si escribe las DOS, manda lo que escribio el: no se calcula nada.
+  const r3 = leerSinIA('Colombia 3200 3400');
+  chk(fila(r3, 'Colombia')['Tasa Recibo'] === 3400, 'si escribe las dos, mandan las suyas',
+      '-> ' + fila(r3, 'Colombia')['Tasa Recibo']);
+  chk(!/calculado/.test(r3.resumen || ''), 'y no dice "calculado"');
+
+  // Si escribe SOLO el recibo, no hay envio del cual sumar: no se toca el envio.
+  const r4 = leerSinIA('Colombia r 3300');
+  chk(fila(r4, 'Colombia')['Tasa Envio'] === undefined, 'solo recibo: no inventa envio',
+      '-> ' + fila(r4, 'Colombia')['Tasa Envio']);
+  chk(fila(r4, 'Colombia')['Tasa Recibo'] === 3300, 'solo recibo: respeta el 3300',
+      '-> ' + fila(r4, 'Colombia')['Tasa Recibo']);
+
+  // Un pais SIN regla sigue igual que siempre: no se le inventa recibo.
+  const r5 = leerSinIA('Peru 3.47');
+  chk(fila(r5, 'Perú')['Tasa Recibo'] === undefined, 'un pais sin regla no cambia',
+      '-> ' + fila(r5, 'Perú')['Tasa Recibo']);
+}
+
+console.log('');
+console.log('=== 8) Formato largo: si despues llega el recibo DE VERDAD, pisa al calculado ===');
+{
+  const r = leerSinIA(['Colombia 3200', 'recibo: 3400'].join(SALTO));
+  const f = fila(r, 'Colombia');
+  mostrar(r.resumen || '(se fue a la IA)');
+  chk(f['Tasa Recibo'] === 3400, 'queda el 3400 escrito, no el 3225', '-> ' + f['Tasa Recibo']);
+  chk(!/calculado/.test(r.resumen || ''), 'y ya no dice "calculado"');
 }
 
 console.log('');
