@@ -86,7 +86,8 @@ export function esEcuador(p) {
 
 export function isCajaDolar(p) {
   if (!p) return false;
-  return ['USD', 'USDT', 'EC', 'US', 'PA'].includes(p.codigo) || [9, 11, 18].includes(p.id) || p.nombre.toLowerCase().includes('usdt');
+  const nom = (p.nombre || '').toLowerCase();
+  return ['USD', 'USDT', 'EC', 'US', 'PA'].includes(p.codigo) || [9, 11, 18].includes(p.id) || nom.includes('usdt') || nom.includes('zelle') || nom.includes('efectivo ven');
 }
 
 /**
@@ -150,31 +151,48 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
     // Para destFuerte (entregar Euros), calcularTasaEnvio ya calcula tBase * (1 - mD / 100).
     // Con base 1 y margen 20%, da 0.80 directo (500 USD * 0.80 = 400 EUR). NO SE INVIERTE.
 
-    if (origDolar) {
-      // CAJA DÓLAR ORIGEN (USDT, Zelle, Efectivo Venezuela, Ecuador):
-      // El margen de recibo (mO) se calcula sobre base 1 fija e independiente.
-      // Así puedes anotar tu costo real (ej. 1.01) en Excel para tu sistema contable,
-      // y la app descontará el margen limpio sobre 100 (ej: 8% -> 92.00 USD exactos).
+    if (origDolar && destDolar) {
+      // CAJA DÓLAR A CAJA DÓLAR ($ a $) (USDT, Zelle, Efectivo Venezuela, Ecuador, Panamá):
+      // Suma directa de márgenes: margenRecibo(origen) + margenEnvio(destino).
+      // Se suman directamente los porcentajes (ej: Zelle 5% + Ecuador 1% = 6%; Zelle 5% + USDT 5% = 10%).
+      // Ecuador sí suma su comisión cuando se envía o recibe entre cajas dólar.
       let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
         ? parseFloat(origen.margenReciboMayor)
         : (parseFloat(origen.margenRecibo) || 0);
-      if (esEcuador(origen)) mO = 0; // Ecuador siempre neutro
-
-      // Base 1 fija para el cálculo público del margen
-      const factorDolarNeto = Math.max(1 * (1 - mO / 100), 0.00001);
-      tasaOrigenParaDolares = 1 / factorDolarNeto;
-    }
-
-    if (destDolar) {
-      // CAJA DÓLAR DESTINO (USDT, Zelle, Efectivo Venezuela, Ecuador):
-      // Al entregar, el margen de envío (mD) se calcula sobre base 1 fija:
-      // Si el margen es 7%, entrega 93.00 USDT exactos (100 * 0.93 = 93.00).
       let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
         ? parseFloat(destino.margenEnvioMayor)
         : (parseFloat(destino.margenEnvio) || 0);
-      if (esEcuador(destino)) mD = 0; // Ecuador siempre neutro
 
-      tasaDestinoDesdeDolares = 1 * (1 - mD / 100);
+      const mTotal = mO + mD;
+      tasaOrigenParaDolares = 1;
+      tasaDestinoDesdeDolares = Math.max(1 * (1 - mTotal / 100), 0.00001);
+    } else {
+      if (origDolar) {
+        // CAJA DÓLAR ORIGEN (USDT, Zelle, Efectivo Venezuela, Ecuador) -> Moneda Local:
+        // El margen de recibo (mO) se calcula sobre base 1 fija e independiente.
+        // Así puedes anotar tu costo real (ej. 1.01) en Excel para tu sistema contable,
+        // y la app descontará el margen limpio sobre 100 (ej: 8% -> 92.00 USD exactos).
+        let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+          ? parseFloat(origen.margenReciboMayor)
+          : (parseFloat(origen.margenRecibo) || 0);
+        // Si Ecuador es la base de referencia hacia moneda local, se mantiene neutro (base limpia para la pizarra)
+        if (esEcuador(origen)) mO = 0;
+
+        // Base 1 fija para el cálculo público del margen
+        const factorDolarNeto = Math.max(1 * (1 - mO / 100), 0.00001);
+        tasaOrigenParaDolares = 1 / factorDolarNeto;
+      }
+
+      if (destDolar) {
+        // Moneda Local -> CAJA DÓLAR DESTINO (USDT, Zelle, Efectivo Venezuela, Ecuador):
+        // Al entregar, el margen de envío (mD) se calcula sobre base 1 fija:
+        // Si el margen es 7%, entrega 93.00 USDT exactos (100 * 0.93 = 93.00).
+        let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+          ? parseFloat(destino.margenEnvioMayor)
+          : (parseFloat(destino.margenEnvio) || 0);
+
+        tasaDestinoDesdeDolares = 1 * (1 - mD / 100);
+      }
     }
   }
 
