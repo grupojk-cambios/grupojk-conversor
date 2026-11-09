@@ -58,7 +58,7 @@ const chk = (ok, etiqueta, detalle) => {
 // ================== PASO 1: aprende de los mensajes etiquetados del 28/08 ==================
 console.log('=== PASO 1: Kelvin pone el nombre a mano (28/08) -> el bot aprende la forma ===');
 let memoria = [];
-for (const [id, nombreEsperado] of [['unicambios1', 'Unicambios'], ['miguelacho1', 'Miguelacho'], ['solano1', 'Solano']]) {
+for (const [id, nombreEsperado] of [['unicambios1', 'Unicambios'], ['miguelacho1', 'Miguelacho'], ['solano1', 'SOLANO']]) {
   const its = interpretar(txt(id), memoria);
   const salida = aprender(its, [{ proveedores: [{ nombre: nombreEsperado, filas: [{ pais: 'México', envio: 16.2, recibo: 18.1 }] }] }], memoria);
   memoria = JSON.parse(salida.provFormatosJson);
@@ -76,7 +76,7 @@ console.log('=== PASO 2: otros dias, SIN escribir el nombre -> lo reconoce solo?
 const casos = [
   ['unicambios2', 'Unicambios', 'otro dia'],
   ['miguelacho2', 'Miguelacho', 'otro dia'],
-  ['solano2',     'Solano',     'otro dia']
+  ['solano2',     'SOLANO',     'otro dia']
 ];
 for (const [id, esperado, fecha] of casos) {
   const its = interpretar(txt(id), memoria);
@@ -199,17 +199,17 @@ const conEtiqueta = 'Solano\n\n' + textoSolano;
 const its1 = interpretar(conEtiqueta, []);
 chk(its1[0].json.nombrePuesto === 'Solano', 'detecta el nombre escrito a mano', `-> "${its1[0].json.nombrePuesto}"`);
 const r1 = aprender(its1, [{ proveedores: [{ nombre: 'ACTIVOS X PERÚ', filas: [{ pais: 'Perú', envio: 3.33, recibo: 3.41 }] }] }], []);
-chk(r1.proveedores.includes('Solano'), 'el resumen dice Solano, no el titulo', `-> ${r1.proveedores.join(', ')}`);
+chk(r1.proveedores.includes('SOLANO'), 'el resumen dice Solano, no el titulo', `-> ${r1.proveedores.join(', ')}`);
 
 // b) Se aprende "Solano" para ese formato
 const memSolano = JSON.parse(r1.provFormatosJson);
-chk(memSolano.some(p => p.nombre === 'Solano'), 'se aprende como "Solano"', `-> ${memSolano.map(p => p.nombre).join(', ')}`);
+chk(memSolano.some(p => p.nombre === 'SOLANO'), 'se aprende como "Solano"', `-> ${memSolano.map(p => p.nombre).join(', ')}`);
 
 // c) Otro dia SIN escribir el nombre: debe seguir diciendo Solano, no el titulo
 const its2 = interpretar(txt('solano2'), memSolano);
-chk(its2[0].json.nombreConocido === 'Solano', 'otro dia lo sigue llamando Solano', `-> "${its2[0].json.nombreConocido}"`);
+chk(its2[0].json.nombreConocido === 'SOLANO', 'otro dia lo sigue llamando Solano', `-> "${its2[0].json.nombreConocido}"`);
 const r2 = aprender(its2, [{ proveedores: [{ nombre: 'ACTIVOS X PERÚ', filas: [{ pais: 'Perú', envio: 3.34, recibo: 3.42 }] }] }], memSolano);
-chk(r2.proveedores.includes('Solano') && !r2.proveedores.includes('ACTIVOS X PERÚ'),
+chk(r2.proveedores.includes('SOLANO') && !r2.proveedores.includes('ACTIVOS X PERÚ'),
     'el titulo ya no le gana', `-> ${r2.proveedores.join(', ')}`);
 
 // d) Los saludos y encabezados NO son nombres

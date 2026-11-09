@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 # =====================================================================================
 #  WORKFLOW: "Tasas de Proveedores"
@@ -26,6 +26,23 @@ $REGLAS_AUTO = @(
 )
 $REGLAS_AUTO_JS = '[' + (($REGLAS_AUTO | ForEach-Object {
   "{proveedor:'" + $_.proveedor + "',pais:'" + $_.pais + "',sumar:" + $_.sumar + "}"
+}) -join ',') + ']'
+
+# ===================== COMO SE LLAMA CADA PROVEEDOR =====================
+# El nombre OFICIAL de cada proveedor y las formas en que puede aparecer escrito
+# (en el titulo del mensaje, o como lo escriba Kelvin arriba).
+# Sirve para dos cosas:
+#   1. Que siempre se guarde y se muestre con el mismo nombre, el corto.
+#   2. Que no se dupliquen: Solano se habia guardado DOS veces, como "SOLANO" y
+#      como "ACTIVOS X PERU", porque su mensaje viene titulado "ACTIVOS X PERU".
+# Las coincidencias NO distinguen mayusculas ni tildes.
+# Para agregar un proveedor, se agrega una linea y se vuelve a desplegar.
+$ALIAS_PROV = @(
+  @{ oficial = 'ELITE';  alias = @('corporacion grupo elite', 'corporacion elite', 'grupo elite') },
+  @{ oficial = 'SOLANO'; alias = @('activos x peru', 'activos peru') }
+)
+$ALIAS_PROV_JS = '[' + (($ALIAS_PROV | ForEach-Object {
+  "{oficial:'" + $_.oficial + "',alias:[" + (($_.alias | ForEach-Object { "'" + $_ + "'" }) -join ',') + "]}"
 }) -join ',') + ']'
 
 # CSV publicado (SOLO LECTURA) para validar nombres de pais. Es el mismo que usa el bot.
@@ -77,6 +94,25 @@ $interpretarCode = @'
 // Sirven para dos cosas: saber de que PAIS habla ese proveedor aunque no lo escriba,
 // y calcularle el recibo cuando solo manda el envio.
 const REGLAS_AUTO = __REGLAS_AUTO__;
+
+// Nombres oficiales de proveedor (se inyectan desde el script, ver $ALIAS_PROV arriba).
+// nombreOficial() deja SIEMPRE el mismo nombre corto, sin importar como venga escrito:
+// "CORPORACION GRUPO ELITE" -> "ELITE", "ACTIVOS X PERU" -> "SOLANO".
+const ALIAS_PROV = __ALIAS_PROV__;
+function nombreOficial(s){
+  const bruto = String(s == null ? "" : s).trim();
+  if (!bruto) return "";
+  const n = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  for (const a of ALIAS_PROV){
+    const oficialNorm = a.oficial.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (n === oficialNorm) return a.oficial;
+    for (const x of a.alias){
+      const xn = String(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (n === xn || n.indexOf(xn) !== -1) return a.oficial;
+    }
+  }
+  return bruto;
+}
 // ===== Utilidades =====
 function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
 
@@ -147,6 +183,37 @@ try {
   if (crudo) provConocidos = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo;
   if (!Array.isArray(provConocidos)) provConocidos = [];
 } catch(e){ provConocidos = []; }
+// La memoria vieja se normaliza al leerla: los nombres pasan por nombreOficial() y si
+// quedan dos entradas con el mismo nombre se deja solo la mas reciente (van primero).
+// Asi se arreglan solos los duplicados que ya estaban guardados, sin tocar Redis a mano.
+(function(){
+  const vistos = {};
+  const out = [];
+  for (const c of provConocidos){
+    if (!c || !c.nombre) continue;
+    const nom = nombreOficial(c.nombre);
+    const k = nom.toLowerCase();
+    if (vistos[k]) continue;
+    vistos[k] = true;
+    out.push({ nombre: nom, palabras: c.palabras });
+  }
+  provConocidos = out;
+})();
+
+// .Kelvin le puso el nombre a mano arriba del mensaje? ("Solano", "Proveedor: Caballo"...).
+// Tiene que ser una primera linea corta, solo letras, y con mas mensaje debajo. Se descartan
+// los saludos y encabezados ("Buen dia", "Actualizacion", "Tasa"), que NO son nombres.
+function nombrePuestoAMano(txt){
+  const ls = String(txt||'').split('\n').map(l => l.trim()).filter(Boolean);
+  if (ls.length < 2) return '';
+  const cand = ls[0].replace(/^(?:proveedor|nombre)\s*:\s*/i, '').trim();
+  if (!cand || cand.length > 30) return '';
+  if (!/^[a-zA-ZÀ-ɏ.\s]+$/.test(cand)) return '';          // con emojis/asteriscos NO es etiqueta
+  const pal = cand.split(/\s+/).filter(Boolean);
+  if (pal.length > 3) return '';
+  const utiles = pal.filter(w => IGNORAR_PAL.indexOf(w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')) === -1);
+  return utiles.length ? cand : '';                         // "Buen dia" / "Actualizacion" -> no
+}
 
 function reconocerProveedor(txt){
   const p = palabrasClave(txt);
@@ -158,7 +225,7 @@ function reconocerProveedor(txt){
   }
   // 0.7 = que aparezca al menos el 70% de las palabras con las que se aprendio ese proveedor
   // (mas el minimo de 3 palabras en comun). Validado con los mensajes reales de 09/10 al 23/09.
-  return punt >= 0.7 ? mejor.nombre : '';
+  return punt >= 0.7 ? nombreOficial(mejor.nombre) : '';
 }
 
 // ===== Entradas =====
@@ -353,18 +420,25 @@ const filas = [];
 const errores = [];
 const autoSumaPorPais = {};   // pais -> puntos que se le sumaron al envio para sacar el recibo
 const provPorPais = {};       // pais -> de quien salio (para el resumen comparativo)
+let provActual = '';          // proveedor del mensaje que se esta leyendo ahora mismo
 const noEntendidos = [];      // mensajes que el parser no pudo leer -> van a la IA
 let reglaPendiente = null;    // proveedor con regla nombrado en un bloque, cuyo numero viene en el siguiente
 
 function agregarFila(pais, envio, recibo){
   let f = filas.find(x => x.Pais === pais);
   if(!f){ f = { Pais: pais }; filas.push(f); }
+  // Se anota SIEMPRE de quien salio, para poder decirlo en el resumen. Si dos mensajes
+  // tocan el mismo pais, manda el primero que lo trajo (es el que fijo la tasa).
+  if (provActual && !provPorPais[pais]) provPorPais[pais] = provActual;
   if(envio  !== null && envio  !== undefined) f['Tasa Envio']  = envio;
   if(recibo !== null && recibo !== undefined) f['Tasa Recibo'] = recibo;
   return f;
 }
 
 for (const mensaje of mensajesSueltos){
+// De quien es este mensaje: primero como lo escribio Kelvin arriba, si no por el formato
+// que ya se aprendio. Cualquiera de los dos pasa por nombreOficial().
+provActual = nombreOficial(nombrePuestoAMano(mensaje) || reconocerProveedor(mensaje));
 const filasAntes = filas.length;
 const erroresAntes = errores.length;
 const bloques = String(mensaje||'').split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
@@ -555,20 +629,6 @@ if (noEntendidos.length){
       prov:   provPorPais[f.Pais] || 'Tu mensaje',
       autoSuma: autoSumaPorPais[f.Pais] || 0
     }));
-    // ¿Kelvin le puso el nombre a mano arriba del mensaje? ("Solano", "Proveedor: Caballo"...).
-    // Tiene que ser una primera linea corta, solo letras, y con mas mensaje debajo. Se descartan
-    // los saludos y encabezados ("Buen dia", "Actualizacion", "Tasa"), que NO son nombres.
-    function nombrePuestoAMano(txt){
-      const ls = String(txt||'').split('\n').map(l => l.trim()).filter(Boolean);
-      if (ls.length < 2) return '';
-      const cand = ls[0].replace(/^(?:proveedor|nombre)\s*:\s*/i, '').trim();
-      if (!cand || cand.length > 30) return '';
-      if (!/^[a-zA-ZÀ-ɏ.\s]+$/.test(cand)) return '';          // con emojis/asteriscos NO es etiqueta
-      const pal = cand.split(/\s+/).filter(Boolean);
-      if (pal.length > 3) return '';
-      const utiles = pal.filter(w => IGNORAR_PAL.indexOf(w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')) === -1);
-      return utiles.length ? cand : '';                         // "Buen dia" / "Actualizacion" -> no
-    }
 
     return noEntendidos.map((p, i) => {
       const t1 = String(p).trim();
@@ -597,7 +657,10 @@ const lineasResumen = filas.map(f => {
   const noTocado = (f['Tasa Envio'] === undefined) ? ' (envio no se toca)'
                  : (f['Tasa Recibo'] === undefined) ? ' (recibo no se toca)' : '';
   const auto = autoSumaPorPais[f.Pais] ? ' (recibo calculado: envio +' + autoSumaPorPais[f.Pais] + ')' : '';
-  return '• ' + f.Pais + ': ' + partes.join(', ') + noTocado + auto;
+  // De quien salio la tasa. Antes el resumen no lo decia nunca por este camino y no
+  // habia forma de saber a quien reclamarle si un numero salia mal.
+  const quien = provPorPais[f.Pais] ? '  [' + provPorPais[f.Pais] + ']' : '';
+  return '• ' + f.Pais + ': ' + partes.join(', ') + noTocado + auto + quien;
 });
 let resumen = lineasResumen.join('\n');
 if (errores.length) resumen += '\n\n⚠️ Ignorado:\n' + errores.join('\n');
@@ -606,6 +669,7 @@ return [{ json: { accion:'nuevo', chatId, filas, resumen, pendienteJson: JSON.st
 '@
 # Se inyectan las reglas de proveedor (el heredoc @'...'@ no expande variables de PowerShell).
 $interpretarCode = $interpretarCode.Replace('__REGLAS_AUTO__', $REGLAS_AUTO_JS)
+$interpretarCode = $interpretarCode.Replace('__ALIAS_PROV__', $ALIAS_PROV_JS)
 
 # ===================== CODIGO: EXPANDIR FILAS =====================
 # Convierte las filas confirmadas en 1 item por pais, para que Google Sheets actualice fila por fila.
@@ -630,6 +694,25 @@ return [{ json: { texto: '✅ Listo, actualice ' + n + ' ' + (n === 1 ? 'pais' :
 $armarBorradorCode = @'
 // Reglas de recibo automatico (se inyectan desde el script, ver $REGLAS_AUTO arriba).
 const REGLAS_AUTO = __REGLAS_AUTO__;
+
+// Nombres oficiales de proveedor (se inyectan desde el script, ver $ALIAS_PROV arriba).
+// nombreOficial() deja SIEMPRE el mismo nombre corto, sin importar como venga escrito:
+// "CORPORACION GRUPO ELITE" -> "ELITE", "ACTIVOS X PERU" -> "SOLANO".
+const ALIAS_PROV = __ALIAS_PROV__;
+function nombreOficial(s){
+  const bruto = String(s == null ? "" : s).trim();
+  if (!bruto) return "";
+  const n = bruto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  for (const a of ALIAS_PROV){
+    const oficialNorm = a.oficial.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (n === oficialNorm) return a.oficial;
+    for (const x of a.alias){
+      const xn = String(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      if (n === xn || n.indexOf(xn) !== -1) return a.oficial;
+    }
+  }
+  return bruto;
+}
 function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,''); }
 function parseCSV(text){
   const Q = '"';
@@ -707,6 +790,16 @@ const esNombreUtil = (s) => {
   const n = String(s||'').trim();
   return n.length >= 3 && !/^proveedor\s*\d*$/i.test(n);
 };
+// Cuanto del formato GUARDADO aparece en el mensaje nuevo. Misma funcion que usa
+// "Interpretar Mensaje" para reconocer al proveedor; aca sirve para detectar que un
+// formato ya guardado es el MISMO de ahora y no dejarlo duplicado con otro nombre.
+function parecidoPal(a, b){
+  if (!a.length || !b.length) return 0;
+  let comunes = 0;
+  for (const w of b) if (a.indexOf(w) !== -1) comunes++;
+  if (comunes < 3) return 0;
+  return comunes / b.length;
+}
 
 // Lo que ya habia guardado
 let provFormatos = [];
@@ -715,6 +808,20 @@ try {
   if (crudo) provFormatos = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo;
   if (!Array.isArray(provFormatos)) provFormatos = [];
 } catch(e){ provFormatos = []; }
+// Misma normalizacion que arriba, para que lo que se vuelva a guardar quede limpio.
+(function(){
+  const vistos = {};
+  const out = [];
+  for (const c of provFormatos){
+    if (!c || !c.nombre) continue;
+    const nom = nombreOficial(c.nombre);
+    const k = nom.toLowerCase();
+    if (vistos[k]) continue;
+    vistos[k] = true;
+    out.push({ nombre: nom, palabras: c.palabras });
+  }
+  provFormatos = out;
+})();
 
 // Los mensajes originales, en el MISMO orden que las respuestas de la IA (una llamada por mensaje)
 let origenes = [];
@@ -744,7 +851,7 @@ for (let idx = 0; idx < items.length; idx++){
   // Antes el titulo iba SEGUNDO y le ganaba al nombre aprendido: por eso Solano salia siempre como
   // "ACTIVOS X PERU" aunque Kelvin lo llamara Solano; el nombre que el ponia nunca se quedaba.
   const og = origenes[idx] || {};
-  const nombreMando = String(og.nombrePuesto || '').trim() || String(og.nombreConocido || '').trim();
+  const nombreMando = nombreOficial(String(og.nombrePuesto || '').trim() || String(og.nombreConocido || '').trim());
   if (nombreMando && deEsteMensaje.length === 1) deEsteMensaje[0].nombre = nombreMando;
 
   // Proveedor con regla que NO escribe el pais: Jesus manda literalmente "955" y la IA no tiene
@@ -773,10 +880,18 @@ for (let idx = 0; idx < items.length; idx++){
   // Aprender: si de este mensaje salio UN proveedor con nombre util, se guarda su forma.
   const orig = origenes[idx];
   if (deEsteMensaje.length === 1 && orig && orig.textoOriginal && esNombreUtil(deEsteMensaje[0].nombre)){
-    const nombre = String(deEsteMensaje[0].nombre).trim().slice(0,40);
+    const nombre = nombreOficial(deEsteMensaje[0].nombre).trim().slice(0,40);
     const palabras = palabrasClave(orig.textoOriginal);
     if (palabras.length >= 3){
-      provFormatos = provFormatos.filter(x => x && x.nombre && x.nombre.toLowerCase() !== nombre.toLowerCase());
+      // Se borra la entrada vieja por DOS motivos, no solo por el nombre:
+      //   a) se llama igual -> es una actualizacion del mismo proveedor;
+      //   b) su FORMATO es practicamente el mismo -> es el mismo proveedor guardado
+      //      con otro nombre. Sin (b) quedaban duplicados: Solano estaba como
+      //      "SOLANO" y como "ACTIVOS X PERU", porque su mensaje viene con ese titulo.
+      const mismoNombre  = (x) => String(x.nombre).toLowerCase() === nombre.toLowerCase();
+      const mismoFormato = (x) => Array.isArray(x.palabras)
+        && (parecidoPal(palabras, x.palabras) >= 0.7 || parecidoPal(x.palabras, palabras) >= 0.7);
+      provFormatos = provFormatos.filter(x => x && x.nombre && !mismoNombre(x) && !mismoFormato(x));
       provFormatos.unshift({ nombre, palabras });
     }
   }
@@ -915,6 +1030,7 @@ return [{ json: { chatId, filas, resumen, resumenCorto, borrador, proveedores: c
 '@
 # Se inyectan las reglas de recibo automatico (el heredoc @'...'@ no expande variables).
 $armarBorradorCode = $armarBorradorCode.Replace('__REGLAS_AUTO__', $REGLAS_AUTO_JS)
+$armarBorradorCode = $armarBorradorCode.Replace('__ALIAS_PROV__', $ALIAS_PROV_JS)
 
 # ===================== CODIGO: TEXTO PEDIR CONFIRMACION =====================
 # Sirve para las dos ramas: la del parser normal y la de la IA.
