@@ -21,11 +21,21 @@ $CHAT_IDS_JS = "[" + (($CHAT_IDS | ForEach-Object { "'" + $_ + "'" }) -join ",")
 # Hay proveedores que mandan SOLO la tasa de envio, y el recibo Kelvin lo calcula siempre igual.
 # Ejemplo: Jesus manda "Jesus / Venezuela / 955" y el recibo va SIEMPRE 20 puntos arriba (975).
 # Para agregar otro proveedor o cambiar los puntos, se edita esta lista y se vuelve a desplegar.
+#
+# soloNumeros = $true  -> ese proveedor manda el numero PELADO, sin decir el pais (Jesus manda
+#                         "955" y nada mas). Entonces su NOMBRE vale como pais y el lector
+#                         normal (sin IA) puede armar la fila solo.
+# soloNumeros = $false -> su mensaje es texto y hay que leerlo con cuidado para no invertir
+#                         envio y recibo. Caballo manda "3.200 pagando usdt x Cop" (envio) y a
+#                         veces agrega "3120 pagando cop x usdt" (recibo): eso lo lee la IA.
+#                         De la regla solo se usan los puntos a sumar.
 $REGLAS_AUTO = @(
-  @{ proveedor = 'Jesus'; pais = 'Venezuela'; sumar = 20 }
+  @{ proveedor = 'Jesus';   pais = 'Venezuela'; sumar = 20; soloNumeros = $true  },
+  @{ proveedor = 'Caballo'; pais = 'Colombia';  sumar = 25; soloNumeros = $false }
 )
 $REGLAS_AUTO_JS = '[' + (($REGLAS_AUTO | ForEach-Object {
-  "{proveedor:'" + $_.proveedor + "',pais:'" + $_.pais + "',sumar:" + $_.sumar + "}"
+  "{proveedor:'" + $_.proveedor + "',pais:'" + $_.pais + "',sumar:" + $_.sumar +
+  ",soloNumeros:" + $(if ($_.soloNumeros) { 'true' } else { 'false' }) + "}"
 }) -join ',') + ']'
 
 # ===================== COMO SE LLAMA CADA PROVEEDOR =====================
@@ -338,10 +348,14 @@ function resolverPais(nombre, estricto){
 
 // Si lo escrito no es un pais pero SI es un proveedor con regla, devuelve su regla.
 // Asi "jesus 955" se entiende como Venezuela, aunque Jesus nunca escriba el pais.
+// OJO: solo valen las reglas con soloNumeros. Caballo tambien tiene regla (Colombia +25), pero
+// su mensaje es texto ("3.200 pagando usdt x Cop") y el orden de los numeros lo tiene que
+// decidir la IA; si lo agarrara este lector podria poner el recibo donde va el envio.
 function reglaDeProveedor(nombre){
   const nq = norm(nombre);
   if(!nq) return null;
   for(const r of REGLAS_AUTO){
+    if(!r.soloNumeros) continue;
     if(nq === norm(r.proveedor) || nq.indexOf(norm(r.proveedor)) !== -1) return r;
   }
   return null;
@@ -431,7 +445,24 @@ function agregarFila(pais, envio, recibo){
   // tocan el mismo pais, manda el primero que lo trajo (es el que fijo la tasa).
   if (provActual && !provPorPais[pais]) provPorPais[pais] = provActual;
   if(envio  !== null && envio  !== undefined) f['Tasa Envio']  = envio;
-  if(recibo !== null && recibo !== undefined) f['Tasa Recibo'] = recibo;
+  if(recibo !== null && recibo !== undefined){
+    f['Tasa Recibo'] = recibo;
+    delete autoSumaPorPais[pais];   // llego el recibo DE VERDAD: ya no es calculado
+  }
+  // REGLA AUTOMATICA tambien por este camino. Si del mensaje de un proveedor con regla sale el
+  // envio de SU pais pero no el recibo, el recibo se calcula igual que cuando lo lee la IA.
+  // Ej: mensaje titulado "Caballo" con la linea "Colombia 3200" -> recibo 3225.
+  // Solo aplica si se sabe de quien es el mensaje: si Kelvin escribe "Colombia 3200" sin decir
+  // de quien es, provActual va vacio y NO se le inventa ningun recibo.
+  if (provActual && f['Tasa Envio'] !== undefined && f['Tasa Recibo'] === undefined){
+    for (const rg of REGLAS_AUTO){
+      if (norm(provActual).indexOf(norm(rg.proveedor)) !== -1 && norm(pais) === norm(rg.pais)){
+        f['Tasa Recibo'] = f['Tasa Envio'] + rg.sumar;
+        autoSumaPorPais[pais] = rg.sumar;
+        break;
+      }
+    }
+  }
   return f;
 }
 
@@ -861,7 +892,9 @@ for (let idx = 0; idx < items.length; idx++){
   if (deEsteMensaje.length === 1 && (!deEsteMensaje[0].filas || !deEsteMensaje[0].filas.length) && origPrev && origPrev.textoOriginal){
     const nom = String(deEsteMensaje[0].nombre || '');
     let regla = null;
-    for (const rg of REGLAS_AUTO){ if (norm(nom).indexOf(norm(rg.proveedor)) !== -1){ regla = rg; break; } }
+    // Igual que arriba: solo los que mandan el numero pelado. Para los demas, sacar numeros a
+    // lo bruto del texto es peligroso ("3.070" se leeria como 3.07).
+    for (const rg of REGLAS_AUTO){ if (rg.soloNumeros && norm(nom).indexOf(norm(rg.proveedor)) !== -1){ regla = rg; break; } }
     if (regla){
       const nums = [];
       for (const tk of String(origPrev.textoOriginal).split(/[\s\/|;,]+/)){
@@ -926,7 +959,10 @@ for (const g of gruposIA){
     if (e === null && r === null) continue;
 
     // REGLAS AUTOMATICAS: hay proveedores que mandan SOLO el envio y el recibo lo pone Kelvin
-    // siempre sumando los mismos puntos. Ej: Jesus manda "Venezuela 955" y el recibo va en 975.
+    // siempre sumando los mismos puntos. Ej: Jesus manda "Venezuela 955" y el recibo va en 975;
+    // Caballo manda "3.200 pagando usdt x Cop" y el recibo de Colombia va en 3225.
+    // Esta parte SI vale para todas las reglas, con o sin soloNumeros: aca el pais y el
+    // proveedor ya estan identificados, lo unico que falta es sumar los puntos.
     let autoSuma = 0;
     if (e !== null && r === null){
       for (const regla of REGLAS_AUTO){
