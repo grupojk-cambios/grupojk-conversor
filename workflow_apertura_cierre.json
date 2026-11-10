@@ -142,7 +142,7 @@
                                                                  "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       },
-                      "retryOnFail":  true,
+                      "retryOnFail":  false,
                       "maxTries":  4,
                       "waitBetweenTries":  5000,
                       "onError":  "continueRegularOutput"
@@ -220,7 +220,7 @@
                                          "specifyBody":  "json",
                                          "jsonBody":  "={\n  \"type\": \"image\",\n  \"content\": \"{{ $(\u0027Logica Apertura/Cierre\u0027).first().json.imageUrl }}\",\n  \"caption\": \"{{ $(\u0027Logica Apertura/Cierre\u0027).first().json.texto }}\",\n  \"allContacts\": true\n}",
                                          "options":  {
-                                                         "timeout":  600000
+                                                         "timeout":  1200000
                                                      },
                                          "authentication":  "genericCredentialType",
                                          "genericAuthType":  "httpHeaderAuth"
@@ -239,7 +239,7 @@
                                                                  "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       },
-                      "retryOnFail":  true,
+                      "retryOnFail":  false,
                       "maxTries":  4,
                       "waitBetweenTries":  5000,
                       "onError":  "continueRegularOutput"
