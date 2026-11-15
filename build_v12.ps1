@@ -257,17 +257,33 @@ for (const c of cuentas) {
 // para que el bot atienda mejor (saludar por nombre, saber a que pais suele enviar).
 let clienteContexto = '';
 try {
+  // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal / _mayor).
+  //    Le gana al del historial: ese lo escribio el, sabe como se llama el cliente.
+  //    Viene pegado al mensaje por el nodo "Solo Estos Numeros".
+  let nombre = '';
+  try { nombre = String($('Solo Estos Numeros').first().json.nombreCargado || '').trim(); } catch(e){}
+
+  // 2) El historial de operaciones. De aca sale el nombre si no estaba cargado, y
+  //    ademas el pais al que suele enviar.
   const ops = $('Consultar Cliente').all().map(i => i.json).filter(o => o && (o.pais_destino || o.nombre_cliente));
+  if (!nombre && ops.length) nombre = ((ops[0].nombre_cliente || '') + ' ' + (ops[0].apellido_cliente || '')).trim();
+
+  let recurrente = '';
+  const partes = [];
+  if (nombre) partes.push('se llama ' + nombre);
   if (ops.length) {
-    const nombre = ((ops[0].nombre_cliente || '') + ' ' + (ops[0].apellido_cliente || '')).trim();
     const freq = {};
     ops.forEach(o => { const p = o.pais_destino; if (p) freq[p] = (freq[p] || 0) + 1; });
-    const recurrente = Object.keys(freq).sort((a,b) => freq[b] - freq[a])[0] || '';
-    const partes = [];
-    if (nombre) partes.push('se llama ' + nombre);
+    recurrente = Object.keys(freq).sort((a,b) => freq[b] - freq[a])[0] || '';
     partes.push('ya es cliente (tiene operaciones previas con nosotros)');
     if (recurrente) partes.push('suele enviar a ' + recurrente);
-    clienteContexto = 'Este cliente ' + partes.join(', ') + '. Saludalo por su nombre con naturalidad y, si pide cotizar, puedes sugerir su destino habitual. No menciones montos ni datos viejos salvo que el cliente pregunte.';
+  }
+  if (partes.length) {
+    let txt = 'Este cliente ' + partes.join(', ') + '.';
+    if (nombre) txt += ' Saludalo por su nombre con naturalidad.';
+    if (recurrente) txt += ' Si pide cotizar, puedes sugerir su destino habitual.';
+    txt += ' No menciones montos ni datos viejos salvo que el cliente pregunte.';
+    clienteContexto = txt;
   }
 } catch(e){}
 
@@ -786,16 +802,39 @@ function numerosDe(nodo){
     .map(it => String(it.json.whatsapp));
 }
 
+// Busca el nombre que Kelvin le puso al cliente en Supabase. Esto NO decide si pasa o no:
+// se busca igual aunque el filtro este apagado, porque al agente le sirve para saludarlo
+// por su nombre. El nombre viaja pegado al mensaje, en json.nombreCargado.
+function nombreCargado(jid){
+  for (const nodo of ['Clientes Detal Permitidos', 'Clientes Mayor Permitidos']){
+    let items;
+    try { items = $(nodo).all(); } catch(e){ continue; }
+    for (const it of items){
+      const f = (it && it.json) || {};
+      if (f.whatsapp && f.nombre && mismoNumero(jid, f.whatsapp)) return String(f.nombre).trim();
+    }
+  }
+  return '';
+}
+
+function conNombre(it){
+  let jid = '';
+  try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){ return it; }
+  const n = nombreCargado(jid);
+  if (n) it.json.nombreCargado = n;
+  return it;
+}
+
 let permitidos = [];
 if (SOLO_ESTOS.length){
   permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo
 } else if (MODO_SOLO_CLIENTES){
   const detal = numerosDe('Clientes Detal Permitidos');
   const mayor = numerosDe('Clientes Mayor Permitidos');
-  if (detal === null || mayor === null) return entran;   // no se pudo leer -> pasa todo
+  if (detal === null || mayor === null) return entran.map(conNombre);   // no se pudo leer -> pasa todo
   permitidos = detal.concat(mayor);
 }
-if (!permitidos.length) return entran;           // sin lista -> pasa todo
+if (!permitidos.length) return entran.map(conNombre);   // sin lista -> pasa todo
 
 const pasan = [];
 for (const it of entran){
@@ -803,7 +842,7 @@ for (const it of entran){
   try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){}
   // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.
   if (jid.indexOf('@g.us') !== -1) continue;
-  if (permitidos.some(n => mismoNumero(jid, n))) pasan.push(it);
+  if (permitidos.some(n => mismoNumero(jid, n))) pasan.push(conNombre(it));
 }
 return pasan;
 '@

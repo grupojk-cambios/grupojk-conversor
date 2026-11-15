@@ -63,7 +63,9 @@ function correr(lista, modo, jids, tablas) {
   const $input = { all: () => filasQueLleganPorInput.map(json => ({ json })) };
 
   const salida = new Function('$input', '$', js)($input, $);
-  return salida.map(it => it.json.body.data.key.remoteJid);
+  salida.nombres = salida.map(it => it.json.nombreCargado || '');
+  return Object.assign(salida.map(it => it.json.body.data.key.remoteJid),
+                       { nombres: salida.map(it => it.json.nombreCargado || '') });
 }
 
 const KELVIN  = '593961230380@s.whatsapp.net';
@@ -159,7 +161,29 @@ console.log('=== 7) Filas basura no revientan el nodo ===');
 }
 
 console.log('');
-console.log('=== 8) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 8) El nombre cargado viaja pegado al mensaje ===');
+{
+  // El agente lo usa para saludar por el nombre que Kelvin escribio en Supabase.
+  const tablas = {
+    detal: [{ whatsapp: '593961230380', nombre: 'Maria Perez' }],
+    mayor: [{ whatsapp: '584121234567', nombre: 'Jose Mayorista' }]
+  };
+  const r = correr([], true, [KELVIN, CLIENTE], tablas);
+  chk(r.nombres[0] === 'Maria Perez', 'el de detal trae su nombre', '-> "' + r.nombres[0] + '"');
+  chk(r.nombres[1] === 'Jose Mayorista', 'el de mayor tambien', '-> "' + r.nombres[1] + '"');
+
+  // Sin nombre cargado no se inventa nada.
+  const r2 = correr([], true, [KELVIN], { detal: [{ whatsapp: '593961230380' }], mayor: [] });
+  chk(r2.nombres[0] === '', 'si no le cargaste nombre, va vacio', '-> "' + r2.nombres[0] + '"');
+
+  // Y se busca IGUAL aunque el filtro no este filtrando: el nombre sirve siempre.
+  const r3 = correr([], false, [KELVIN], tablas);
+  chk(r3.length === 1 && r3.nombres[0] === 'Maria Perez',
+      'con el modo apagado igual trae el nombre', '-> "' + r3.nombres[0] + '"');
+}
+
+console.log('');
+console.log('=== 9) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];
