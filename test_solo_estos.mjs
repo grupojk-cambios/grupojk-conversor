@@ -164,8 +164,11 @@ console.log('=== 8) Como quedo desplegado AHORA MISMO ===');
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];
   console.log('     SOLO_ESTOS = ' + l + '   |   MODO_SOLO_CLIENTES = ' + m);
-  chk(l === '[]', 'la lista del codigo esta vacia');
-  chk(m === 'false', 'el modo esta APAGADO -> el bot le contesta a todos');
+  // Esto no prueba logica: deja a la vista como quedo configurado, para que un cambio
+  // de estado no pase desapercibido. Si algun dia hay que apagarlo, se cambia el $true
+  // de build_v12.ps1 y tambien este 'true'.
+  chk(l === '[]', 'la lista del codigo esta vacia (no estamos en modo prueba)');
+  chk(m === 'true', 'el modo SOLO CLIENTES esta prendido');
 }
 
 console.log('');

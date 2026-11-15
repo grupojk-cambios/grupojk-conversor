@@ -38,7 +38,7 @@ $SOLO_ESTOS_JS = "[" + (($SOLO_ESTOS | ForEach-Object { "'" + $_ + "'" }) -join 
 #  el bot le contesta a TODOS igual. Un problema de base de datos no puede dejar
 #  al negocio sin atender.
 # ============================================================================
-$MODO_SOLO_CLIENTES = $false
+$MODO_SOLO_CLIENTES = $true
 
 $MODO_SOLO_CLIENTES_JS = $(if ($MODO_SOLO_CLIENTES) { 'true' } else { 'false' })
 
