@@ -21,6 +21,19 @@
                   },
                   {
                       "parameters":  {
+                                         "jsCode":  "// Deja pasar el mensaje solo si viene de uno de los numeros de la lista.\n// La lista se edita en build_v12.ps1 (variable $SOLO_ESTOS) y se vuelve a desplegar.\n//\n//   Lista VACIA -\u003e pasa todo, el bot le responde a todo el mundo (lo normal).\n//   Con numeros -\u003e solo pasan esos. El resto se descarta JUSTO AQUI, antes de\n//                  transcribir audios o leer imagenes con la IA, que cuesta plata.\nconst SOLO_ESTOS = [];\n\nconst entran = $input.all();\nif (!SOLO_ESTOS.length) return entran;\n\n// Compara dos numeros por sus digitos. El \"termina en\" aguanta que el numero este\n// escrito con o sin codigo de pais, pero se exigen 8 digitos de cada lado: sin ese\n// minimo, un numero corto mal escrito (ej. \"0380\") dejaria pasar a cualquier cliente\n// cuyo telefono termine igual.\nfunction mismoNumero(a, b){\n  const x = String(a || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  const y = String(b || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  if (!x || !y) return false;\n  if (x === y) return true;\n  if (x.length \u003c 8 || y.length \u003c 8) return false;\n  return x.endsWith(y) || y.endsWith(x);\n}\n\nconst pasan = [];\nfor (const it of entran){\n  let jid = \u0027\u0027;\n  try { jid = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){}\n  // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.\n  if (jid.indexOf(\u0027@g.us\u0027) !== -1) continue;\n  if (SOLO_ESTOS.some(n =\u003e mismoNumero(jid, n))) pasan.push(it);\n}\nreturn pasan;"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -290,
+                                       -20
+                                   ],
+                      "id":  "d0e1f2a3-0000-4b00-9000-soloestos0001",
+                      "name":  "Solo Estos Numeros"
+                  },
+                  {
+                      "parameters":  {
                                          "conditions":  {
                                                             "boolean":  [
                                                                             {
@@ -1189,13 +1202,24 @@
                                                       "main":  [
                                                                    [
                                                                        {
-                                                                           "node":  "Es mensaje de cliente?",
+                                                                           "node":  "Solo Estos Numeros",
                                                                            "type":  "main",
                                                                            "index":  0
                                                                        }
                                                                    ]
                                                                ]
                                                   },
+                        "Solo Estos Numeros":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Es mensaje de cliente?",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
                         "Es mensaje de cliente?":  {
                                                        "main":  [
                                                                     [

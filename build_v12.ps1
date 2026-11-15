@@ -1,5 +1,27 @@
 ﻿$ErrorActionPreference = "Stop"
 
+# ============================================================================
+#   SOLO RESPONDERLE A ESTOS NUMEROS   (modo pruebas)
+# ============================================================================
+#  VACIA  -> el bot le responde A TODO EL MUNDO. Asi es como trabaja normalmente.
+#  CON NUMEROS -> el bot SOLO le responde a esos. A los demas NO les contesta nada.
+#
+#  Sirve para probar el bot sin que le caiga encima a un cliente real.
+#  Los numeros van con codigo de pais y solo digitos, entre comillas simples.
+#
+#  Ejemplo para probar con un solo telefono:
+#      $SOLO_ESTOS = @('593961230380')
+#  Ejemplo con dos:
+#      $SOLO_ESTOS = @('593961230380', '584121234567')
+#
+#  OJO: mientras la lista tenga algo, los clientes de verdad quedan sin respuesta.
+#  Al terminar de probar hay que dejarla vacia -> $SOLO_ESTOS = @()
+#  y volver a desplegar:  powershell -File scripts\desplegar_bot.ps1
+# ============================================================================
+$SOLO_ESTOS = @()
+
+$SOLO_ESTOS_JS = "[" + (($SOLO_ESTOS | ForEach-Object { "'" + $_ + "'" }) -join ",") + "]"
+
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
 $mainCode = @'
 // === JK Remesas - Procesamiento de tasas (espejo de la app JK Conversor) ===
@@ -688,12 +710,56 @@ const texto = '*Cliente necesita atencion*\n\nNumero: +' + numero + '\nhttps://w
 return [{ json: { alerta: texto, numeroCliente: numero } }];
 '@
 
+# ===================== CODIGO: SOLO ESTOS NUMEROS (filtro de pruebas) =====================
+$soloEstosCode = @'
+// Deja pasar el mensaje solo si viene de uno de los numeros de la lista.
+// La lista se edita en build_v12.ps1 (variable $SOLO_ESTOS) y se vuelve a desplegar.
+//
+//   Lista VACIA -> pasa todo, el bot le responde a todo el mundo (lo normal).
+//   Con numeros -> solo pasan esos. El resto se descarta JUSTO AQUI, antes de
+//                  transcribir audios o leer imagenes con la IA, que cuesta plata.
+const SOLO_ESTOS = __SOLO_ESTOS__;
+
+const entran = $input.all();
+if (!SOLO_ESTOS.length) return entran;
+
+// Compara dos numeros por sus digitos. El "termina en" aguanta que el numero este
+// escrito con o sin codigo de pais, pero se exigen 8 digitos de cada lado: sin ese
+// minimo, un numero corto mal escrito (ej. "0380") dejaria pasar a cualquier cliente
+// cuyo telefono termine igual.
+function mismoNumero(a, b){
+  const x = String(a || '').replace(/\D/g, '');
+  const y = String(b || '').replace(/\D/g, '');
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.length < 8 || y.length < 8) return false;
+  return x.endsWith(y) || y.endsWith(x);
+}
+
+const pasan = [];
+for (const it of entran){
+  let jid = '';
+  try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){}
+  // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.
+  if (jid.indexOf('@g.us') !== -1) continue;
+  if (SOLO_ESTOS.some(n => mismoNumero(jid, n))) pasan.push(it);
+}
+return pasan;
+'@
+# .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
+# interpretaria como grupos con nombre.
+$soloEstosCode = $soloEstosCode.Replace('__SOLO_ESTOS__', $SOLO_ESTOS_JS)
+
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
 $nodes = @(
   [ordered]@{
     parameters = @{ httpMethod = 'POST'; path = 'webhook-whatsapp'; options = @{} }
     id = '75799f35-f979-4b45-9dab-861127bd5f9d'; name = 'Webhook Evolution API'; type = 'n8n-nodes-base.webhook'; typeVersion = 1; position = @(-380,128); webhookId = 'a9ba9382-d166-495a-8309-e13a9d839b06'
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $soloEstosCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-290,-20); id = 'd0e1f2a3-0000-4b00-9000-soloestos0001'; name = 'Solo Estos Numeros'
   },
   [ordered]@{
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.body.data.key.fromMe }}'; value2 = '={{false}}' } ) } }
@@ -942,7 +1008,8 @@ $nodes = @(
 )
 
 $connections = [ordered]@{
-  'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) }
+  'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) }
   'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
   'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
   'Es Imagen?'             = @{ main = (@( ,@( @{ node='Descargar Imagen'; type='main'; index=0 } ) ) + @( ,@( @{ node='Texto Directo'; type='main'; index=0 } ) )) }
