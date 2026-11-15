@@ -22,6 +22,26 @@ $SOLO_ESTOS = @()
 
 $SOLO_ESTOS_JS = "[" + (($SOLO_ESTOS | ForEach-Object { "'" + $_ + "'" }) -join ",") + "]"
 
+# ============================================================================
+#   SOLO ATENDER A CLIENTES CARGADOS   (interruptor)
+# ============================================================================
+#  $false -> el bot le contesta a todo el mundo. Es como trabaja hoy.
+#  $true  -> el bot SOLO le contesta a los numeros cargados en Supabase, en las
+#            tablas clientes_bot_detal y clientes_bot_mayor.
+#
+#  Los numeros se agregan y se quitan DESDE SUPABASE, sin volver a desplegar.
+#  Este interruptor solo decide si la lista se respeta o no, y se deja en $false
+#  mientras se cargan los clientes, para no dejar a nadie sin atender a medio
+#  camino. Cuando ya estan todos cargados, se pone en $true y se despliega.
+#
+#  RED DE SEGURIDAD: aun con $true, si las tablas estan VACIAS o Supabase falla,
+#  el bot le contesta a TODOS igual. Un problema de base de datos no puede dejar
+#  al negocio sin atender.
+# ============================================================================
+$MODO_SOLO_CLIENTES = $false
+
+$MODO_SOLO_CLIENTES_JS = $(if ($MODO_SOLO_CLIENTES) { 'true' } else { 'false' })
+
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
 $mainCode = @'
 // === JK Remesas - Procesamiento de tasas (espejo de la app JK Conversor) ===
@@ -712,21 +732,39 @@ return [{ json: { alerta: texto, numeroCliente: numero } }];
 
 # ===================== CODIGO: SOLO ESTOS NUMEROS (filtro de pruebas) =====================
 $soloEstosCode = @'
-// Deja pasar el mensaje solo si viene de uno de los numeros de la lista.
-// La lista se edita en build_v12.ps1 (variable $SOLO_ESTOS) y se vuelve a desplegar.
+// ===== A QUIEN LE CONTESTA EL BOT =====
+// Hay dos formas de limitarlo, y mandan en este orden:
 //
-//   Lista VACIA -> pasa todo, el bot le responde a todo el mundo (lo normal).
-//   Con numeros -> solo pasan esos. El resto se descarta JUSTO AQUI, antes de
-//                  transcribir audios o leer imagenes con la IA, que cuesta plata.
+//   1) $SOLO_ESTOS, la lista escrita en build_v12.ps1. Si tiene algo, SOLO pasan
+//      esos numeros y ni se mira Supabase. Es el modo para probar.
+//
+//   2) $MODO_SOLO_CLIENTES. Si esta prendido, solo pasan los numeros cargados en
+//      las tablas clientes_bot_detal y clientes_bot_mayor de Supabase. Esos se
+//      agregan y se quitan desde Supabase, sin volver a desplegar el bot.
+//
+// Si no hay ninguna de las dos, el bot le contesta a todo el mundo (lo normal).
+//
+// Lo que no pasa se descarta JUSTO AQUI, antes de transcribir audios o leer
+// imagenes con la IA, que es lo que cuesta plata.
+//
+// RED DE SEGURIDAD: con el modo prendido, si las tablas vienen VACIAS o Supabase
+// falla, el bot le contesta a TODOS igual. Es a proposito: un problema de base de
+// datos no puede dejar al negocio sin atender. Es mejor contestar de mas que
+// quedarse mudo sin que nadie se entere.
 const SOLO_ESTOS = __SOLO_ESTOS__;
+const MODO_SOLO_CLIENTES = __MODO_SOLO_CLIENTES__;
 
-const entran = $input.all();
-if (!SOLO_ESTOS.length) return entran;
+// OJO: el mensaje NO viene en $input. Antes de este nodo hay dos consultas a Supabase, y un
+// nodo de Supabase devuelve LAS FILAS DE LA TABLA: eso es lo que trae $input aca. El mensaje
+// de WhatsApp hay que ir a buscarlo al webhook.
+let entran = [];
+try { entran = $('Webhook Evolution API').all(); } catch(e){ entran = $input.all(); }
 
 // Compara dos numeros por sus digitos. El "termina en" aguanta que el numero este
-// escrito con o sin codigo de pais, pero se exigen 8 digitos de cada lado: sin ese
-// minimo, un numero corto mal escrito (ej. "0380") dejaria pasar a cualquier cliente
-// cuyo telefono termine igual.
+// escrito con o sin codigo de pais, con +, con espacios o con guiones: por eso los
+// numeros se pueden cargar en Supabase como sea, sin un formato obligatorio.
+// Se exigen 8 digitos de cada lado: sin ese minimo, un numero corto mal cargado
+// (ej. "0380") dejaria pasar a cualquier cliente cuyo telefono termine igual.
 function mismoNumero(a, b){
   const x = String(a || '').replace(/\D/g, '');
   const y = String(b || '').replace(/\D/g, '');
@@ -736,18 +774,42 @@ function mismoNumero(a, b){
   return x.endsWith(y) || y.endsWith(x);
 }
 
+// Saca los numeros de una tabla de Supabase. Devuelve null si NO se pudo leer
+// (nodo caido, credencial mala, tabla que no existe), que es distinto de que la
+// tabla este vacia: null significa "no se", y ahi se contesta a todos.
+function numerosDe(nodo){
+  let items;
+  try { items = $(nodo).all(); } catch(e){ return null; }
+  if (items.some(it => it && it.json && it.json.error !== undefined)) return null;
+  return items
+    .filter(it => it && it.json && it.json.whatsapp && it.json.activo !== false)
+    .map(it => String(it.json.whatsapp));
+}
+
+let permitidos = [];
+if (SOLO_ESTOS.length){
+  permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo
+} else if (MODO_SOLO_CLIENTES){
+  const detal = numerosDe('Clientes Detal Permitidos');
+  const mayor = numerosDe('Clientes Mayor Permitidos');
+  if (detal === null || mayor === null) return entran;   // no se pudo leer -> pasa todo
+  permitidos = detal.concat(mayor);
+}
+if (!permitidos.length) return entran;           // sin lista -> pasa todo
+
 const pasan = [];
 for (const it of entran){
   let jid = '';
   try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){}
   // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.
   if (jid.indexOf('@g.us') !== -1) continue;
-  if (SOLO_ESTOS.some(n => mismoNumero(jid, n))) pasan.push(it);
+  if (permitidos.some(n => mismoNumero(jid, n))) pasan.push(it);
 }
 return pasan;
 '@
 # .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
 # interpretaria como grupos con nombre.
+$soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
 $soloEstosCode = $soloEstosCode.Replace('__SOLO_ESTOS__', $SOLO_ESTOS_JS)
 
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
@@ -756,6 +818,26 @@ $nodes = @(
   [ordered]@{
     parameters = @{ httpMethod = 'POST'; path = 'webhook-whatsapp'; options = @{} }
     id = '75799f35-f979-4b45-9dab-861127bd5f9d'; name = 'Webhook Evolution API'; type = 'n8n-nodes-base.webhook'; typeVersion = 1; position = @(-380,128); webhookId = 'a9ba9382-d166-495a-8309-e13a9d839b06'
+  },
+  [ordered]@{
+    # Numeros de clientes DETAL autorizados. Se leen enteros y se comparan por digitos en el
+    # nodo "Solo Estos Numeros", asi el numero se puede cargar con +, con espacios o sin
+    # codigo de pais sin que deje de reconocerse.
+    # Si falla, el nodo siguiente lo detecta y le contesta a todos (nunca deja al bot mudo).
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'clientes_bot_detal'; returnAll = $true }
+    executeOnce = $true
+    id = 'd0e1f2a3-0000-4b00-9000-cliesdetal001'; name = 'Clientes Detal Permitidos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-520,-160)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # Lo mismo para los clientes MAYOR. Por ahora solo decide a quien le contesta el bot:
+    # NO cambia la tarifa. La tarifa mayor la sigue dando perfiles_mayor, como siempre.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'clientes_bot_mayor'; returnAll = $true }
+    executeOnce = $true
+    id = 'd0e1f2a3-0000-4b00-9000-cliesmayor001'; name = 'Clientes Mayor Permitidos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-380,-160)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
@@ -1008,7 +1090,9 @@ $nodes = @(
 )
 
 $connections = [ordered]@{
-  'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Clientes Detal Permitidos'; type='main'; index=0 } ) ) }
+  'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Clientes Mayor Permitidos'; type='main'; index=0 } ) ) }
+  'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
   'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) }
   'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
   'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
