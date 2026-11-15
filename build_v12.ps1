@@ -83,6 +83,14 @@ if (!esMayorista) {
     esMayorista = filasMayor.some(it => it.json && (it.json.id || it.json.whatsapp));
   } catch(e) {}
 }
+// La tabla en la que Kelvin lo cargo MANDA sobre perfiles_mayor: clientes_bot_mayor da
+// tarifa mayor y clientes_bot_detal da detal, asi las dos listas funcionan por separado.
+// Si no esta en ninguna (filtro apagado, o Supabase caido) queda lo de arriba, como antes.
+let tarifaCargada = '';
+try { tarifaCargada = String($('Solo Estos Numeros').first().json.tarifaCargada || ''); } catch(e){}
+if (tarifaCargada === 'mayor') esMayorista = true;
+else if (tarifaCargada === 'detal') esMayorista = false;
+
 // Admin (Supabase perfiles_detal role='admin'): puede fijar su propia tarifa con "modo mayor"/"modo detal"
 // (ver nodo "Detectar Comando Admin"). Mientras no elija, ve tarifa detal por defecto.
 let esAdminSender = false;
@@ -817,11 +825,34 @@ function nombreCargado(jid){
   return '';
 }
 
+// De que tabla salio el cliente: eso decide su tarifa.
+//   clientes_bot_mayor -> mayor   |   clientes_bot_detal -> detal
+// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente
+// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.
+function tarifaCargada(jid){
+  let enDetal = false, enMayor = false;
+  for (const [nodo, cual] of [['Clientes Detal Permitidos','detal'], ['Clientes Mayor Permitidos','mayor']]){
+    let items;
+    try { items = $(nodo).all(); } catch(e){ continue; }
+    for (const it of items){
+      const f = (it && it.json) || {};
+      if (f.whatsapp && f.activo !== false && mismoNumero(jid, f.whatsapp)){
+        if (cual === 'detal') enDetal = true; else enMayor = true;
+      }
+    }
+  }
+  if (enDetal) return 'detal';
+  if (enMayor) return 'mayor';
+  return '';
+}
+
 function conNombre(it){
   let jid = '';
   try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){ return it; }
   const n = nombreCargado(jid);
   if (n) it.json.nombreCargado = n;
+  const t = tarifaCargada(jid);
+  if (t) it.json.tarifaCargada = t;
   return it;
 }
 

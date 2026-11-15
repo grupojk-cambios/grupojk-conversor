@@ -63,9 +63,10 @@ function correr(lista, modo, jids, tablas) {
   const $input = { all: () => filasQueLleganPorInput.map(json => ({ json })) };
 
   const salida = new Function('$input', '$', js)($input, $);
-  salida.nombres = salida.map(it => it.json.nombreCargado || '');
-  return Object.assign(salida.map(it => it.json.body.data.key.remoteJid),
-                       { nombres: salida.map(it => it.json.nombreCargado || '') });
+  return Object.assign(salida.map(it => it.json.body.data.key.remoteJid), {
+    nombres:  salida.map(it => it.json.nombreCargado  || ''),
+    tarifas:  salida.map(it => it.json.tarifaCargada  || '')
+  });
 }
 
 const KELVIN  = '593961230380@s.whatsapp.net';
@@ -195,7 +196,33 @@ console.log('=== 9) El nombre cargado viaja pegado al mensaje ===');
 }
 
 console.log('');
-console.log('=== 10) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 10) Cada tabla da su tarifa ===');
+{
+  // clientes_bot_mayor -> tarifa mayor | clientes_bot_detal -> tarifa detal.
+  const r = correr([], true, [KELVIN, CLIENTE], {
+    detal: [{ whatsapp: '593961230380', nombre: 'Kelvin' }],
+    mayor: [{ whatsapp: '584121234567', nombre: 'Jose' }]
+  });
+  chk(r.tarifas[0] === 'detal', 'el de clientes_bot_detal -> detal', '-> "' + r.tarifas[0] + '"');
+  chk(r.tarifas[1] === 'mayor', 'el de clientes_bot_mayor -> mayor', '-> "' + r.tarifas[1] + '"');
+
+  // Cargado por error en las DOS: gana detal. Darle tarifa de mayorista a un cliente de
+  // detal cuesta plata; al reves solo es un reclamo que se corrige.
+  const r2 = correr([], true, [KELVIN], {
+    detal: [{ whatsapp: '593961230380' }],
+    mayor: [{ whatsapp: '593961230380' }]
+  });
+  chk(r2.tarifas[0] === 'detal', 'cargado en las dos -> gana detal', '-> "' + r2.tarifas[0] + '"');
+
+  // Apagado con activo=false no deberia fijar tarifa.
+  const r3 = correr([], false, [KELVIN], {
+    detal: [], mayor: [{ whatsapp: '593961230380', activo: false }]
+  });
+  chk(r3.tarifas[0] === '', 'un numero apagado no fija tarifa', '-> "' + r3.tarifas[0] + '"');
+}
+
+console.log('');
+console.log('=== 11) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];
