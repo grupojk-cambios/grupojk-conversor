@@ -75,12 +75,22 @@ const GRUPO   = '120363291497664389@g.us';
 const TODOS   = [KELVIN, CLIENTE, OTRO, GRUPO];
 const VACIAS  = { detal: [], mayor: [] };
 
-console.log('=== 1) LO MAS IMPORTANTE: el bot no se queda mudo ===');
+console.log('=== 1) Tablas vacias: NO le contesta a nadie (pedido de Kelvin) ===');
 {
+  // Kelvin pidio expresamente que el bot solo le responda a quien el vaya registrando.
+  // Con el modo prendido y la tabla vacia, no pasa nadie. Es distinto de no poder LEER
+  // la tabla: eso se prueba abajo y ahi si se contesta a todos.
+  chk(correr([], true, TODOS, VACIAS).length === 0,
+      'modo prendido y tablas vacias -> no pasa nadie', '-> ' + correr([], true, TODOS, VACIAS).length);
   chk(correr([], false, TODOS, VACIAS).length === 4,
-      'sin lista y sin modo -> contesta a todos');
-  chk(correr([], true, TODOS, VACIAS).length === 4,
-      'modo prendido pero tablas VACIAS -> contesta a todos');
+      'con el modo APAGADO si contesta a todos');
+}
+
+console.log('');
+console.log('=== 2) Si Supabase no se puede LEER, contesta a todos ===');
+{
+  // Una falla de base de datos no puede dejar al negocio entero sin atender, y encima
+  // en silencio. Esto es distinto de la tabla vacia de arriba.
   chk(correr([], true, TODOS, { detal: 'CAIDA', mayor: [] }).length === 4,
       'modo prendido y Supabase CAIDO -> contesta a todos');
   chk(correr([], true, TODOS, { detal: [], mayor: 'CAIDA' }).length === 4,
@@ -90,7 +100,7 @@ console.log('=== 1) LO MAS IMPORTANTE: el bot no se queda mudo ===');
 }
 
 console.log('');
-console.log('=== 2) Los numeros salen de Supabase ===');
+console.log('=== 3) Los numeros salen de Supabase ===');
 {
   const tablas = {
     detal: [{ whatsapp: '593961230380', nombre: 'Kelvin' }],
@@ -104,7 +114,7 @@ console.log('=== 2) Los numeros salen de Supabase ===');
 }
 
 console.log('');
-console.log('=== 3) El numero se puede cargar como sea ===');
+console.log('=== 4) El numero se puede cargar como sea ===');
 {
   const formas = ['+593961230380', '593 961 230 380', '+593-96-123-0380', '961230380'];
   for (const f of formas){
@@ -114,7 +124,7 @@ console.log('=== 3) El numero se puede cargar como sea ===');
 }
 
 console.log('');
-console.log('=== 4) La columna "activo" apaga un numero sin borrarlo ===');
+console.log('=== 5) La columna "activo" apaga un numero sin borrarlo ===');
 {
   const r = correr([], true, TODOS, {
     detal: [{ whatsapp: '593961230380', activo: false }, { whatsapp: '584121234567', activo: true }],
@@ -129,7 +139,7 @@ console.log('=== 4) La columna "activo" apaga un numero sin borrarlo ===');
 }
 
 console.log('');
-console.log('=== 5) La lista del codigo le gana a Supabase (modo prueba) ===');
+console.log('=== 6) La lista del codigo le gana a Supabase (modo prueba) ===');
 {
   const tablas = { detal: [{ whatsapp: '584121234567' }], mayor: [] };
   const r = correr(['593961230380'], true, TODOS, tablas);
@@ -143,7 +153,7 @@ console.log('=== 5) La lista del codigo le gana a Supabase (modo prueba) ===');
 }
 
 console.log('');
-console.log('=== 6) Un numero corto mal cargado NO abre la puerta a todos ===');
+console.log('=== 7) Un numero corto mal cargado NO abre la puerta a todos ===');
 {
   const r = correr([], true, [KELVIN, '584120000380@s.whatsapp.net'],
                    { detal: [{ whatsapp: '0380' }], mayor: [] });
@@ -151,17 +161,19 @@ console.log('=== 6) Un numero corto mal cargado NO abre la puerta a todos ===');
 }
 
 console.log('');
-console.log('=== 7) Filas basura no revientan el nodo ===');
+console.log('=== 8) Filas basura no revientan el nodo ===');
 {
   const r = correr([], true, [KELVIN], {
     detal: [{}, { whatsapp: '' }, { whatsapp: null }, { nombre: 'sin numero' }],
     mayor: []
   });
-  chk(r.length === 1, 'filas sin numero se ignoran y pasa todo (lista vacia)', '-> ' + r.length);
+  // Las filas sin numero se ignoran. Como no queda ningun numero valido, no pasa nadie:
+  // una tabla llena de filas rotas cuenta igual que una tabla vacia.
+  chk(r.length === 0, 'filas sin numero se ignoran y no pasa nadie', '-> ' + r.length);
 }
 
 console.log('');
-console.log('=== 8) El nombre cargado viaja pegado al mensaje ===');
+console.log('=== 9) El nombre cargado viaja pegado al mensaje ===');
 {
   // El agente lo usa para saludar por el nombre que Kelvin escribio en Supabase.
   const tablas = {
@@ -183,7 +195,7 @@ console.log('=== 8) El nombre cargado viaja pegado al mensaje ===');
 }
 
 console.log('');
-console.log('=== 9) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 10) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];

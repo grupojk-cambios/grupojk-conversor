@@ -825,16 +825,22 @@ function conNombre(it){
   return it;
 }
 
-let permitidos = [];
+// null = no hay ningun filtro prendido -> pasa todo.
+// [] = el filtro SI esta prendido pero no hay nadie cargado -> no pasa nadie.
+let permitidos = null;
 if (SOLO_ESTOS.length){
   permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo
 } else if (MODO_SOLO_CLIENTES){
   const detal = numerosDe('Clientes Detal Permitidos');
   const mayor = numerosDe('Clientes Mayor Permitidos');
-  if (detal === null || mayor === null) return entran.map(conNombre);   // no se pudo leer -> pasa todo
+  // Si NO SE PUDO LEER Supabase (caido, credencial mala) se le contesta a todos. Ojo: esto
+  // es distinto de que las tablas esten vacias. Vacias = Kelvin todavia no cargo a nadie, y
+  // ahi no pasa nadie, que es lo que el pidio. No poder leer = no sabemos quien esta
+  // autorizado, y dejar al negocio entero sin atender por una falla de base de datos es peor.
+  if (detal === null || mayor === null) return entran.map(conNombre);
   permitidos = detal.concat(mayor);
 }
-if (!permitidos.length) return entran.map(conNombre);   // sin lista -> pasa todo
+if (permitidos === null) return entran.map(conNombre);   // ningun filtro prendido -> pasa todo
 
 const pasan = [];
 for (const it of entran){
