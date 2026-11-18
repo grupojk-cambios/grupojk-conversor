@@ -217,7 +217,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -252,8 +252,8 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },
@@ -345,7 +345,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -380,8 +380,8 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },
@@ -938,7 +938,7 @@
                   },
                   {
                       "parameters":  {
-                                         "instanceName":  "bot-JK-prueba-operador1",
+                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
                                          "messageText":  "={{ $json.output }}",
                                          "options_message":  {
 
@@ -979,7 +979,7 @@
                   },
                   {
                       "parameters":  {
-                                         "instanceName":  "bot-JK-prueba-operador1",
+                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
                                          "messageText":  "={{ $json.alerta }}",
                                          "options_message":  {
 
@@ -1089,7 +1089,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1124,14 +1124,14 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendMedia/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1166,14 +1166,14 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendSticker/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1208,8 +1208,8 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },
@@ -1228,7 +1228,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendText/bot-JK-prueba-operador1",
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20CAMBIOS%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1263,8 +1263,8 @@
                       "alwaysOutputData":  true,
                       "credentials":  {
                                           "httpHeaderAuth":  {
-                                                                 "id":  "FKESFx8q5vHdJoM4",
-                                                                 "name":  "Evolution apikey header para operador 1"
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
                                                              }
                                       }
                   },

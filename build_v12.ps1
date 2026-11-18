@@ -1,6 +1,29 @@
 ﻿$ErrorActionPreference = "Stop"
 
 # ============================================================================
+#   DE QUE NUMERO DE WHATSAPP SALE EL BOT  (instancia de Evolution)
+# ============================================================================
+#  Hoy: "BOT CAMBIOS JK Kelvin"  (593961230380, el numero de Kelvin)
+#  Antes: "bot-JK-prueba-operador1"
+#
+#  Para moverlo a otra instancia hay que tocar TRES cosas juntas. Si se cambia
+#  una sola, el bot recibe por un lado y responde por otro, o Evolution rechaza
+#  todo con error de credencial:
+#
+#   1. Las 6 URLs http://evolution-api:8080/.../<INSTANCIA>
+#      OJO: aca el nombre va CODIFICADO, los espacios como %20.
+#   2. Los 2 nodos de Evolution (parametro instanceName), con el nombre normal.
+#   3. La credencial httpHeaderAuth de esas 6 URLs: cada instancia tiene SU
+#      propia apikey, la de otra instancia no sirve.
+#      Hoy: 'Evolution apikey Kelvin 0380'
+#
+#  Y aparte, en el panel de Evolution, la instancia nueva necesita el webhook
+#  prendido apuntando a:
+#      https://cambios-jk-remesas-n8n.wh5rmr.easypanel.host/webhook/webhook-whatsapp
+#  con el evento MESSAGES_UPSERT, y el de la instancia vieja apagado.
+# ============================================================================
+
+# ============================================================================
 #   SOLO RESPONDERLE A ESTOS NUMEROS   (modo pruebas)
 # ============================================================================
 #  VACIA  -> el bot le responde A TODO EL MUNDO. Asi es como trabaja normalmente.
@@ -959,10 +982,10 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-60,220); id = 'e1f2a3b4-c5d6-4071-9899-txtdirecto01'; name = 'Texto Directo'
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
     id = 'f2a3b4c5-d6e7-4082-9900-getbase64001'; name = 'Descargar Audio'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(120,-60)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $toBinarioCode }
@@ -983,10 +1006,10 @@ $nodes = @(
     id = 'd1e2f3a4-b5c6-4170-9080-esimagen0001'; name = 'Es Imagen?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(-60,380)
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
     id = 'f3a4b5c6-d7e8-4181-9191-getimg000001'; name = 'Descargar Imagen'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(120,460)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $toBinarioImgCode }
@@ -1116,7 +1139,7 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2180,128); id = 'cc99dd00-ee11-4727-9ccc-separarresp1'; name = 'Separar Respuesta'
   },
   [ordered]@{
-    parameters = @{ resource = 'messages-api'; instanceName = 'bot-JK-prueba-operador1'; remoteJid = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2320,128); id = '02d01e05-a9f8-4caa-a02e-37a660aa662c'; name = 'Enviar texto a WhatsApp'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
@@ -1126,7 +1149,7 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,320); id = 'aa11bb22-cc33-4d44-9e55-detasesor001'; name = 'Detectar Asesor'
   },
   [ordered]@{
-    parameters = @{ resource = 'messages-api'; instanceName = 'bot-JK-prueba-operador1'; remoteJid = '593961230380@s.whatsapp.net'; messageText = '={{ $json.alerta }}'; options_message = @{} }
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = '593961230380@s.whatsapp.net'; messageText = '={{ $json.alerta }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2420,320); id = 'bb22cc33-dd44-4e55-9f66-notasesor001'; name = 'Notificar Asesor'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
@@ -1150,32 +1173,32 @@ $nodes = @(
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2380,220); id = 'bb22cc33-dd44-4271-9bbb-redisimg0001'; name = 'Redis Leer ID Imagen'; credentials = $redisCred
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.imgKeyId }}" } }, "convertToMp4": false }'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.imgKeyId }}" } }, "convertToMp4": false }'; options = @{} }
     id = 'cc33dd44-ee55-4282-9ccc-redownload001'; name = 'Re-descargar Imagen'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2560,220)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "593961230380-1601657528@g.us", mediatype: "image", mimetype: ($json.mimetype || "image/jpeg"), media: $json.base64, caption: ("Cliente: " + $("Detectar Aprobación").item.json.nombre) }) }}'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "593961230380-1601657528@g.us", mediatype: "image", mimetype: ($json.mimetype || "image/jpeg"), media: $json.base64, caption: ("Cliente: " + $("Detectar Aprobación").item.json.nombre) }) }}'; options = @{} }
     id = 'dd44ee55-ff66-4393-9ddd-sendimg0001'; name = 'Enviar Imagen Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2740,220)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Detectar Aprobación").item.json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-aprobado.webp" }'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Detectar Aprobación").item.json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-aprobado.webp" }'; options = @{} }
     id = 'ee55ff66-aa77-4404-9eee-sendsticker01'; name = 'Enviar Sticker Cliente'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2920,220)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $separarCuentasCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2920,400); id = 'ff66aa77-bb88-4505-9fff-separarctas1'; name = 'Separar Cuentas'
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/bot-JK-prueba-operador1'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "593961230380-1601657528@g.us", text: $json.cuenta }) }}'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20CAMBIOS%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "593961230380-1601657528@g.us", text: $json.cuenta }) }}'; options = @{} }
     id = 'aa77bb88-cc99-4616-9aaa-sendcuenta01'; name = 'Enviar Cuenta Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3100,400)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = 'FKESFx8q5vHdJoM4'; name = 'Evolution apikey header para operador 1' } }
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $registrarOperacionCode }
