@@ -41,9 +41,13 @@ function correr(lista, modo, jids, tablas) {
   const t = tablas || {};
   const items = jids.map(j => ({ json: { body: { data: { key: { remoteJid: j } } } } }));
 
+  // Por defecto las tablas de la app van vacias: la mayoria de las pruebas son de las
+  // tablas que carga Kelvin a mano.
   const porNodo = {
     'Clientes Detal Permitidos': t.detal,
-    'Clientes Mayor Permitidos': t.mayor
+    'Clientes Mayor Permitidos': t.mayor,
+    'Perfiles Detal App':        (t.appDetal === undefined ? [] : t.appDetal),
+    'Perfiles Mayor App':        (t.appMayor === undefined ? [] : t.appMayor)
   };
   const $ = (n) => {
     // El mensaje de WhatsApp se busca en el webhook, no en $input.
@@ -59,7 +63,7 @@ function correr(lista, modo, jids, tablas) {
   // IMPORTANTE: asi es como llega de verdad. Justo antes de este nodo hay dos consultas a
   // Supabase, y un nodo de Supabase devuelve LAS FILAS DE LA TABLA: eso es lo que trae
   // $input. Si el nodo leyera de ahi, creeria que el mensaje es una fila de la tabla.
-  const filasQueLleganPorInput = (t.mayor && t.mayor !== 'CAIDA') ? t.mayor : [{}];
+  const filasQueLleganPorInput = (t.appMayor && t.appMayor !== 'CAIDA') ? t.appMayor : [{}];
   const $input = { all: () => filasQueLleganPorInput.map(json => ({ json })) };
 
   const salida = new Function('$input', '$', js)($input, $);
@@ -222,7 +226,32 @@ console.log('=== 10) Cada tabla da su tarifa ===');
 }
 
 console.log('');
-console.log('=== 11) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 11) Los registrados en la APP tambien entran ===');
+{
+  // Kelvin no tiene que cargar a mano a quien ya se registro en la app. Esto se agrego
+  // despues de que su propio numero, que SI estaba en perfiles_detal, quedara afuera.
+  const r = correr([], true, [KELVIN, CLIENTE, OTRO], {
+    detal: [], mayor: [],
+    appDetal: [{ whatsapp: '+593961230380' }],
+    appMayor: [{ whatsapp: '584121234567' }]
+  });
+  chk(r.length === 2, 'entran los dos de la app', '-> ' + r.length);
+  chk(r.indexOf(OTRO) === -1, 'el que no esta en ningun lado sigue afuera');
+
+  // Estar en la app NO les fija tarifa: eso lo decide perfiles_mayor mas adelante,
+  // igual que siempre.
+  chk(r.tarifas[0] === '' && r.tarifas[1] === '',
+      'estar en la app no fija tarifa', '-> "' + r.tarifas[0] + '" / "' + r.tarifas[1] + '"');
+
+  // Si una de las cuatro consultas falla, se abre la puerta a todos.
+  const r2 = correr([], true, [KELVIN, CLIENTE, OTRO], {
+    detal: [], mayor: [], appDetal: 'CAIDA', appMayor: []
+  });
+  chk(r2.length === 3, 'si falla la consulta a la app -> contesta a todos', '-> ' + r2.length);
+}
+
+console.log('');
+console.log('=== 12) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];

@@ -868,8 +868,13 @@ if (SOLO_ESTOS.length){
   // es distinto de que las tablas esten vacias. Vacias = Kelvin todavia no cargo a nadie, y
   // ahi no pasa nadie, que es lo que el pidio. No poder leer = no sabemos quien esta
   // autorizado, y dejar al negocio entero sin atender por una falla de base de datos es peor.
-  if (detal === null || mayor === null) return entran.map(conNombre);
-  permitidos = detal.concat(mayor);
+  // Los que ya se registraron en la APP tambien entran, sin cargarlos a mano.
+  const appDetal = numerosDe('Perfiles Detal App');
+  const appMayor = numerosDe('Perfiles Mayor App');
+  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien
+  // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.
+  if (detal === null || mayor === null || appDetal === null || appMayor === null) return entran.map(conNombre);
+  permitidos = detal.concat(mayor, appDetal, appMayor);
 }
 if (permitidos === null) return entran.map(conNombre);   // ningun filtro prendido -> pasa todo
 
@@ -912,6 +917,24 @@ $nodes = @(
     parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'clientes_bot_mayor'; returnAll = $true }
     executeOnce = $true
     id = 'd0e1f2a3-0000-4b00-9000-cliesmayor001'; name = 'Clientes Mayor Permitidos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-380,-160)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # Clientes que YA se registraron en la app (tabla perfiles_detal). Tambien les abre la
+    # puerta, para no tener que cargarlos a mano. NO decide tarifa: eso lo sigue haciendo
+    # "Consultar Mayorista" mas adelante.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_detal'; returnAll = $false; limit = 5; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'').slice(-9) }}" }
+    executeOnce = $true
+    id = 'd0e1f2a3-0000-4b00-9000-perfdetalapp1'; name = 'Perfiles Detal App'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-520,-300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # Lo mismo con los mayoristas registrados en la app (tabla perfiles_mayor).
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_mayor'; returnAll = $false; limit = 5; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'').slice(-9) }}" }
+    executeOnce = $true
+    id = 'd0e1f2a3-0000-4b00-9000-perfmayorapp1'; name = 'Perfiles Mayor App'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-380,-300)
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
@@ -1168,7 +1191,9 @@ $nodes = @(
 $connections = [ordered]@{
   'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Clientes Detal Permitidos'; type='main'; index=0 } ) ) }
   'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Clientes Mayor Permitidos'; type='main'; index=0 } ) ) }
-  'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
+  'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Perfiles Mayor App'; type='main'; index=0 } ) ) }
+  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
   'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) }
   'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
   'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
