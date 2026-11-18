@@ -1149,7 +1149,11 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,320); id = 'aa11bb22-cc33-4d44-9e55-detasesor001'; name = 'Detectar Asesor'
   },
   [ordered]@{
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = '593961230380@s.whatsapp.net'; messageText = '={{ $json.alerta }}'; options_message = @{} }
+    # El aviso de "este cliente quiere un asesor" va al GRUPO de operaciones, el mismo al que
+    # el bot ya manda los comprobantes y las cuentas. Antes iba al numero de Kelvin.
+    # Para mandarlo a otro grupo se cambia este remoteJid por el id del otro grupo (termina
+    # en @g.us). Para que vuelva a ir a una persona, se pone <numero>@s.whatsapp.net.
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = '593961230380-1601657528@g.us'; messageText = '={{ $json.alerta }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2420,320); id = 'bb22cc33-dd44-4e55-9f66-notasesor001'; name = 'Notificar Asesor'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
