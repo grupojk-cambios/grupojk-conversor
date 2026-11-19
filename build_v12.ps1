@@ -1179,12 +1179,12 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,320); id = 'aa11bb22-cc33-4d44-9e55-detasesor001'; name = 'Detectar Asesor'
   },
   [ordered]@{
-    # El aviso de "este cliente quiere un asesor" va al numero de Kelvin.
-    # PENDIENTE: Kelvin va a crear un grupo aparte solo para estos avisos. Cuando exista,
-    # aca se pone el id de ese grupo (termina en @g.us) en vez del numero.
-    # NO va al grupo de operaciones a proposito: ahi llegan comprobantes y cuentas, y el
-    # quiere los avisos de asesor separados.
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = '593961230380@s.whatsapp.net'; messageText = '={{ $json.alerta }}'; options_message = @{} }
+    # El aviso de "este cliente quiere un asesor" va al grupo "Notificaciones Clientes",
+    # creado el 18/11 solo para esto. NO al grupo de operaciones, donde llegan comprobantes
+    # y cuentas: Kelvin los quiere separados.
+    # Para mandarlo a otro lado se cambia este remoteJid: otro grupo es otro id terminado
+    # en @g.us, y una persona es <numero>@s.whatsapp.net.
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = '120363413942097019@g.us'; messageText = '={{ $json.alerta }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2420,320); id = 'bb22cc33-dd44-4e55-9f66-notasesor001'; name = 'Notificar Asesor'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
