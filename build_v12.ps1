@@ -94,6 +94,23 @@ $MINUTOS_PAUSA = 60
 $HORAS_PAUSA_MANUAL = 12
 $GRUPO_AVISOS = '120363413942097019@g.us'   # grupo "Notificaciones Clientes"
 
+# Cada cuantos minutos, como MUCHO, se avisa de un mismo chat en pausa. Sin esto, un cliente
+# que escribe seis veces seguidas genera seis avisos y el grupo se vuelve ruido.
+$MINUTOS_ENTRE_AVISOS = 15
+
+# Solo se avisa si el mensaje del cliente menciona algo del negocio. Si esta conversando de
+# cosas personales con Kelvin, no hace falta molestar al grupo.
+# Se comparan sin mayusculas y sin acentos, y basta con que la palabra APAREZCA.
+# Para agregar o quitar palabras se edita esta lista y se vuelve a desplegar.
+$PALABRAS_AVISO = @(
+  'tasa','tasas','cambio','cambiar','precio','cuanto','cuesta','vale',
+  'cuenta','cuentas','banco','bancos','transferencia','deposito','pago','pagar','pague',
+  'enviar','envio','mandar','mando','recibir','recibe','remesa','remesas','giro',
+  'dolar','dolares','usdt','zelle','binance','bolivares','bolivar','pesos','soles','reales',
+  'euro','euros','efectivo','comprobante','disponible','saldo'
+)
+$PALABRAS_AVISO_JS = '[' + (($PALABRAS_AVISO | ForEach-Object { "'" + $_ + "'" }) -join ',') + ']'
+
 $MODO_SOLO_CLIENTES_JS = $(if ($MODO_SOLO_CLIENTES) { 'true' } else { 'false' })
 
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
@@ -827,6 +844,8 @@ const MODO_SOLO_CLIENTES = __MODO_SOLO_CLIENTES__;
 const MINUTOS_VIEJO = __MINUTOS_VIEJO__;
 const MINUTOS_PAUSA = __MINUTOS_PAUSA__;
 const HORAS_PAUSA_MANUAL = __HORAS_PAUSA_MANUAL__;
+const MINUTOS_ENTRE_AVISOS = __MINUTOS_ENTRE_AVISOS__;
+const PALABRAS_AVISO = __PALABRAS_AVISO__;
 
 // OJO: el mensaje NO viene en $input. Antes de este nodo hay varias consultas a Supabase y
 // a Redis, y esos nodos devuelven SUS filas: eso es lo que trae $input aca. El mensaje de
@@ -988,12 +1007,25 @@ if (!pasan.length) return [];
 let enPausa = false;
 try { enPausa = !!$('Redis Leer Pausa').first().json.pausaBot; } catch(e){}
 if (enPausa && !esGrupo){
+  // No se avisa de TODO lo que escriba. Si esta conversando de cosas personales con Kelvin,
+  // el grupo no tiene por que enterarse. Solo si menciona algo del negocio.
+  const limpio = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const esDelNegocio = PALABRAS_AVISO.some(w => limpio.indexOf(w) !== -1);
+  if (!esDelNegocio) return [];
+
+  // Y aunque lo sea, se avisa UNA sola vez por rato. Sin esto, un cliente que escribe seis
+  // veces seguidas genera seis avisos.
+  let yaSeAviso = false;
+  try { yaSeAviso = !!$('Redis Leer Aviso').first().json.avisoPausa; } catch(e){}
+  if (yaSeAviso) return [];
+
   const quien = String(dat.pushName || '').trim() || jid.split('@')[0];
   const recorte = texto.length > 200 ? (texto.slice(0, 200) + '...') : texto;
   const aviso = 'El bot NO le contesto a ' + quien + ' (+' + jid.split('@')[0] + ')'
     + ' porque estas atendiendo ese chat.\n\nEscribio:\n"' + (recorte || '(sin texto)') + '"'
     + '\n\nSi quieres que el bot siga atendiendolo, escribe "bot on" en ese chat.';
-  return [{ json: { accionPausa: 'avisar', jid: jid, aviso: aviso } }];
+  return [{ json: { accionPausa: 'avisar', jid: jid, aviso: aviso,
+                    claveAviso: 'avisoPausa:' + jid, segundosAviso: MINUTOS_ENTRE_AVISOS * 60 } }];
 }
 
 return pasan.map(marcar);
@@ -1004,6 +1036,8 @@ $soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLI
 $soloEstosCode = $soloEstosCode.Replace('__MINUTOS_VIEJO__', [string]$MINUTOS_MENSAJE_VIEJO)
 $soloEstosCode = $soloEstosCode.Replace('__MINUTOS_PAUSA__', [string]$MINUTOS_PAUSA)
 $soloEstosCode = $soloEstosCode.Replace('__HORAS_PAUSA_MANUAL__', [string]$HORAS_PAUSA_MANUAL)
+$soloEstosCode = $soloEstosCode.Replace('__MINUTOS_ENTRE_AVISOS__', [string]$MINUTOS_ENTRE_AVISOS)
+$soloEstosCode = $soloEstosCode.Replace('__PALABRAS_AVISO__', $PALABRAS_AVISO_JS)
 # .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
 # interpretaria como grupos con nombre.
 $soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
@@ -1064,6 +1098,14 @@ $nodes = @(
     credentials = $redisCred
   },
   [ordered]@{
+    # Ya se aviso de este chat hace poco? Evita seis avisos cuando el cliente manda seis
+    # mensajes seguidos. La clave se borra sola a los $MINUTOS_ENTRE_AVISOS.
+    parameters = @{ operation = 'get'; key = "={{ 'avisoPausa:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; keyType = 'string'; propertyName = 'avisoPausa'; options = @{} }
+    id = 'd0e1f2a3-0000-4b00-9000-leeraviso0001'; name = 'Redis Leer Aviso'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-250,-420)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true; executeOnce = $true
+    credentials = $redisCred
+  },
+  [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-290,-20); id = 'd0e1f2a3-0000-4b00-9000-soloestos0001'; name = 'Solo Estos Numeros'
   },
@@ -1100,6 +1142,15 @@ $nodes = @(
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
     onError = 'continueRegularOutput'
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
+  },
+  [ordered]@{
+    # Deja constancia de que ya se aviso de este chat, para no repetirlo con cada mensaje.
+    # Los datos se leen del nodo del filtro, NO de $json: "Avisar Pausa" devuelve la respuesta
+    # de Evolution y pisa el item.
+    parameters = @{ operation = 'set'; key = "={{ `$('Solo Estos Numeros').first().json.claveAviso }}"; value = '1'; keyType = 'string'; expire = $true; ttl = "={{ `$('Solo Estos Numeros').first().json.segundosAviso }}" }
+    id = 'd0e1f2a3-0000-4b00-9000-marcaraviso01'; name = 'Redis Marcar Aviso'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(260,-60)
+    onError = 'continueRegularOutput'
+    credentials = $redisCred
   },
   [ordered]@{
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.body.data.key.fromMe }}'; value2 = '={{false}}' } ) } }
@@ -1358,7 +1409,9 @@ $connections = [ordered]@{
   'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
   'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Perfiles Mayor App'; type='main'; index=0 } ) ) }
   'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Redis Leer Pausa'; type='main'; index=0 } ) ) }
-  'Redis Leer Pausa'       = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Redis Leer Pausa'       = @{ main = @( ,@( @{ node='Redis Leer Aviso'; type='main'; index=0 } ) ) }
+  'Redis Leer Aviso'       = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Avisar Pausa'           = @{ main = @( ,@( @{ node='Redis Marcar Aviso'; type='main'; index=0 } ) ) }
   'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Router Pausa'; type='main'; index=0 } ) ) }
   'Router Pausa'           = @{ main = (
       @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) +

@@ -58,7 +58,8 @@ function correr(lista, modo, jids, tablas, edadMin, extra) {
     'Clientes Mayor Permitidos': t.mayor,
     'Perfiles Detal App':        (t.appDetal === undefined ? [] : t.appDetal),
     'Perfiles Mayor App':        (t.appMayor === undefined ? [] : t.appMayor),
-    'Redis Leer Pausa':          [ ex.enPausa ? { pausaBot: 'auto' } : {} ]
+    'Redis Leer Pausa':          [ ex.enPausa  ? { pausaBot: 'auto' } : {} ],
+    'Redis Leer Aviso':          [ ex.yaAvisado ? { avisoPausa: '1' }  : {} ]
   };
   const $ = (n) => {
     // El mensaje de WhatsApp se busca en el webhook, no en $input.
@@ -362,7 +363,39 @@ console.log('=== 15) Pausa: el cliente escribe mientras Kelvin atiende ===');
 }
 
 console.log('');
-console.log('=== 16) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 16) Pausa: solo avisa de lo que importa, y una vez ===');
+{
+  const tablas = { detal: [{ whatsapp: '584121234567', nombre: 'Maria' }], mayor: [] };
+  const enPausa = (texto, yaAvisado) => correr([], true, [CLIENTE], tablas, 0,
+                                               { texto, pushName: 'Maria', enPausa: true, yaAvisado });
+
+  // Charla personal: ni contesta ni molesta al grupo.
+  for (const t of ['jajaja', 'ok gracias', 'dale pues', 'buenas noches', 'ya vi']) {
+    chk(enPausa(t).length === 0, 'no avisa por "' + t + '"');
+  }
+
+  // Cosas del negocio: si avisa.
+  for (const t of ['tienes tasa para colombia?', 'pasame la CUENTA', 'cuanto es en dolares',
+                   'quiero enviar a peru', 'me llego el comprobante?']) {
+    chk(enPausa(t).acciones[0] === 'avisar', 'avisa por "' + t + '"');
+  }
+
+  // Sin acentos ni mayusculas tambien.
+  chk(enPausa('¿Cuál es la TASA?').acciones[0] === 'avisar', 'aguanta acentos y mayusculas');
+
+  // Y una sola vez: si ya se aviso hace poco, el resto no molesta.
+  chk(enPausa('tienes tasa?', true).length === 0, 'si ya se aviso, no repite');
+
+  // El aviso lleva los datos para marcar que ya se aviso.
+  const r = enPausa('tienes tasa?');
+  chk(r.items[0].claveAviso === 'avisoPausa:' + CLIENTE, 'lleva la clave del aviso',
+      '-> ' + r.items[0].claveAviso);
+  chk(r.items[0].segundosAviso === 900, 'no repite en 15 minutos',
+      '-> ' + r.items[0].segundosAviso + 's');
+}
+
+console.log('');
+console.log('=== 17) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];
