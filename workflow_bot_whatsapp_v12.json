@@ -127,7 +127,35 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// ===== A QUIEN LE CONTESTA EL BOT =====\n// Hay dos formas de limitarlo, y mandan en este orden:\n//\n//   1) $SOLO_ESTOS, la lista escrita en build_v12.ps1. Si tiene algo, SOLO pasan\n//      esos numeros y ni se mira Supabase. Es el modo para probar.\n//\n//   2) $MODO_SOLO_CLIENTES. Si esta prendido, solo pasan los numeros cargados en\n//      las tablas clientes_bot_detal y clientes_bot_mayor de Supabase. Esos se\n//      agregan y se quitan desde Supabase, sin volver a desplegar el bot.\n//\n// Si no hay ninguna de las dos, el bot le contesta a todo el mundo (lo normal).\n//\n// Lo que no pasa se descarta JUSTO AQUI, antes de transcribir audios o leer\n// imagenes con la IA, que es lo que cuesta plata.\n//\n// RED DE SEGURIDAD: con el modo prendido, si las tablas vienen VACIAS o Supabase\n// falla, el bot le contesta a TODOS igual. Es a proposito: un problema de base de\n// datos no puede dejar al negocio sin atender. Es mejor contestar de mas que\n// quedarse mudo sin que nadie se entere.\nconst SOLO_ESTOS = [];\nconst MODO_SOLO_CLIENTES = true;\n\n// OJO: el mensaje NO viene en $input. Antes de este nodo hay dos consultas a Supabase, y un\n// nodo de Supabase devuelve LAS FILAS DE LA TABLA: eso es lo que trae $input aca. El mensaje\n// de WhatsApp hay que ir a buscarlo al webhook.\nlet entran = [];\ntry { entran = $(\u0027Webhook Evolution API\u0027).all(); } catch(e){ entran = $input.all(); }\n\n// ===== MENSAJES VIEJOS =====\n// Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo\n// pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.\n// Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.\nconst MINUTOS_VIEJO = 20;\nif (MINUTOS_VIEJO \u003e 0){\n  const ahora = Date.now() / 1000;\n  entran = entran.filter(it =\u003e {\n    let ts = 0;\n    try { ts = Number(it.json.body.data.messageTimestamp) || 0; } catch(e){}\n    if (!ts) return true;\n    return ((ahora - ts) / 60) \u003c= MINUTOS_VIEJO;\n  });\n}\nif (!entran.length) return [];\n\n// Compara dos numeros por sus digitos. El \"termina en\" aguanta que el numero este\n// escrito con o sin codigo de pais, con +, con espacios o con guiones: por eso los\n// numeros se pueden cargar en Supabase como sea, sin un formato obligatorio.\n// Se exigen 8 digitos de cada lado: sin ese minimo, un numero corto mal cargado\n// (ej. \"0380\") dejaria pasar a cualquier cliente cuyo telefono termine igual.\nfunction mismoNumero(a, b){\n  const x = String(a || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  const y = String(b || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  if (!x || !y) return false;\n  if (x === y) return true;\n  if (x.length \u003c 8 || y.length \u003c 8) return false;\n  return x.endsWith(y) || y.endsWith(x);\n}\n\n// Saca los numeros de una tabla de Supabase. Devuelve null si NO se pudo leer\n// (nodo caido, credencial mala, tabla que no existe), que es distinto de que la\n// tabla este vacia: null significa \"no se\", y ahi se contesta a todos.\nfunction numerosDe(nodo){\n  let items;\n  try { items = $(nodo).all(); } catch(e){ return null; }\n  if (items.some(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.error !== undefined)) return null;\n  return items\n    .filter(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.whatsapp \u0026\u0026 it.json.activo !== false)\n    .map(it =\u003e String(it.json.whatsapp));\n}\n\n// Busca el nombre que Kelvin le puso al cliente en Supabase. Esto NO decide si pasa o no:\n// se busca igual aunque el filtro este apagado, porque al agente le sirve para saludarlo\n// por su nombre. El nombre viaja pegado al mensaje, en json.nombreCargado.\nfunction nombreCargado(jid){\n  for (const nodo of [\u0027Clientes Detal Permitidos\u0027, \u0027Clientes Mayor Permitidos\u0027]){\n    let items;\n    try { items = $(nodo).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.nombre \u0026\u0026 mismoNumero(jid, f.whatsapp)) return String(f.nombre).trim();\n    }\n  }\n  return \u0027\u0027;\n}\n\n// De que tabla salio el cliente: eso decide su tarifa.\n//   clientes_bot_mayor -\u003e mayor   |   clientes_bot_detal -\u003e detal\n// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente\n// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.\nfunction tarifaCargada(jid){\n  let enDetal = false, enMayor = false;\n  for (const [nodo, cual] of [[\u0027Clientes Detal Permitidos\u0027,\u0027detal\u0027], [\u0027Clientes Mayor Permitidos\u0027,\u0027mayor\u0027]]){\n    let items;\n    try { items = $(nodo).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.activo !== false \u0026\u0026 mismoNumero(jid, f.whatsapp)){\n        if (cual === \u0027detal\u0027) enDetal = true; else enMayor = true;\n      }\n    }\n  }\n  if (enDetal) return \u0027detal\u0027;\n  if (enMayor) return \u0027mayor\u0027;\n  return \u0027\u0027;\n}\n\nfunction conNombre(it){\n  let jid = \u0027\u0027;\n  try { jid = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){ return it; }\n  const n = nombreCargado(jid);\n  if (n) it.json.nombreCargado = n;\n  const t = tarifaCargada(jid);\n  if (t) it.json.tarifaCargada = t;\n  return it;\n}\n\n// null = no hay ningun filtro prendido -\u003e pasa todo.\n// [] = el filtro SI esta prendido pero no hay nadie cargado -\u003e no pasa nadie.\nlet permitidos = null;\nif (SOLO_ESTOS.length){\n  permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo\n} else if (MODO_SOLO_CLIENTES){\n  const detal = numerosDe(\u0027Clientes Detal Permitidos\u0027);\n  const mayor = numerosDe(\u0027Clientes Mayor Permitidos\u0027);\n  // Si NO SE PUDO LEER Supabase (caido, credencial mala) se le contesta a todos. Ojo: esto\n  // es distinto de que las tablas esten vacias. Vacias = Kelvin todavia no cargo a nadie, y\n  // ahi no pasa nadie, que es lo que el pidio. No poder leer = no sabemos quien esta\n  // autorizado, y dejar al negocio entero sin atender por una falla de base de datos es peor.\n  // Los que ya se registraron en la APP tambien entran, sin cargarlos a mano.\n  const appDetal = numerosDe(\u0027Perfiles Detal App\u0027);\n  const appMayor = numerosDe(\u0027Perfiles Mayor App\u0027);\n  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien\n  // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.\n  if (detal === null || mayor === null || appDetal === null || appMayor === null) return entran.map(conNombre);\n  permitidos = detal.concat(mayor, appDetal, appMayor);\n}\nif (permitidos === null) return entran.map(conNombre);   // ningun filtro prendido -\u003e pasa todo\n\nconst pasan = [];\nfor (const it of entran){\n  let jid = \u0027\u0027;\n  try { jid = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){}\n  // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.\n  if (jid.indexOf(\u0027@g.us\u0027) !== -1) continue;\n  if (permitidos.some(n =\u003e mismoNumero(jid, n))) pasan.push(conNombre(it));\n}\nreturn pasan;"
+                                         "operation":  "get",
+                                         "key":  "={{ \u0027pausaBot:\u0027 + $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid }}",
+                                         "propertyName":  "pausaBot",
+                                         "keyType":  "string",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-leerpausa0001",
+                      "name":  "Redis Leer Pausa",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -250,
+                                       -300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "executeOnce":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== A QUIEN LE CONTESTA EL BOT, Y CUANDO =====\n// Este nodo es lo PRIMERO despues del webhook y decide cuatro cosas:\n//   1. Descartar mensajes viejos (Evolution los reenvia en rafaga al reconectarse).\n//   2. Si escribio Kelvin, poner el chat en pausa (o leer sus comandos \"bot on\"/\"bot off\").\n//   3. Si el chat esta en pausa, no contestar y avisar al grupo.\n//   4. Si no, dejar pasar solo a los clientes autorizados.\n//\n// Todo lo que se descarta se descarta AQUI, antes de transcribir audios o leer imagenes\n// con la IA, que es lo que cuesta plata.\n//\n// La salida lleva siempre un campo accionPausa, que el nodo \"Router Pausa\" usa para\n// mandar el item por donde toca: seguir | pausar | reanudar | avisar.\nconst SOLO_ESTOS = [];\nconst MODO_SOLO_CLIENTES = true;\nconst MINUTOS_VIEJO = 20;\nconst MINUTOS_PAUSA = 60;\nconst HORAS_PAUSA_MANUAL = 12;\n\n// OJO: el mensaje NO viene en $input. Antes de este nodo hay varias consultas a Supabase y\n// a Redis, y esos nodos devuelven SUS filas: eso es lo que trae $input aca. El mensaje de\n// WhatsApp hay que ir a buscarlo al webhook.\nlet entran = [];\ntry { entran = $(\u0027Webhook Evolution API\u0027).all(); } catch(e){ entran = $input.all(); }\n\n// ===== 1) MENSAJES VIEJOS =====\n// Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo\n// pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.\n// Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.\nif (MINUTOS_VIEJO \u003e 0){\n  const ahora = Date.now() / 1000;\n  entran = entran.filter(it =\u003e {\n    let ts = 0;\n    try { ts = Number(it.json.body.data.messageTimestamp) || 0; } catch(e){}\n    if (!ts) return true;\n    return ((ahora - ts) / 60) \u003c= MINUTOS_VIEJO;\n  });\n}\nif (!entran.length) return [];\n\n// ===== 2) QUIEN ESCRIBIO =====\nconst dat  = (((entran[0] || {}).json || {}).body || {}).data || {};\nconst llave = dat.key || {};\nconst jid  = String(llave.remoteJid || \u0027\u0027);\nconst esGrupo = jid.indexOf(\u0027@g.us\u0027) !== -1;\nconst clave = \u0027pausaBot:\u0027 + jid;\n\nlet texto = \u0027\u0027;\ntry {\n  const m = dat.message || {};\n  texto = String(m.conversation || (m.extendedTextMessage || {}).text || \u0027\u0027).trim();\n} catch(e){}\nconst cmd = texto.toLowerCase().normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g,\u0027\u0027).replace(/[^a-z]/g,\u0027\u0027);\n\n// Como se sabe que escribio KELVIN y no el propio bot: los dos llegan con fromMe=true, pero\n// el id es distinto. Los que manda el bot (libreria Baileys) empiezan por \"3EB0\"; los que\n// se escriben desde el telefono o WhatsApp Web son mas largos y empiezan por otra cosa.\n// Si algun dia Baileys cambia eso, el bot se pausaria solo al responder: se destraba\n// escribiendo \"bot on\" en ese chat.\nconst loEscribioElBot = String(llave.id || \u0027\u0027).indexOf(\u00273EB0\u0027) === 0;\n\nif (llave.fromMe === true){\n  // En los grupos no hay nada que pausar: el bot no contesta en grupos.\n  if (esGrupo) return [];\n  if (cmd === \u0027boton\u0027)  return [{ json: { accionPausa: \u0027reanudar\u0027, clave: clave, jid: jid } }];\n  if (cmd === \u0027botoff\u0027) return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                                          segundos: HORAS_PAUSA_MANUAL * 3600, motivo: \u0027manual\u0027 } }];\n  if (loEscribioElBot) return [];   // fue el propio bot: no se pausa a si mismo\n  // Escribio Kelvin a mano -\u003e se pausa el chat. El TTL se renueva con cada mensaje suyo,\n  // asi que la hora cuenta desde el ULTIMO, no desde el primero.\n  return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                    segundos: MINUTOS_PAUSA * 60, motivo: \u0027auto\u0027 } }];\n}\n\n// ===== 3) A QUIEN SE LE CONTESTA =====\nfunction mismoNumero(a, b){\n  const x = String(a || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  const y = String(b || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  if (!x || !y) return false;\n  if (x === y) return true;\n  if (x.length \u003c 8 || y.length \u003c 8) return false;\n  return x.endsWith(y) || y.endsWith(x);\n}\n\n// Saca los numeros de una tabla. null = NO se pudo leer (nodo caido, credencial mala),\n// que es distinto de que la tabla este vacia.\nfunction numerosDe(nodo){\n  let items;\n  try { items = $(nodo).all(); } catch(e){ return null; }\n  if (items.some(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.error !== undefined)) return null;\n  return items\n    .filter(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.whatsapp \u0026\u0026 it.json.activo !== false)\n    .map(it =\u003e String(it.json.whatsapp));\n}\n\n// El nombre que Kelvin le puso al cliente en Supabase, para que el agente lo salude por su\n// nombre. Se busca aunque el filtro este apagado: no tiene que ver con dejar pasar o no.\nfunction nombreCargado(j){\n  for (const nodo of [\u0027Clientes Detal Permitidos\u0027, \u0027Clientes Mayor Permitidos\u0027]){\n    let items;\n    try { items = $(nodo).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.nombre \u0026\u0026 mismoNumero(j, f.whatsapp)) return String(f.nombre).trim();\n    }\n  }\n  return \u0027\u0027;\n}\n\n// De que tabla salio el cliente: eso decide su tarifa.\n//   clientes_bot_mayor -\u003e mayor   |   clientes_bot_detal -\u003e detal\n// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente\n// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.\nfunction tarifaCargada(j){\n  let enDetal = false, enMayor = false;\n  for (const par of [[\u0027Clientes Detal Permitidos\u0027,\u0027detal\u0027], [\u0027Clientes Mayor Permitidos\u0027,\u0027mayor\u0027]]){\n    let items;\n    try { items = $(par[0]).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.activo !== false \u0026\u0026 mismoNumero(j, f.whatsapp)){\n        if (par[1] === \u0027detal\u0027) enDetal = true; else enMayor = true;\n      }\n    }\n  }\n  if (enDetal) return \u0027detal\u0027;\n  if (enMayor) return \u0027mayor\u0027;\n  return \u0027\u0027;\n}\n\nfunction marcar(it){\n  let j = \u0027\u0027;\n  try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){ return it; }\n  const n = nombreCargado(j);\n  if (n) it.json.nombreCargado = n;\n  const t = tarifaCargada(j);\n  if (t) it.json.tarifaCargada = t;\n  it.json.accionPausa = \u0027seguir\u0027;\n  return it;\n}\n\n// null = no hay ningun filtro prendido -\u003e pasa todo.\n// [] = el filtro SI esta prendido pero no hay nadie cargado -\u003e no pasa nadie.\nlet permitidos = null;\nif (SOLO_ESTOS.length){\n  permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo\n} else if (MODO_SOLO_CLIENTES){\n  const detal = numerosDe(\u0027Clientes Detal Permitidos\u0027);\n  const mayor = numerosDe(\u0027Clientes Mayor Permitidos\u0027);\n  const appDetal = numerosDe(\u0027Perfiles Detal App\u0027);\n  const appMayor = numerosDe(\u0027Perfiles Mayor App\u0027);\n  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien\n  // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.\n  if (detal === null || mayor === null || appDetal === null || appMayor === null){\n    return entran.map(marcar);\n  }\n  permitidos = detal.concat(mayor, appDetal, appMayor);\n}\n\nlet pasan;\nif (permitidos === null){\n  pasan = entran.slice();                        // ningun filtro prendido\n} else {\n  pasan = [];\n  for (const it of entran){\n    let j = \u0027\u0027;\n    try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){}\n    if (j.indexOf(\u0027@g.us\u0027) !== -1) continue;     // un grupo no es un numero de persona\n    if (permitidos.some(n =\u003e mismoNumero(j, n))) pasan.push(it);\n  }\n}\nif (!pasan.length) return [];\n\n// ===== 4) LA PAUSA =====\n// Llego hasta aca: el bot le habria contestado. Si Kelvin esta atendiendo ese chat, no lo\n// hace, pero avisa al grupo para que el cliente no quede en el aire.\nlet enPausa = false;\ntry { enPausa = !!$(\u0027Redis Leer Pausa\u0027).first().json.pausaBot; } catch(e){}\nif (enPausa \u0026\u0026 !esGrupo){\n  const quien = String(dat.pushName || \u0027\u0027).trim() || jid.split(\u0027@\u0027)[0];\n  const recorte = texto.length \u003e 200 ? (texto.slice(0, 200) + \u0027...\u0027) : texto;\n  const aviso = \u0027El bot NO le contesto a \u0027 + quien + \u0027 (+\u0027 + jid.split(\u0027@\u0027)[0] + \u0027)\u0027\n    + \u0027 porque estas atendiendo ese chat.\\n\\nEscribio:\\n\"\u0027 + (recorte || \u0027(sin texto)\u0027) + \u0027\"\u0027\n    + \u0027\\n\\nSi quieres que el bot siga atendiendolo, escribe \"bot on\" en ese chat.\u0027;\n  return [{ json: { accionPausa: \u0027avisar\u0027, jid: jid, aviso: aviso } }];\n}\n\nreturn pasan.map(marcar);"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -137,6 +165,192 @@
                                    ],
                       "id":  "d0e1f2a3-0000-4b00-9000-soloestos0001",
                       "name":  "Solo Estos Numeros"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "outputKey":  "seguir",
+                                                                          "renameOutput":  true,
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "seguir",
+                                                                                                                    "id":  "p-seguir",
+                                                                                                                    "leftValue":  "={{ $json.accionPausa }}"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         }
+                                                                      },
+                                                                      {
+                                                                          "outputKey":  "pausar",
+                                                                          "renameOutput":  true,
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "pausar",
+                                                                                                                    "id":  "p-pausar",
+                                                                                                                    "leftValue":  "={{ $json.accionPausa }}"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         }
+                                                                      },
+                                                                      {
+                                                                          "outputKey":  "reanudar",
+                                                                          "renameOutput":  true,
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "reanudar",
+                                                                                                                    "id":  "p-reanudar",
+                                                                                                                    "leftValue":  "={{ $json.accionPausa }}"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         }
+                                                                      },
+                                                                      {
+                                                                          "outputKey":  "avisar",
+                                                                          "renameOutput":  true,
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "avisar",
+                                                                                                                    "id":  "p-avisar",
+                                                                                                                    "leftValue":  "={{ $json.accionPausa }}"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         }
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-routerpausa01",
+                      "name":  "Router Pausa",
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       -150,
+                                       -20
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $json.motivo }}",
+                                         "expire":  true,
+                                         "ttl":  "={{ $json.segundos }}",
+                                         "keyType":  "string",
+                                         "key":  "={{ $json.clave }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-ponerpausa001",
+                      "name":  "Redis Guardar Pausa",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -180
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "key":  "={{ $json.clave }}",
+                                         "operation":  "delete"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-quitarpausa01",
+                      "name":  "Redis Borrar Pausa",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
+                                         "messageText":  "={{ $json.aviso }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "120363413942097019@g.us"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-avisarpausa01",
+                      "name":  "Avisar Pausa",
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -60
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
                   },
                   {
                       "parameters":  {
@@ -1352,24 +1566,67 @@
                                                    "main":  [
                                                                 [
                                                                     {
-                                                                        "node":  "Solo Estos Numeros",
+                                                                        "node":  "Redis Leer Pausa",
                                                                         "type":  "main",
                                                                         "index":  0
                                                                     }
                                                                 ]
                                                             ]
                                                },
+                        "Redis Leer Pausa":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Solo Estos Numeros",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
                         "Solo Estos Numeros":  {
                                                    "main":  [
                                                                 [
                                                                     {
-                                                                        "node":  "Es mensaje de cliente?",
+                                                                        "node":  "Router Pausa",
                                                                         "type":  "main",
                                                                         "index":  0
                                                                     }
                                                                 ]
                                                             ]
                                                },
+                        "Router Pausa":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Es mensaje de cliente?",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "node":  "Redis Guardar Pausa",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "node":  "Redis Borrar Pausa",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "node":  "Avisar Pausa",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "Es mensaje de cliente?":  {
                                                        "main":  [
                                                                     [

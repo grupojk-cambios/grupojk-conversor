@@ -76,6 +76,24 @@ $MODO_SOLO_CLIENTES = $true
 # ============================================================================
 $MINUTOS_MENSAJE_VIEJO = 20
 
+# ============================================================================
+#   PAUSA CUANDO KELVIN ATIENDE EL CHAT
+# ============================================================================
+#  El numero del bot es tambien el numero personal de Kelvin. Cuando el escribe
+#  en una conversacion, el bot se calla AHI durante estos minutos, contados
+#  desde su ULTIMO mensaje: mientras siga conversando, el bot no se mete.
+#
+#  Si el cliente pregunta algo durante la pausa, el bot NO le contesta pero
+#  avisa al grupo, para que nadie quede sin atencion.
+#
+#  En el chat, Kelvin puede escribir:
+#     "bot on"   -> el bot vuelve a atender ese chat de inmediato
+#     "bot off"  -> el bot se calla ahi 12 horas
+# ============================================================================
+$MINUTOS_PAUSA = 60
+$HORAS_PAUSA_MANUAL = 12
+$GRUPO_AVISOS = '120363413942097019@g.us'   # grupo "Notificaciones Clientes"
+
 $MODO_SOLO_CLIENTES_JS = $(if ($MODO_SOLO_CLIENTES) { 'true' } else { 'false' })
 
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
@@ -792,39 +810,34 @@ return [{ json: { alerta: texto, numeroCliente: numero } }];
 
 # ===================== CODIGO: SOLO ESTOS NUMEROS (filtro de pruebas) =====================
 $soloEstosCode = @'
-// ===== A QUIEN LE CONTESTA EL BOT =====
-// Hay dos formas de limitarlo, y mandan en este orden:
+// ===== A QUIEN LE CONTESTA EL BOT, Y CUANDO =====
+// Este nodo es lo PRIMERO despues del webhook y decide cuatro cosas:
+//   1. Descartar mensajes viejos (Evolution los reenvia en rafaga al reconectarse).
+//   2. Si escribio Kelvin, poner el chat en pausa (o leer sus comandos "bot on"/"bot off").
+//   3. Si el chat esta en pausa, no contestar y avisar al grupo.
+//   4. Si no, dejar pasar solo a los clientes autorizados.
 //
-//   1) $SOLO_ESTOS, la lista escrita en build_v12.ps1. Si tiene algo, SOLO pasan
-//      esos numeros y ni se mira Supabase. Es el modo para probar.
+// Todo lo que se descarta se descarta AQUI, antes de transcribir audios o leer imagenes
+// con la IA, que es lo que cuesta plata.
 //
-//   2) $MODO_SOLO_CLIENTES. Si esta prendido, solo pasan los numeros cargados en
-//      las tablas clientes_bot_detal y clientes_bot_mayor de Supabase. Esos se
-//      agregan y se quitan desde Supabase, sin volver a desplegar el bot.
-//
-// Si no hay ninguna de las dos, el bot le contesta a todo el mundo (lo normal).
-//
-// Lo que no pasa se descarta JUSTO AQUI, antes de transcribir audios o leer
-// imagenes con la IA, que es lo que cuesta plata.
-//
-// RED DE SEGURIDAD: con el modo prendido, si las tablas vienen VACIAS o Supabase
-// falla, el bot le contesta a TODOS igual. Es a proposito: un problema de base de
-// datos no puede dejar al negocio sin atender. Es mejor contestar de mas que
-// quedarse mudo sin que nadie se entere.
+// La salida lleva siempre un campo accionPausa, que el nodo "Router Pausa" usa para
+// mandar el item por donde toca: seguir | pausar | reanudar | avisar.
 const SOLO_ESTOS = __SOLO_ESTOS__;
 const MODO_SOLO_CLIENTES = __MODO_SOLO_CLIENTES__;
+const MINUTOS_VIEJO = __MINUTOS_VIEJO__;
+const MINUTOS_PAUSA = __MINUTOS_PAUSA__;
+const HORAS_PAUSA_MANUAL = __HORAS_PAUSA_MANUAL__;
 
-// OJO: el mensaje NO viene en $input. Antes de este nodo hay dos consultas a Supabase, y un
-// nodo de Supabase devuelve LAS FILAS DE LA TABLA: eso es lo que trae $input aca. El mensaje
-// de WhatsApp hay que ir a buscarlo al webhook.
+// OJO: el mensaje NO viene en $input. Antes de este nodo hay varias consultas a Supabase y
+// a Redis, y esos nodos devuelven SUS filas: eso es lo que trae $input aca. El mensaje de
+// WhatsApp hay que ir a buscarlo al webhook.
 let entran = [];
 try { entran = $('Webhook Evolution API').all(); } catch(e){ entran = $input.all(); }
 
-// ===== MENSAJES VIEJOS =====
+// ===== 1) MENSAJES VIEJOS =====
 // Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo
 // pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.
 // Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.
-const MINUTOS_VIEJO = __MINUTOS_VIEJO__;
 if (MINUTOS_VIEJO > 0){
   const ahora = Date.now() / 1000;
   entran = entran.filter(it => {
@@ -836,11 +849,41 @@ if (MINUTOS_VIEJO > 0){
 }
 if (!entran.length) return [];
 
-// Compara dos numeros por sus digitos. El "termina en" aguanta que el numero este
-// escrito con o sin codigo de pais, con +, con espacios o con guiones: por eso los
-// numeros se pueden cargar en Supabase como sea, sin un formato obligatorio.
-// Se exigen 8 digitos de cada lado: sin ese minimo, un numero corto mal cargado
-// (ej. "0380") dejaria pasar a cualquier cliente cuyo telefono termine igual.
+// ===== 2) QUIEN ESCRIBIO =====
+const dat  = (((entran[0] || {}).json || {}).body || {}).data || {};
+const llave = dat.key || {};
+const jid  = String(llave.remoteJid || '');
+const esGrupo = jid.indexOf('@g.us') !== -1;
+const clave = 'pausaBot:' + jid;
+
+let texto = '';
+try {
+  const m = dat.message || {};
+  texto = String(m.conversation || (m.extendedTextMessage || {}).text || '').trim();
+} catch(e){}
+const cmd = texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'');
+
+// Como se sabe que escribio KELVIN y no el propio bot: los dos llegan con fromMe=true, pero
+// el id es distinto. Los que manda el bot (libreria Baileys) empiezan por "3EB0"; los que
+// se escriben desde el telefono o WhatsApp Web son mas largos y empiezan por otra cosa.
+// Si algun dia Baileys cambia eso, el bot se pausaria solo al responder: se destraba
+// escribiendo "bot on" en ese chat.
+const loEscribioElBot = String(llave.id || '').indexOf('3EB0') === 0;
+
+if (llave.fromMe === true){
+  // En los grupos no hay nada que pausar: el bot no contesta en grupos.
+  if (esGrupo) return [];
+  if (cmd === 'boton')  return [{ json: { accionPausa: 'reanudar', clave: clave, jid: jid } }];
+  if (cmd === 'botoff') return [{ json: { accionPausa: 'pausar', clave: clave, jid: jid,
+                                          segundos: HORAS_PAUSA_MANUAL * 3600, motivo: 'manual' } }];
+  if (loEscribioElBot) return [];   // fue el propio bot: no se pausa a si mismo
+  // Escribio Kelvin a mano -> se pausa el chat. El TTL se renueva con cada mensaje suyo,
+  // asi que la hora cuenta desde el ULTIMO, no desde el primero.
+  return [{ json: { accionPausa: 'pausar', clave: clave, jid: jid,
+                    segundos: MINUTOS_PAUSA * 60, motivo: 'auto' } }];
+}
+
+// ===== 3) A QUIEN SE LE CONTESTA =====
 function mismoNumero(a, b){
   const x = String(a || '').replace(/\D/g, '');
   const y = String(b || '').replace(/\D/g, '');
@@ -850,9 +893,8 @@ function mismoNumero(a, b){
   return x.endsWith(y) || y.endsWith(x);
 }
 
-// Saca los numeros de una tabla de Supabase. Devuelve null si NO se pudo leer
-// (nodo caido, credencial mala, tabla que no existe), que es distinto de que la
-// tabla este vacia: null significa "no se", y ahi se contesta a todos.
+// Saca los numeros de una tabla. null = NO se pudo leer (nodo caido, credencial mala),
+// que es distinto de que la tabla este vacia.
 function numerosDe(nodo){
   let items;
   try { items = $(nodo).all(); } catch(e){ return null; }
@@ -862,16 +904,15 @@ function numerosDe(nodo){
     .map(it => String(it.json.whatsapp));
 }
 
-// Busca el nombre que Kelvin le puso al cliente en Supabase. Esto NO decide si pasa o no:
-// se busca igual aunque el filtro este apagado, porque al agente le sirve para saludarlo
-// por su nombre. El nombre viaja pegado al mensaje, en json.nombreCargado.
-function nombreCargado(jid){
+// El nombre que Kelvin le puso al cliente en Supabase, para que el agente lo salude por su
+// nombre. Se busca aunque el filtro este apagado: no tiene que ver con dejar pasar o no.
+function nombreCargado(j){
   for (const nodo of ['Clientes Detal Permitidos', 'Clientes Mayor Permitidos']){
     let items;
     try { items = $(nodo).all(); } catch(e){ continue; }
     for (const it of items){
       const f = (it && it.json) || {};
-      if (f.whatsapp && f.nombre && mismoNumero(jid, f.whatsapp)) return String(f.nombre).trim();
+      if (f.whatsapp && f.nombre && mismoNumero(j, f.whatsapp)) return String(f.nombre).trim();
     }
   }
   return '';
@@ -881,15 +922,15 @@ function nombreCargado(jid){
 //   clientes_bot_mayor -> mayor   |   clientes_bot_detal -> detal
 // Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente
 // de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.
-function tarifaCargada(jid){
+function tarifaCargada(j){
   let enDetal = false, enMayor = false;
-  for (const [nodo, cual] of [['Clientes Detal Permitidos','detal'], ['Clientes Mayor Permitidos','mayor']]){
+  for (const par of [['Clientes Detal Permitidos','detal'], ['Clientes Mayor Permitidos','mayor']]){
     let items;
-    try { items = $(nodo).all(); } catch(e){ continue; }
+    try { items = $(par[0]).all(); } catch(e){ continue; }
     for (const it of items){
       const f = (it && it.json) || {};
-      if (f.whatsapp && f.activo !== false && mismoNumero(jid, f.whatsapp)){
-        if (cual === 'detal') enDetal = true; else enMayor = true;
+      if (f.whatsapp && f.activo !== false && mismoNumero(j, f.whatsapp)){
+        if (par[1] === 'detal') enDetal = true; else enMayor = true;
       }
     }
   }
@@ -898,13 +939,14 @@ function tarifaCargada(jid){
   return '';
 }
 
-function conNombre(it){
-  let jid = '';
-  try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){ return it; }
-  const n = nombreCargado(jid);
+function marcar(it){
+  let j = '';
+  try { j = String(it.json.body.data.key.remoteJid || ''); } catch(e){ return it; }
+  const n = nombreCargado(j);
   if (n) it.json.nombreCargado = n;
-  const t = tarifaCargada(jid);
+  const t = tarifaCargada(j);
   if (t) it.json.tarifaCargada = t;
+  it.json.accionPausa = 'seguir';
   return it;
 }
 
@@ -916,30 +958,52 @@ if (SOLO_ESTOS.length){
 } else if (MODO_SOLO_CLIENTES){
   const detal = numerosDe('Clientes Detal Permitidos');
   const mayor = numerosDe('Clientes Mayor Permitidos');
-  // Si NO SE PUDO LEER Supabase (caido, credencial mala) se le contesta a todos. Ojo: esto
-  // es distinto de que las tablas esten vacias. Vacias = Kelvin todavia no cargo a nadie, y
-  // ahi no pasa nadie, que es lo que el pidio. No poder leer = no sabemos quien esta
-  // autorizado, y dejar al negocio entero sin atender por una falla de base de datos es peor.
-  // Los que ya se registraron en la APP tambien entran, sin cargarlos a mano.
   const appDetal = numerosDe('Perfiles Detal App');
   const appMayor = numerosDe('Perfiles Mayor App');
   // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien
   // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.
-  if (detal === null || mayor === null || appDetal === null || appMayor === null) return entran.map(conNombre);
+  if (detal === null || mayor === null || appDetal === null || appMayor === null){
+    return entran.map(marcar);
+  }
   permitidos = detal.concat(mayor, appDetal, appMayor);
 }
-if (permitidos === null) return entran.map(conNombre);   // ningun filtro prendido -> pasa todo
 
-const pasan = [];
-for (const it of entran){
-  let jid = '';
-  try { jid = String(it.json.body.data.key.remoteJid || ''); } catch(e){}
-  // Un grupo (@g.us) no es un numero de persona: con la lista encendida tampoco pasa.
-  if (jid.indexOf('@g.us') !== -1) continue;
-  if (permitidos.some(n => mismoNumero(jid, n))) pasan.push(conNombre(it));
+let pasan;
+if (permitidos === null){
+  pasan = entran.slice();                        // ningun filtro prendido
+} else {
+  pasan = [];
+  for (const it of entran){
+    let j = '';
+    try { j = String(it.json.body.data.key.remoteJid || ''); } catch(e){}
+    if (j.indexOf('@g.us') !== -1) continue;     // un grupo no es un numero de persona
+    if (permitidos.some(n => mismoNumero(j, n))) pasan.push(it);
+  }
 }
-return pasan;
+if (!pasan.length) return [];
+
+// ===== 4) LA PAUSA =====
+// Llego hasta aca: el bot le habria contestado. Si Kelvin esta atendiendo ese chat, no lo
+// hace, pero avisa al grupo para que el cliente no quede en el aire.
+let enPausa = false;
+try { enPausa = !!$('Redis Leer Pausa').first().json.pausaBot; } catch(e){}
+if (enPausa && !esGrupo){
+  const quien = String(dat.pushName || '').trim() || jid.split('@')[0];
+  const recorte = texto.length > 200 ? (texto.slice(0, 200) + '...') : texto;
+  const aviso = 'El bot NO le contesto a ' + quien + ' (+' + jid.split('@')[0] + ')'
+    + ' porque estas atendiendo ese chat.\n\nEscribio:\n"' + (recorte || '(sin texto)') + '"'
+    + '\n\nSi quieres que el bot siga atendiendolo, escribe "bot on" en ese chat.';
+  return [{ json: { accionPausa: 'avisar', jid: jid, aviso: aviso } }];
+}
+
+return pasan.map(marcar);
 '@
+# .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
+# interpretaria como grupos con nombre.
+$soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
+$soloEstosCode = $soloEstosCode.Replace('__MINUTOS_VIEJO__', [string]$MINUTOS_MENSAJE_VIEJO)
+$soloEstosCode = $soloEstosCode.Replace('__MINUTOS_PAUSA__', [string]$MINUTOS_PAUSA)
+$soloEstosCode = $soloEstosCode.Replace('__HORAS_PAUSA_MANUAL__', [string]$HORAS_PAUSA_MANUAL)
 # .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
 # interpretaria como grupos con nombre.
 $soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
@@ -992,8 +1056,50 @@ $nodes = @(
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
   [ordered]@{
+    # Hay una pausa puesta en este chat? La clave la escribe "Redis Guardar Pausa" y se
+    # borra sola cuando se vence, asi que si existe es que Kelvin esta atendiendo ahi.
+    parameters = @{ operation = 'get'; key = "={{ 'pausaBot:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; keyType = 'string'; propertyName = 'pausaBot'; options = @{} }
+    id = 'd0e1f2a3-0000-4b00-9000-leerpausa0001'; name = 'Redis Leer Pausa'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-250,-300)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true; executeOnce = $true
+    credentials = $redisCred
+  },
+  [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-290,-20); id = 'd0e1f2a3-0000-4b00-9000-soloestos0001'; name = 'Solo Estos Numeros'
+  },
+  [ordered]@{
+    # Por donde sigue cada mensaje, segun lo que decidio el nodo anterior.
+    parameters = @{ options = @{}; rules = @{ values = @(
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-seguir'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'seguir'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'seguir' },
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-pausar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'pausar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'pausar' },
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-reanudar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'reanudar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'reanudar' },
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-avisar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'avisar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'avisar' }
+    ) } }
+    id = 'd0e1f2a3-0000-4b00-9000-routerpausa01'; name = 'Router Pausa'; type = 'n8n-nodes-base.switch'; typeVersion = 3.2; position = @(-150,-20)
+  },
+  [ordered]@{
+    # Pone la pausa. El TTL se renueva con CADA mensaje de Kelvin, asi que la hora cuenta
+    # desde el ultimo que escribio, no desde el primero.
+    parameters = @{ operation = 'set'; key = '={{ $json.clave }}'; value = '={{ $json.motivo }}'; keyType = 'string'; expire = $true; ttl = '={{ $json.segundos }}' }
+    id = 'd0e1f2a3-0000-4b00-9000-ponerpausa001'; name = 'Redis Guardar Pausa'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(60,-180)
+    onError = 'continueRegularOutput'
+    credentials = $redisCred
+  },
+  [ordered]@{
+    # "bot on": quita la pausa y el bot vuelve a atender ese chat de inmediato.
+    parameters = @{ operation = 'delete'; key = '={{ $json.clave }}' }
+    id = 'd0e1f2a3-0000-4b00-9000-quitarpausa01'; name = 'Redis Borrar Pausa'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(60,-300)
+    onError = 'continueRegularOutput'
+    credentials = $redisCred
+  },
+  [ordered]@{
+    # Un cliente escribio mientras el chat estaba en pausa. No se le contesta, pero se avisa
+    # al grupo para que no quede en el aire.
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT CAMBIOS JK Kelvin'; remoteJid = $GRUPO_AVISOS; messageText = '={{ $json.aviso }}'; options_message = @{} }
+    id = 'd0e1f2a3-0000-4b00-9000-avisarpausa01'; name = 'Avisar Pausa'; type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(60,-60)
+    retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
+    onError = 'continueRegularOutput'
+    credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
   },
   [ordered]@{
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.body.data.key.fromMe }}'; value2 = '={{false}}' } ) } }
@@ -1251,8 +1357,15 @@ $connections = [ordered]@{
   'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Clientes Mayor Permitidos'; type='main'; index=0 } ) ) }
   'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
   'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Perfiles Mayor App'; type='main'; index=0 } ) ) }
-  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
-  'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) }
+  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Redis Leer Pausa'; type='main'; index=0 } ) ) }
+  'Redis Leer Pausa'       = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
+  'Solo Estos Numeros'     = @{ main = @( ,@( @{ node='Router Pausa'; type='main'; index=0 } ) ) }
+  'Router Pausa'           = @{ main = (
+      @( ,@( @{ node='Es mensaje de cliente?'; type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Redis Guardar Pausa';   type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Redis Borrar Pausa';    type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Avisar Pausa';          type='main'; index=0 } ) )
+    ) }
   'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
   'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
   'Es Imagen?'             = @{ main = (@( ,@( @{ node='Descargar Imagen'; type='main'; index=0 } ) ) + @( ,@( @{ node='Texto Directo'; type='main'; index=0 } ) )) }

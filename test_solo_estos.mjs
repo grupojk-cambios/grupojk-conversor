@@ -33,7 +33,8 @@ const chk = (ok, etiqueta, detalle) => {
 //   tablas : { detal: [...], mayor: [...] } con las filas que devolveria Supabase.
 //            Si una tabla es la cadena 'CAIDA', se simula que el nodo fallo.
 //            Si es undefined, se simula que el nodo ni corrio.
-function correr(lista, modo, jids, tablas, edadMin) {
+function correr(lista, modo, jids, tablas, edadMin, extra) {
+  const ex = extra || {};
   const js = nodo.parameters.jsCode
     .replace(/const SOLO_ESTOS = .*;/, 'const SOLO_ESTOS = ' + JSON.stringify(lista) + ';')
     .replace(/const MODO_SOLO_CLIENTES = .*;/, 'const MODO_SOLO_CLIENTES = ' + (modo ? 'true' : 'false') + ';');
@@ -43,7 +44,9 @@ function correr(lista, modo, jids, tablas, edadMin) {
   const ahora = Math.floor(Date.now() / 1000);
   const items = jids.map(j => ({
     json: { body: { data: {
-      key: { remoteJid: j },
+      key: { remoteJid: j, fromMe: !!ex.fromMe, id: ex.idMensaje || 'A5ABCDEF0123456789ABCDEF01234567' },
+      pushName: ex.pushName,
+      message: ex.texto ? { conversation: ex.texto } : undefined,
       messageTimestamp: ahora - Math.round((edadMin || 0) * 60)
     } } }
   }));
@@ -54,17 +57,19 @@ function correr(lista, modo, jids, tablas, edadMin) {
     'Clientes Detal Permitidos': t.detal,
     'Clientes Mayor Permitidos': t.mayor,
     'Perfiles Detal App':        (t.appDetal === undefined ? [] : t.appDetal),
-    'Perfiles Mayor App':        (t.appMayor === undefined ? [] : t.appMayor)
+    'Perfiles Mayor App':        (t.appMayor === undefined ? [] : t.appMayor),
+    'Redis Leer Pausa':          [ ex.enPausa ? { pausaBot: 'auto' } : {} ]
   };
   const $ = (n) => {
     // El mensaje de WhatsApp se busca en el webhook, no en $input.
-    if (n === 'Webhook Evolution API') return { all: () => items };
+    if (n === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
     const v = porNodo[n];
     if (v === undefined) throw new Error('Node "' + n + '" not executed');
     const filas = (v === 'CAIDA')
       ? [{ error: { message: 'Supabase no responde' } }]
       : v;
-    return { all: () => filas.map(json => ({ json })) };
+    const its = filas.map(json => ({ json }));
+    return { all: () => its, first: () => its[0] };
   };
 
   // IMPORTANTE: asi es como llega de verdad. Justo antes de este nodo hay dos consultas a
@@ -74,9 +79,11 @@ function correr(lista, modo, jids, tablas, edadMin) {
   const $input = { all: () => filasQueLleganPorInput.map(json => ({ json })) };
 
   const salida = new Function('$input', '$', js)($input, $);
-  return Object.assign(salida.map(it => it.json.body.data.key.remoteJid), {
-    nombres:  salida.map(it => it.json.nombreCargado  || ''),
-    tarifas:  salida.map(it => it.json.tarifaCargada  || '')
+  return Object.assign(salida.map(it => (it.json.body ? it.json.body.data.key.remoteJid : it.json.jid)), {
+    nombres:  salida.map(it => it.json.nombreCargado || ''),
+    tarifas:  salida.map(it => it.json.tarifaCargada || ''),
+    acciones: salida.map(it => it.json.accionPausa   || ''),
+    items:    salida.map(it => it.json)
   });
 }
 
@@ -288,7 +295,74 @@ console.log('=== 12) No contesta mensajes viejos ===');
 }
 
 console.log('');
-console.log('=== 13) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 13) Pausa: cuando Kelvin escribe, el bot se calla ===');
+{
+  // El numero del bot es tambien el personal de Kelvin. Si el escribe en un chat, el bot
+  // no debe meterse. Los dos llegan con fromMe=true; se distinguen por el id: los que manda
+  // el bot (Baileys) empiezan por "3EB0".
+  const tablas = { detal: [{ whatsapp: '593961230380' }], mayor: [] };
+  const BOT = { fromMe: true, idMensaje: '3EB0931FEBF312F8C482CF', texto: 'Hola, en que te ayudo' };
+  const KEL = { fromMe: true, idMensaje: 'A5E490C02815D6233FFA3BABA756F989', texto: 'ya te paso la cuenta' };
+
+  const r1 = correr([], true, [CLIENTE], tablas, 0, KEL);
+  chk(r1.acciones[0] === 'pausar', 'si escribe Kelvin -> pausar', '-> ' + r1.acciones[0]);
+  chk(r1.items[0].segundos === 3600, 'la pausa dura 1 hora', '-> ' + r1.items[0].segundos + 's');
+  chk(r1.items[0].clave === 'pausaBot:' + CLIENTE, 'la pausa es de ESE chat', '-> ' + r1.items[0].clave);
+
+  const r2 = correr([], true, [CLIENTE], tablas, 0, BOT);
+  chk(r2.length === 0, 'el bot NO se pausa a si mismo al responder', '-> ' + r2.length);
+
+  // En grupos no hay nada que pausar.
+  const r3 = correr([], true, [GRUPO], tablas, 0, KEL);
+  chk(r3.length === 0, 'en un grupo no se pausa nada', '-> ' + r3.length);
+}
+
+console.log('');
+console.log('=== 14) Pausa: los comandos bot on / bot off ===');
+{
+  const tablas = { detal: [{ whatsapp: '593961230380' }], mayor: [] };
+  const como = (t) => ({ fromMe: true, idMensaje: 'A5AAAA1111BBBB2222CCCC3333DDDD44', texto: t });
+
+  for (const t of ['bot on', 'Bot On', 'BOT ON', ' bot on ']) {
+    const r = correr([], true, [CLIENTE], tablas, 0, como(t));
+    chk(r.acciones[0] === 'reanudar', 'reanuda con "' + t + '"', '-> ' + r.acciones[0]);
+  }
+  const rOff = correr([], true, [CLIENTE], tablas, 0, como('bot off'));
+  chk(rOff.acciones[0] === 'pausar', '"bot off" pausa', '-> ' + rOff.acciones[0]);
+  chk(rOff.items[0].segundos === 12 * 3600, '"bot off" dura 12 horas', '-> ' + rOff.items[0].segundos + 's');
+
+  // Un mensaje normal de Kelvin NO es un comando: pausa normal, no 12 horas.
+  const rNorm = correr([], true, [CLIENTE], tablas, 0, como('dame un momento y te digo'));
+  chk(rNorm.items[0].segundos === 3600, 'un mensaje normal pausa 1 hora, no 12');
+}
+
+console.log('');
+console.log('=== 15) Pausa: el cliente escribe mientras Kelvin atiende ===');
+{
+  const tablas = { detal: [{ whatsapp: '584121234567', nombre: 'Maria' }], mayor: [] };
+
+  // Sin pausa, pasa normal.
+  const r1 = correr([], true, [CLIENTE], tablas, 0, { texto: 'hola' });
+  chk(r1.acciones[0] === 'seguir', 'sin pausa el bot atiende', '-> ' + r1.acciones[0]);
+
+  // Con pausa, no se le contesta pero se avisa.
+  const r2 = correr([], true, [CLIENTE], tablas, 0,
+                    { texto: 'Tienes tasa para Colombia?', pushName: 'Maria', enPausa: true });
+  chk(r2.acciones[0] === 'avisar', 'con pausa NO contesta, avisa', '-> ' + r2.acciones[0]);
+  const aviso = (r2.items[0] || {}).aviso || '';
+  const SALTO = String.fromCharCode(10);
+  console.log('     ' + aviso.split(SALTO).join(SALTO + '     '));
+  chk(/Maria/.test(aviso), 'el aviso dice quien escribio');
+  chk(/Tienes tasa para Colombia/.test(aviso), 'y que escribio');
+  chk(/bot on/.test(aviso), 'y como reactivarlo');
+
+  // A alguien NO autorizado no se avisa aunque haya pausa: seria puro ruido.
+  const r3 = correr([], true, [OTRO], tablas, 0, { texto: 'hola', enPausa: true });
+  chk(r3.length === 0, 'de un no autorizado no se avisa nada', '-> ' + r3.length);
+}
+
+console.log('');
+console.log('=== 16) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];
