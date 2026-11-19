@@ -33,13 +33,20 @@ const chk = (ok, etiqueta, detalle) => {
 //   tablas : { detal: [...], mayor: [...] } con las filas que devolveria Supabase.
 //            Si una tabla es la cadena 'CAIDA', se simula que el nodo fallo.
 //            Si es undefined, se simula que el nodo ni corrio.
-function correr(lista, modo, jids, tablas) {
+function correr(lista, modo, jids, tablas, edadMin) {
   const js = nodo.parameters.jsCode
     .replace(/const SOLO_ESTOS = .*;/, 'const SOLO_ESTOS = ' + JSON.stringify(lista) + ';')
     .replace(/const MODO_SOLO_CLIENTES = .*;/, 'const MODO_SOLO_CLIENTES = ' + (modo ? 'true' : 'false') + ';');
 
   const t = tablas || {};
-  const items = jids.map(j => ({ json: { body: { data: { key: { remoteJid: j } } } } }));
+  // Por defecto el mensaje es de AHORA. Con "edadMin" se simula uno viejo.
+  const ahora = Math.floor(Date.now() / 1000);
+  const items = jids.map(j => ({
+    json: { body: { data: {
+      key: { remoteJid: j },
+      messageTimestamp: ahora - Math.round((edadMin || 0) * 60)
+    } } }
+  }));
 
   // Por defecto las tablas de la app van vacias: la mayoria de las pruebas son de las
   // tablas que carga Kelvin a mano.
@@ -251,7 +258,37 @@ console.log('=== 11) Los registrados en la APP tambien entran ===');
 }
 
 console.log('');
-console.log('=== 12) Como quedo desplegado AHORA MISMO ===');
+console.log('=== 12) No contesta mensajes viejos ===');
+{
+  // Cuando Evolution se reconecta manda de golpe todo lo pendiente, hasta de dias atras.
+  // El 18/11 entraron dos rafagas (70 y 200 mensajes) con cosas de 2 dias antes.
+  const tablas = { detal: [{ whatsapp: '593961230380' }], mayor: [] };
+
+  chk(correr([], true, [KELVIN], tablas, 0).length === 1,
+      'un mensaje de ahora pasa');
+  chk(correr([], true, [KELVIN], tablas, 19).length === 1,
+      'de 19 minutos todavia pasa');
+  chk(correr([], true, [KELVIN], tablas, 21).length === 0,
+      'de 21 minutos se ignora');
+  chk(correr([], true, [KELVIN], tablas, 60 * 48).length === 0,
+      'de 2 dias se ignora (el caso real del 18/11)');
+
+  // Sin fecha no se descarta: ante la duda, mejor contestar de mas.
+  const js = nodo.parameters.jsCode;
+  const $ = (n) => {
+    if (n === 'Webhook Evolution API') return { all: () => [{ json: { body: { data: {
+      key: { remoteJid: KELVIN } } } } }] };
+    const v = { 'Clientes Detal Permitidos': [{ whatsapp: '593961230380' }],
+                'Clientes Mayor Permitidos': [], 'Perfiles Detal App': [],
+                'Perfiles Mayor App': [] }[n];
+    return { all: () => v.map(json => ({ json })) };
+  };
+  const r = new Function('$input', '$', js)({ all: () => [{ json: {} }] }, $);
+  chk(r.length === 1, 'un mensaje SIN fecha no se descarta', '-> ' + r.length);
+}
+
+console.log('');
+console.log('=== 13) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
   const m = nodo.parameters.jsCode.match(/const MODO_SOLO_CLIENTES = (.*);/)[1];

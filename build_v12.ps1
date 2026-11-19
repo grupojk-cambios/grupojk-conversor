@@ -63,6 +63,19 @@ $SOLO_ESTOS_JS = "[" + (($SOLO_ESTOS | ForEach-Object { "'" + $_ + "'" }) -join 
 # ============================================================================
 $MODO_SOLO_CLIENTES = $true
 
+# ============================================================================
+#   NO CONTESTAR MENSAJES VIEJOS
+# ============================================================================
+#  Cada vez que la instancia de Evolution se reconecta despues de estar caida,
+#  manda DE GOLPE todo lo que quedo pendiente. El 18/11 pasaron dos rafagas, de
+#  70 y de 200 mensajes, con cosas escritas hasta 2 dias antes. Sin esto el bot
+#  se pone a contestar conversaciones viejas y el cliente recibe una respuesta
+#  de la nada sobre algo que pregunto anteayer.
+#
+#  Un mensaje con mas de estos minutos se ignora. En 0 se apaga el control.
+# ============================================================================
+$MINUTOS_MENSAJE_VIEJO = 20
+
 $MODO_SOLO_CLIENTES_JS = $(if ($MODO_SOLO_CLIENTES) { 'true' } else { 'false' })
 
 # ===================== CODIGO NODO PRINCIPAL (Code in JavaScript) =====================
@@ -807,6 +820,22 @@ const MODO_SOLO_CLIENTES = __MODO_SOLO_CLIENTES__;
 let entran = [];
 try { entran = $('Webhook Evolution API').all(); } catch(e){ entran = $input.all(); }
 
+// ===== MENSAJES VIEJOS =====
+// Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo
+// pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.
+// Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.
+const MINUTOS_VIEJO = __MINUTOS_VIEJO__;
+if (MINUTOS_VIEJO > 0){
+  const ahora = Date.now() / 1000;
+  entran = entran.filter(it => {
+    let ts = 0;
+    try { ts = Number(it.json.body.data.messageTimestamp) || 0; } catch(e){}
+    if (!ts) return true;
+    return ((ahora - ts) / 60) <= MINUTOS_VIEJO;
+  });
+}
+if (!entran.length) return [];
+
 // Compara dos numeros por sus digitos. El "termina en" aguanta que el numero este
 // escrito con o sin codigo de pais, con +, con espacios o con guiones: por eso los
 // numeros se pueden cargar en Supabase como sea, sin un formato obligatorio.
@@ -914,6 +943,7 @@ return pasan;
 # .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
 # interpretaria como grupos con nombre.
 $soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
+$soloEstosCode = $soloEstosCode.Replace('__MINUTOS_VIEJO__', [string]$MINUTOS_MENSAJE_VIEJO)
 $soloEstosCode = $soloEstosCode.Replace('__SOLO_ESTOS__', $SOLO_ESTOS_JS)
 
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
