@@ -90,6 +90,12 @@ $MINUTOS_MENSAJE_VIEJO = 20
 #     "bot on"   -> el bot vuelve a atender ese chat de inmediato
 #     "bot off"  -> el bot se calla ahi 12 horas
 # ============================================================================
+# Cuanto espera el bot a que lleguen mas mensajes antes de contestar. Con un COMPROBANTE
+# espera mas, porque la gente manda primero la foto y tarda en escribir la cuenta destino:
+# el 19/11 una clienta tardo 36 segundos y quedaron en mensajes separados.
+$SEGUNDOS_ESPERA = 30
+$SEGUNDOS_ESPERA_COMPROBANTE = 60
+
 $MINUTOS_PAUSA = 60
 $HORAS_PAUSA_MANUAL = 12
 $GRUPO_AVISOS = '120363413942097019@g.us'   # grupo "Notificaciones Clientes"
@@ -540,6 +546,7 @@ REGLAS:
 - DISPONIBILIDAD (NO te equivoques en esto): la lista de tasas de arriba es la VERDAD absoluta. ANTES de decir que NO manejas algo, BUSCALO en la lista por nombre de pais, por codigo de moneda o por nombre de moneda. Ejemplos de match: "pesos mexicanos"/"mexico"/"mxn" = Mexico; "pesos colombianos"/"cop" = Colombia; "soles" = Peru; "reales" = Brasil. Si el pais/moneda APARECE en la lista con una tasa de Envio o Recibo distinta de "N/D", entonces SI lo manejas en esa direccion: cotiza normal, NUNCA digas que no. Solo responde "Por ahora no manejamos ese servicio" cuando de verdad NO esta en la lista, o ambas tasas (Envio y Recibo) son "N/D". Nunca asumas ni adivines: revisa la lista primero.
 - VENEZUELA: hay bolivares (VES, a cuenta/pago movil) y efectivo en dolares ("Efectivo Venezuela"). Regla para NO preguntar de mas: (a) si el cliente YA dijo "Bs"/"bolivares"/"pago movil" -> usa Venezuela (bolivares) y NO preguntes nada de eso. (b) si YA dijo "dolares"/"$"/"efectivo"/"cash" o una ciudad/estado venezolano (Caracas, Maracaibo, Valencia...) -> es Efectivo Venezuela (USD). (c) SOLO pregunta "Lo quieres en bolivares o en efectivo (dolares)?" cuando el cliente va a RECIBIR dinero EN Venezuela y NO dejo claro cual de los dos quiere. (d) si Venezuela es el ORIGEN (el cliente ENVIA Bs hacia otro pais), NUNCA preguntes eso: solo es bolivares. Para efectivo en dolares, pregunta en que ciudad lo retira.
 - CUENTAS (REGLA ESTRICTA - UNA SOLA CUENTA POR PAIS POR DIA): en la lista CUENTAS DEL DIA hay EXACTAMENTE UNA cuenta por pais (la del dia de hoy, ya rotada). Cuando el cliente pida datos para pagar / donde deposito / a donde transfiero, busca la cuenta de ese pais en la lista y envia su campo "Datos" TAL CUAL, completo (con todas sus lineas: banco, numero, titular, cedula). NUNCA preguntes "cual banco prefieres", NUNCA ofrezcas alternativas, NUNCA enumeres bancos: solo manda la unica cuenta que hay para ese pais hoy. Si el cliente pide OTRA cuenta / OTRO banco / "una banesco" / "tienes de otro banco" / "mandame otra" (o cualquier variante) DESPUES de que ya le enviaste la del dia, responde EXACTAMENTE UNA linea corta: "Solo esa esta habilitada hoy, usamos una sola cuenta para recibir al dia por pais 🙏". No des explicaciones extra, no ofrezcas escalar, no repitas la cuenta. Solo si NO hay NINGUNA cuenta de ese pais en la lista: "Por ahora no tengo esa cuenta a la mano, un asesor te la pasa enseguida."
+- OJO CON EL COMPROBANTE: los datos que vienen DENTRO del corchete "[El cliente envio un COMPROBANTE de pago. Datos leidos: ...]" son del comprobante que el cliente pago (banco de origen, monto, referencia). NO son la cuenta destino. NUNCA los cuentes como si el cliente te hubiera pasado una cuenta.
 - COMPROBANTE DE PAGO: si ves "[El cliente envio un COMPROBANTE de pago...]", NUNCA digas "no tengo esa cuenta". Responde MUY corto, 1 sola linea. Si en el mensaje hay numeros de cuenta/cedula/banco/datos de una cuenta destino (aunque vengan reenviados o en numeros sueltos), confirma: "Listo, recibido! Procesamos tu remesa enseguida ✅" y NO preguntes nada mas. SOLO si NO hay ninguna cuenta en el mensaje, pide corto: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)". La cuenta destino es donde el destinatario RECIBE el dinero; el cliente puede dividir el monto en varias cuentas.
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
 - Fuera de tema: "Solo remesas de JK."
@@ -560,8 +567,20 @@ let jid='', texto='';
 try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; } catch(e){}
 try { texto = $json.texto || ''; } catch(e){}
 const miTs = String(Date.now()) + '-' + Math.random().toString(36).slice(2,8);
-return [{ json: { jid, texto: texto || '', miTs, keyBuf: 'buf:'+jid, keyTok: 'tok:'+jid } }];
+
+// Si lo que llego es un COMPROBANTE, se espera mas antes de contestar. La gente manda
+// primero la foto del pago y tarda en escribir la cuenta destino; si se contesta a los 30
+// segundos, el comprobante y la cuenta caen en ejecuciones distintas y el bot nunca ve las
+// dos cosas juntas. Paso el 19/11: la clienta tardo 36 segundos.
+const esComprobante = texto.indexOf('COMPROBANTE de pago') !== -1;
+const espera = esComprobante ? __ESPERA_COMPROBANTE__ : __ESPERA_NORMAL__;
+
+return [{ json: { jid, texto: texto || '', miTs, esComprobante, espera,
+                  keyBuf: 'buf:'+jid, keyTok: 'tok:'+jid } }];
 '@
+
+$prepCode = $prepCode.Replace('__ESPERA_COMPROBANTE__', [string]$SEGUNDOS_ESPERA_COMPROBANTE)
+$prepCode = $prepCode.Replace('__ESPERA_NORMAL__', [string]$SEGUNDOS_ESPERA)
 
 # ===================== CODIGO: TEXTO DIRECTO (mensajes de texto) =====================
 $textoDirectoCode = @'
@@ -744,17 +763,20 @@ $detectarAprobacionCode = @'
 const original = String($('Combinar').item.json.mensajeCombinado || '');
 const combinado = original.toLowerCase();
 const tieneComprobante = combinado.includes('[el cliente envio un comprobante');
-const cuentaPatterns = ['bancolombia', 'nequi', 'pago movil', 'banco', 'cuenta', 'numero de cuenta', 'titular', 'cedula', 'cc ', ' ci ', 'swift', 'interbank', 'binance', 'zelle'];
-const tieneCuenta = cuentaPatterns.some(p => combinado.includes(p));
-if (!tieneComprobante || !tieneCuenta) { return []; } // no hay ambos -> no aprobar
-// Cuenta destino = lo que escribio el cliente, quitando las anotaciones internas del bot ([El cliente envio ...]).
+// Cuenta destino = lo que escribio el cliente, quitando las anotaciones internas del bot
+// ([El cliente envio ...]). Esto va ANTES de buscar la cuenta, y es importante: la anotacion
+// del comprobante dice "Banco: Banco Guayaquil", y como "banco" esta en la lista, el bot
+// creia que el cliente habia mandado la cuenta cuando solo habia mandado la foto del pago.
+// Paso el 19/11: aprobo la operacion y le mando al grupo "(el cliente no escribio la cuenta)".
 let datosCuenta = original
   .replace(/\[El cliente envio un COMPROBANTE[^\]]*\]/gi, '')
   .replace(/\[El cliente envio una imagen que no parece[^\]]*\]/gi, '')
   .replace(/\[El cliente envio una imagen con una CUENTA bancaria\.?\s*Datos:\s*([^\]]*)\]/gi, 'Cuenta (imagen): $1')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
-if (!datosCuenta) datosCuenta = '(el cliente no escribio la cuenta en texto, revisar imagenes)';
+const cuentaPatterns = ['bancolombia', 'nequi', 'pago movil', 'banco', 'cuenta', 'numero de cuenta', 'titular', 'cedula', 'cc ', ' ci ', 'swift', 'interbank', 'binance', 'zelle'];
+const tieneCuenta = cuentaPatterns.some(p => datosCuenta.toLowerCase().includes(p));
+if (!tieneComprobante || !tieneCuenta) { return []; } // no hay ambos -> no aprobar
 let jid='', nombre='', numero='';
 try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; nombre = String($('Webhook Evolution API').first().json.body.data.pushName || 'Cliente').normalize('NFKC'); numero = String(jid).replace(/\D/g,''); } catch(e){}
 return [{ json: { aprobado: true, jid, nombre, numero, datosCuenta, mensajeCombinado: combinado } }];
@@ -1157,6 +1179,18 @@ $nodes = @(
     id = '4c9f6989-54ed-4990-89d5-283dd59b7ce2'; name = 'Es mensaje de cliente?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(-200,128)
   },
   [ordered]@{
+    # Llego un comprobante? Entonces se le manda el sticker de "verificando su deposito"
+    # enseguida, sin esperar, para que el cliente sepa que se recibio.
+    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.esComprobante }}'; value2 = '={{true}}' } ) } }
+    id = 'd0e1f2a3-0000-4b00-9000-escomprob0001'; name = 'Llego un Comprobante?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(300,-120)
+  },
+  [ordered]@{
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Prep Debounce").first().json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-verificando-su-deposito.webp" }'; options = @{} }
+    id = 'd0e1f2a3-0000-4b00-9000-stickerverif1'; name = 'Sticker Verificando'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(460,-120)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
+  },
+  [ordered]@{
     parameters = @{ jsCode = $prepCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(140,128); id = 'c1a2b3c4-1111-4a11-9111-prep00000001'; name = 'Prep Debounce'
   },
@@ -1225,7 +1259,8 @@ $nodes = @(
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(340,128); id = 'c3a2b3c4-3333-4a33-9333-rset00000001'; name = 'Redis Marcar Token'; credentials = $redisCred
   },
   [ordered]@{
-    parameters = @{ amount = 30; unit = 'seconds' }
+    # Los segundos los decide "Prep Debounce": mas si llego un comprobante.
+    parameters = @{ amount = "={{ `$('Prep Debounce').first().json.espera }}"; unit = 'seconds' }
     type = 'n8n-nodes-base.wait'; typeVersion = 1.1; position = @(520,128); id = 'd2b3c4d5-4444-4a44-9444-wait00000001'; name = 'Esperar 30s'; webhookId = 'e7c1a2b3-5555-4a55-9555-waithook0001'
   },
   [ordered]@{
@@ -1432,7 +1467,11 @@ $connections = [ordered]@{
   'Transcribir Audio'      = @{ main = @( ,@( @{ node='Texto de Audio'; type='main'; index=0 } ) ) }
   'Texto de Audio'         = @{ main = @( ,@( @{ node='Prep Debounce'; type='main'; index=0 } ) ) }
   'Texto Directo'          = @{ main = @( ,@( @{ node='Prep Debounce'; type='main'; index=0 } ) ) }
-  'Prep Debounce'          = @{ main = @( ,@( @{ node='Redis Guardar Msg'; type='main'; index=0 } ) ) }
+  'Prep Debounce'          = @{ main = @( ,@(
+      @{ node='Redis Guardar Msg';      type='main'; index=0 },
+      @{ node='Llego un Comprobante?';  type='main'; index=0 }
+    ) ) }
+  'Llego un Comprobante?'  = @{ main = @( ,@( @{ node='Sticker Verificando'; type='main'; index=0 } ) ) }
   'Redis Guardar Msg'      = @{ main = @( ,@( @{ node='Redis Marcar Token'; type='main'; index=0 } ) ) }
   'Redis Marcar Token'     = @{ main = @( ,@( @{ node='Esperar 30s'; type='main'; index=0 } ) ) }
   'Esperar 30s'            = @{ main = @( ,@( @{ node='Redis Leer Token'; type='main'; index=0 } ) ) }
