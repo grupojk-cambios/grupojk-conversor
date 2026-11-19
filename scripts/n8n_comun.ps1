@@ -237,6 +237,41 @@ function Publish-N8nWorkflow($ctx, $wfId, $jsonPath, $anclas) {
   }
   Write-Host ('        Encoding sano y los ' + ([regex]::Matches($payload, '[^\u0000-\u007F]')).Count + ' caracteres especiales llegaron intactos.')
 
+  # Control de nodos: n8n a veces guarda un nodo con los parametros VACIOS. Paso el 18/11
+  # con "Memoria de Chat": el deploy dijo LISTO, el nodo quedo en {} y el bot se puso a
+  # fallar con "No session ID found" sin que nada lo avisara. Se perdio media noche en
+  # encontrarlo. Volver a desplegar lo arregla, pero hay que ENTERARSE.
+  #
+  # OJO: que el servidor tenga MENOS texto que lo enviado NO es un error. n8n no guarda
+  # los valores que ya son el default (returnAll=false, options={}), asi que casi todos
+  # los nodos vuelven un poco mas cortos. Lo que si es un error es que un nodo al que le
+  # mandamos configuracion vuelva vacio, o que directamente no este.
+  $srvPar = @{}
+  foreach($n in $srv.nodes){ $srvPar[$n.name] = ($n.parameters | ConvertTo-Json -Depth 40 -Compress) }
+  $faltan = @(); $vacios = @(); $flacos = @()
+  foreach($n in $new.nodes){
+    $enviado = ($n.parameters | ConvertTo-Json -Depth 40 -Compress)
+    if($null -eq $enviado){ $enviado = '' }
+    if(-not $srvPar.ContainsKey($n.name)){ $faltan += $n.name; continue }
+    $guardado = $srvPar[$n.name]
+    if($null -eq $guardado){ $guardado = '' }
+    if($enviado.Length -le 5){ continue }   # no se le mando nada: no hay nada que revisar
+    if($guardado.Length -le 5){ $vacios += $n.name; continue }
+    if($guardado.Length -lt ($enviado.Length / 2)){
+      $flacos += ($n.name + ': ' + $enviado.Length + ' -> ' + $guardado.Length + ' caracteres')
+    }
+  }
+  if($faltan.Count -gt 0 -or $vacios.Count -gt 0){
+    if($faltan.Count -gt 0){ Write-Host ('        NODOS QUE NO LLEGARON: ' + ($faltan -join ', ')) }
+    if($vacios.Count -gt 0){ Write-Host ('        NODOS QUE QUEDARON SIN CONFIGURACION: ' + ($vacios -join ', ')) }
+    throw 'ABORTADO: el servidor guardo nodos sin su configuracion. Vuelve a correr el deploy; si se repite, revisa esos nodos a mano.'
+  }
+  if($flacos.Count -gt 0){
+    Write-Host '        OJO, estos quedaron mucho mas cortos de lo enviado. Revisalos:'
+    foreach($f in $flacos){ Write-Host ('          ' + $f) }
+  }
+  Write-Host ('        Los ' + $new.nodes.Count + ' nodos conservaron su configuracion.')
+
   if($anclas){
     foreach($a in $anclas){
       $i = $raw.IndexOf($a, [System.StringComparison]::Ordinal)
