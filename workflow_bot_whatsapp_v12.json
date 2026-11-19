@@ -353,7 +353,7 @@
                   },
                   {
                       "parameters":  {
-                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
+                                         "instanceName":  "BOT JK Kelvin",
                                          "messageText":  "={{ $json.aviso }}",
                                          "options_message":  {
 
@@ -484,7 +484,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -612,7 +612,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1205,7 +1205,7 @@
                   },
                   {
                       "parameters":  {
-                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
+                                         "instanceName":  "BOT JK Kelvin",
                                          "messageText":  "={{ $json.output }}",
                                          "options_message":  {
 
@@ -1246,7 +1246,7 @@
                   },
                   {
                       "parameters":  {
-                                         "instanceName":  "BOT CAMBIOS JK Kelvin",
+                                         "instanceName":  "BOT JK Kelvin",
                                          "messageText":  "={{ $json.alerta }}",
                                          "options_message":  {
 
@@ -1356,7 +1356,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1398,7 +1398,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1440,7 +1440,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
@@ -1495,7 +1495,7 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20CAMBIOS%20JK%20Kelvin",
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
                                          "options":  {
 
                                                      },
