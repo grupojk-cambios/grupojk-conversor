@@ -56,15 +56,17 @@ function filtrar({ jid = GRUPO, fromMe = false, conImagen = true, citando = ID_P
 }
 
 // ---------- Arnes de "Revisar Pedido" ----------
-function revisar({ guardado = null, yaEntregado = '' } = {}) {
+function revisar({ guardado = null, yaEntregado = '', idFoto = ID_FOTO, fotoRecordada = '' } = {}) {
   const base = {
-    stanzaId: ID_PUBLICACION, idFoto: ID_FOTO, jidGrupo: GRUPO,
-    claveEntregado: 'entregado:' + ID_PUBLICACION
+    stanzaId: ID_PUBLICACION, idFoto, jidGrupo: GRUPO,
+    claveEntregado: 'entregado:' + ID_PUBLICACION,
+    claveFoto: 'ultimaFoto:' + GRUPO + ':quien'
   };
   const $ = (n) => {
-    if (n === 'Solo Estos Numeros')    return { first: () => ({ json: base }) };
+    if (n === 'Solo Estos Numeros')     return { first: () => ({ json: base }) };
     if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: guardado } }) };
     if (n === 'Redis Leer Entregado')   return { first: () => ({ json: { entregado: yaEntregado } }) };
+    if (n === 'Redis Leer Ultima Foto') return { first: () => ({ json: { ultimaFoto: fotoRecordada } }) };
     throw new Error('Node "' + n + '" not executed');
   };
   return new Function('$', code('Revisar Pedido'))($);
@@ -89,7 +91,10 @@ console.log('=== 2) No se entrega dos veces ===');
 {
   const pedido = JSON.stringify({ jid: CLIENTE, nombre: 'Maigreth', idCuenta: ID_CUENTA });
   chk(revisar({ guardado: pedido, yaEntregado: '' }).length === 1, 'la primera vez si');
-  chk(revisar({ guardado: pedido, yaEntregado: '1' }).length === 0, 'la segunda no');
+  const rep = revisar({ guardado: pedido, yaEntregado: '1' });
+  chk(rep.length === 1 && rep[0].json.accion === 'repetido', 'la segunda avisa que esta repetido',
+      '-> ' + (rep[0] || {}).json?.accion);
+  chk(/ya se le envio a Maigreth/i.test((rep[0] || {}).json?.aviso || ''), 'y dice a quien');
 }
 
 console.log('');
@@ -192,6 +197,123 @@ console.log('=== 6) El id del mensaje con la cuenta viaja hasta el final ===');
     { id: 'AA1', texto: '[El cliente envio un COMPROBANTE de pago. Datos leidos: Banco: Guayaquil, Cuenta: 123]' }
   ]);
   chk(soloComprobante.length === 0, 'solo el comprobante sigue sin aprobar');
+}
+
+console.log('');
+console.log('=== 7) Foto suelta y despues un punto ===');
+{
+  // Kelvin pidio poder mandar la foto sola y despues responder con un punto.
+  const r = filtrar({ citando: null });
+  chk(r.length === 1 && r[0].json.accionPausa === 'recordarFoto',
+      'foto sin citar -> se recuerda', '-> ' + (r[0] || {}).json?.accionPausa);
+  chk(/^ultimaFoto:/.test((r[0] || {}).json?.claveFoto || ''), 'con una clave por operadora',
+      '-> ' + (r[0] || {}).json?.claveFoto);
+
+  // Despues cita con un punto: se dispara la entrega, sin foto propia.
+  const r2 = filtrar({ conImagen: false, texto: '.' });
+  chk(r2.length === 1 && r2[0].json.accionPausa === 'entregar', 'punto citando -> entregar',
+      '-> ' + (r2[0] || {}).json?.accionPausa);
+  chk(r2[0].json.idFoto === '', 'sin foto propia: usara la recordada');
+
+  for (const t of ['.', 'ok', 'listo', 'ya']) {
+    chk(filtrar({ conImagen: false, texto: t })[0].json.accionPausa === 'entregar',
+        'tambien con "' + t + '"');
+  }
+
+  // Un comentario largo citando NO debe disparar una entrega.
+  const largo = filtrar({ conImagen: false, texto: 'esta cuenta esta mal, revisala por favor' });
+  chk(largo.length === 0, 'un comentario largo citando no entrega nada', '-> ' + largo.length);
+}
+
+console.log('');
+console.log('=== 8) De donde sale la foto que se entrega ===');
+{
+  const pedido = JSON.stringify({ jid: CLIENTE, nombre: 'Maigreth', idCuenta: ID_CUENTA });
+  const propia = revisar({ guardado: pedido, idFoto: ID_FOTO });
+  chk(propia[0].json.idFoto === ID_FOTO, 'si cito CON la foto, se usa esa');
+
+  const recordada = revisar({ guardado: pedido, idFoto: '', fotoRecordada: 'AC_FOTO_VIEJA' });
+  chk(recordada[0].json.idFoto === 'AC_FOTO_VIEJA', 'si cito con un punto, la recordada');
+
+  const ninguna = revisar({ guardado: pedido, idFoto: '', fotoRecordada: '' });
+  chk(ninguna.length === 0, 'punto sin ninguna foto -> no hace nada', '-> ' + ninguna.length);
+}
+
+console.log('');
+console.log('=== 9) Cuentas multiples: cabecera, monto y a que mensaje citan ===');
+{
+  const separar = (mensajes, nombreMostrar) => {
+    const ap = { nombreMostrar, nombre: 'Maigre Herrera', datosCuenta: 'algo', idCuenta: 'XX' };
+    const $ = (n) => {
+      if (n === 'Detectar Aprobación') return { item: { json: ap } };
+      if (n === 'Combinar') return { item: { json: { mensajes } } };
+      return { item: { json: {} } };
+    };
+    return new Function('$', code('Separar Cuentas'))($).map(i => i.json);
+  };
+
+  // Las 4 cuentas en UN solo mensaje.
+  const unMensaje = [{ id: 'M1', texto: [
+    'Banco Pichincha 2100111111 Ana Perez $30', '',
+    'Banco Guayaquil 2200222222 Luis Gomez $40', '',
+    'Produbanco 2300333333 Eva Diaz $15', '',
+    'Banco Pacifico 2400444444 Juan Mora $35'
+  ].join(SALTO) }];
+  const r1 = separar(unMensaje, 'Maigreth Herrera');
+  chk(r1.length === 4, 'salen las 4 cuentas', '-> ' + r1.length);
+  console.log('     ' + r1[0].cuenta.split(SALTO).join(SALTO + '     '));
+  chk(r1[0].cuenta.indexOf('Maigreth Herrera - $30') === 0, 'cabecera con nombre y monto');
+  chk(r1.every(c => c.idCuenta === 'M1'), 'las 4 citan ese mismo mensaje');
+  chk(r1.map(c => c.monto).join(',') === '30,40,15,35', 'y se leyeron los montos',
+      '-> ' + r1.map(c => c.monto).join(','));
+
+  // Las 4 en CUATRO mensajes distintos: cada una debe citar el suyo.
+  const cuatro = [
+    { id: 'A', texto: 'Banco Pichincha 2100111111 Ana $30' },
+    { id: 'B', texto: 'Banco Guayaquil 2200222222 Luis $40' },
+    { id: 'C', texto: 'Produbanco 2300333333 Eva $15' },
+    { id: 'D', texto: 'Banco Pacifico 2400444444 Juan $35' }
+  ];
+  const r2 = separar(cuatro, 'Maigreth Herrera');
+  chk(r2.length === 4, 'tambien salen 4', '-> ' + r2.length);
+  chk(r2.map(c => c.idCuenta).join(',') === 'A,B,C,D', 'cada una cita SU mensaje',
+      '-> ' + r2.map(c => c.idCuenta).join(','));
+
+  // Las notas del bot no son cuentas.
+  const conNota = [
+    { id: 'N', texto: '[El cliente envio un COMPROBANTE de pago. Datos leidos: Banco: Guayaquil]' },
+    { id: 'A', texto: 'Banco Pichincha 2100111111 Ana $30' }
+  ];
+  chk(separar(conNota, 'Ana').length === 1, 'la nota del comprobante no cuenta como cuenta');
+
+  // Sin monto escrito: sale solo el nombre, sin inventar.
+  const sinMonto = separar([{ id: 'A', texto: 'Banco Pichincha 2100111111 Ana Perez' }], 'Ana Perez');
+  chk(sinMonto[0].cuenta.indexOf('Ana Perez' + SALTO) === 0, 'sin monto, solo el nombre',
+      '-> ' + JSON.stringify(sinMonto[0].cuenta.split(SALTO)[0]));
+  chk(sinMonto[0].monto === null, 'y el monto queda vacio');
+}
+
+console.log('');
+console.log('=== 10) Aviso si los montos no cuadran ===');
+{
+  const montos = (lista, total) => {
+    const $ = (n) => {
+      if (n === 'Separar Cuentas') return { all: () => lista.map(m => ({ json: { monto: m } })) };
+      if (n === 'Detectar Aprobación') return { first: () => ({ json: { montoComprobante: total } }) };
+      return { all: () => [], first: () => ({ json: {} }) };
+    };
+    return new Function('$', code('Revisar Montos'))($);
+  };
+
+  chk(montos([30, 40, 15, 35], 120).length === 0, 'si suman, no dice nada');
+  const r = montos([30, 40, 15, 30], 120);
+  chk(r.length === 1, 'si NO suman, avisa', '-> ' + r.length);
+  console.log('     ' + (r[0] || {}).json?.aviso);
+  chk(/\$5/.test((r[0] || {}).json?.aviso || ''), 'y dice la diferencia');
+
+  chk(montos([30, null, 15, 35], 120).length === 0, 'si falta un monto, se calla');
+  chk(montos([30, 40], null).length === 0, 'si no se leyo el comprobante, se calla');
+  chk(montos([120], 120).length === 0, 'con una sola cuenta no hay nada que sumar');
 }
 
 console.log('');
