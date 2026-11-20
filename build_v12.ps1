@@ -90,11 +90,13 @@ $MINUTOS_MENSAJE_VIEJO = 20
 #     "bot on"   -> el bot vuelve a atender ese chat de inmediato
 #     "bot off"  -> el bot se calla ahi 12 horas
 # ============================================================================
-# Cuanto espera el bot a que lleguen mas mensajes antes de contestar. Con un COMPROBANTE
-# espera mas, porque la gente manda primero la foto y tarda en escribir la cuenta destino:
-# el 19/11 una clienta tardo 36 segundos y quedaron en mensajes separados.
+# Cuanto espera el bot a que lleguen mas mensajes antes de contestar. Con una OPERACION espera
+# mas: la gente manda la foto del pago y la cuenta destino una tras otra, en cualquier orden, y
+# tardan (el 19/11 una clienta tardo 36 segundos; el 20/11 otra, 14 minutos). Se espera lo mismo
+# cuando llega primero la captura (foto + cuenta) que cuando llega primero la cuenta (cuenta +
+# foto). Un mensaje normal sigue en 30 s.
 $SEGUNDOS_ESPERA = 30
-$SEGUNDOS_ESPERA_COMPROBANTE = 60
+$SEGUNDOS_ESPERA_OPERACION = 100
 
 $MINUTOS_PAUSA = 60
 $HORAS_PAUSA_MANUAL = 12
@@ -113,6 +115,15 @@ $SEG_MEMORIA_OPERACION = $HORAS_MEMORIA_OPERACION * 3600
 # ultima foto durante estos minutos. Corto a proposito: si mando varias seguidas, se usa
 # la ultima.
 $MINUTOS_RECORDAR_FOTO = 10
+
+# Cuanto recuerda el bot una CUENTA que llego sin captura, o una CAPTURA que llego sin cuenta,
+# esperando lo que falta. El 20/11 una clienta mando la cuenta y 14 minutos despues las capturas:
+# el bot solo miraba los ultimos 30 segundos, le dijo "Listo, recibido!" y no paso nada al grupo.
+$MINUTOS_OPERACION_PENDIENTE = 120
+
+# Dos capturas con el MISMO monto en estos minutos, si a una no se le leyo la referencia, se toman
+# como el mismo deposito (ej. dos pantallas distintas del mismo Zelle).
+$MINUTOS_MISMO_DEPOSITO = 15
 
 # Cada cuantos minutos, como MUCHO, se avisa de un mismo chat en pausa. Sin esto, un cliente
 # que escribe seis veces seguidas genera seis avisos y el grupo se vuelve ruido.
@@ -569,6 +580,7 @@ REGLAS:
 - VENEZUELA: hay bolivares (VES, a cuenta/pago movil) y efectivo en dolares ("Efectivo Venezuela"). Regla para NO preguntar de mas: (a) si el cliente YA dijo "Bs"/"bolivares"/"pago movil" -> usa Venezuela (bolivares) y NO preguntes nada de eso. (b) si YA dijo "dolares"/"$"/"efectivo"/"cash" o una ciudad/estado venezolano (Caracas, Maracaibo, Valencia...) -> es Efectivo Venezuela (USD). (c) SOLO pregunta "Lo quieres en bolivares o en efectivo (dolares)?" cuando el cliente va a RECIBIR dinero EN Venezuela y NO dejo claro cual de los dos quiere. (d) si Venezuela es el ORIGEN (el cliente ENVIA Bs hacia otro pais), NUNCA preguntes eso: solo es bolivares. Para efectivo en dolares, pregunta en que ciudad lo retira.
 - CUENTAS (REGLA ESTRICTA - UNA SOLA CUENTA POR PAIS POR DIA): en la lista CUENTAS DEL DIA hay EXACTAMENTE UNA cuenta por pais (la del dia de hoy, ya rotada). Cuando el cliente pida datos para pagar / donde deposito / a donde transfiero, busca la cuenta de ese pais en la lista y envia su campo "Datos" TAL CUAL, completo (con todas sus lineas: banco, numero, titular, cedula). NUNCA preguntes "cual banco prefieres", NUNCA ofrezcas alternativas, NUNCA enumeres bancos: solo manda la unica cuenta que hay para ese pais hoy. Si el cliente pide OTRA cuenta / OTRO banco / "una banesco" / "tienes de otro banco" / "mandame otra" (o cualquier variante) DESPUES de que ya le enviaste la del dia, responde EXACTAMENTE UNA linea corta: "Solo esa esta habilitada hoy, usamos una sola cuenta para recibir al dia por pais 🙏". No des explicaciones extra, no ofrezcas escalar, no repitas la cuenta. Solo si NO hay NINGUNA cuenta de ese pais en la lista: "Por ahora no tengo esa cuenta a la mano, un asesor te la pasa enseguida."
 - OJO CON EL COMPROBANTE: los datos que vienen DENTRO del corchete "[El cliente envio un COMPROBANTE de pago. Datos leidos: ...]" son del comprobante que el cliente pago (banco de origen, monto, referencia). NO son la cuenta destino. NUNCA los cuentes como si el cliente te hubiera pasado una cuenta.
+- ESTADO DE LA OPERACION: si al final del mensaje ves "[ESTADO DE LA OPERACION: ...]", esa nota la pone el sistema despues de revisar la captura y la cuenta de este cliente, y MANDA sobre las reglas de comprobante de abajo: responde exactamente lo que dice. Nunca menciones esa nota al cliente.
 - COMPROBANTE DE PAGO: si ves "[El cliente envio un COMPROBANTE de pago...]", NUNCA digas "no tengo esa cuenta". Responde MUY corto, 1 sola linea. Si en el mensaje hay numeros de cuenta/cedula/banco/datos de una cuenta destino (aunque vengan reenviados o en numeros sueltos), confirma: "Listo, recibido! Procesamos tu remesa enseguida ✅" y NO preguntes nada mas. SOLO si NO hay ninguna cuenta en el mensaje, pide corto: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)". La cuenta destino es donde el destinatario RECIBE el dinero; el cliente puede dividir el monto en varias cuentas.
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
 - Fuera de tema: "Solo remesas de JK."
@@ -595,7 +607,21 @@ const miTs = String(Date.now()) + '-' + Math.random().toString(36).slice(2,8);
 // segundos, el comprobante y la cuenta caen en ejecuciones distintas y el bot nunca ve las
 // dos cosas juntas. Paso el 19/11: la clienta tardo 36 segundos.
 const esComprobante = texto.indexOf('COMPROBANTE de pago') !== -1;
-const espera = esComprobante ? __ESPERA_COMPROBANTE__ : __ESPERA_NORMAL__;
+
+// Los datos de una CUENTA destino tambien esperan lo mismo (cuenta + foto). Solo cuentan los datos
+// FIRMES: un numero largo (cuenta o telefono de pago movil, aunque venga con espacios o guiones),
+// un correo (Zelle, PayPal) o una direccion de billetera. Una pregunta como "me pasas la cuenta?"
+// o "tienes cuenta en Banesco?" NO espera: se contesta en 30 s como siempre.
+// Lo que el cliente cita se ignora (puede ser nuestra propia cuenta).
+function datosFirmes(t){
+  const sinCita = String(t || '').replace(/\[el cliente respondio citando[^\]]*\]/gi, '');
+  const bajo = ' ' + sinCita.toLowerCase() + ' ';
+  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
+  if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
+  return /(^|\s)[A-Za-z0-9]{26,}(\s|$)/.test(sinCita);
+}
+const esperaLarga = esComprobante || datosFirmes(texto);
+const espera = esperaLarga ? __ESPERA_OPERACION__ : __ESPERA_NORMAL__;
 
 // El id de ESTE mensaje viaja con el texto. Hace falta despues para poder CITAR el mensaje
 // en el que el cliente escribio sus datos bancarios cuando se le mande el comprobante.
@@ -606,7 +632,7 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, espera, idMensaj
                   keyBuf: 'buf:'+jid, keyTok: 'tok:'+jid } }];
 '@
 
-$prepCode = $prepCode.Replace('__ESPERA_COMPROBANTE__', [string]$SEGUNDOS_ESPERA_COMPROBANTE)
+$prepCode = $prepCode.Replace('__ESPERA_OPERACION__', [string]$SEGUNDOS_ESPERA_OPERACION)
 $prepCode = $prepCode.Replace('__ESPERA_NORMAL__', [string]$SEGUNDOS_ESPERA)
 
 # ===================== CODIGO: TEXTO DIRECTO (mensajes de texto) =====================
@@ -694,8 +720,19 @@ try {
 } catch(e){ resumen = String(raw).slice(0,200); }
 let keyId='';
 try { keyId = $('Webhook Evolution API').first().json.body.data.key.id || ''; } catch(e){}
+// Huella de la foto (el sha256 que manda WhatsApp). Si el cliente reenvia la MISMA foto, la huella
+// es la misma: asi "Revisar Operacion" reconoce el deposito repetido aunque no se lea la referencia.
+let huella='';
+try {
+  const im = $('Webhook Evolution API').first().json.body.data.message.imageMessage || {};
+  const f = im.fileSha256;
+  let bytes = [];
+  if (typeof f === 'string') bytes = Array.from(Buffer.from(f, 'base64'));
+  else if (f && typeof f === 'object') bytes = Object.keys(f).sort((a, b) => Number(a) - Number(b)).map(k => f[k]);
+  huella = bytes.slice(0, 8).map(x => ('0' + (Number(x) & 255).toString(16)).slice(-2)).join('');
+} catch(e){ huella=''; }
 let texto='';
-if(tipo.indexOf('comprobante')>=0){ texto = '[El cliente envio un COMPROBANTE de pago. Datos leidos: ' + resumen + ']'; }
+if(tipo.indexOf('comprobante')>=0){ texto = '[El cliente envio un COMPROBANTE de pago. Datos leidos: ' + resumen + (huella ? ' Huella: ' + huella : '') + ']'; }
 else if(tipo.indexOf('cuenta')>=0){ texto = '[El cliente envio una imagen con una CUENTA bancaria. Datos: ' + resumen + ']'; }
 else { texto = '[El cliente envio una imagen que no parece comprobante ni cuenta de banco]'; }
 return [{ json: { texto, tipoImagen: tipo, resumenImagen: resumen, imgKeyId: keyId } }];
@@ -803,7 +840,13 @@ return [{ json: { output: texto } }];
 # ===================== CODIGO: DETECTAR APROBACION (comprobante + cuenta) =====================
 $detectarAprobacionCode = @'
 // Detecta si hay comprobante + cuenta destino para APROBAR la operación y reenviar al grupo.
-const original = String($('Combinar').item.json.mensajeCombinado || '');
+// De donde sale el texto: de "Revisar Operacion", que ya junto la captura y la cuenta aunque hayan
+// llegado con minutos de diferencia (y que deja afuera las capturas repetidas). Si ese nodo no
+// esta, del mensaje tal cual.
+let ro = {};
+try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
+const desdeOperacion = (ro.textoAprobar !== undefined);
+const original = desdeOperacion ? String(ro.textoAprobar || '') : String($('Combinar').item.json.mensajeCombinado || '');
 const combinado = original.toLowerCase();
 const tieneComprobante = combinado.includes('[el cliente envio un comprobante');
 // Cuenta destino = lo que escribio el cliente, quitando las anotaciones internas del bot
@@ -851,7 +894,7 @@ try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || '
 // quede claro a que cuenta corresponde. Si no se encuentra, va vacio y no se cita nada.
 let idCuenta = '';
 try {
-  const lista = $('Combinar').item.json.mensajes || [];
+  const lista = desdeOperacion ? (ro.mensajesAprobar || []) : ($('Combinar').item.json.mensajes || []);
   for (const m of lista){
     const t = String((m && m.texto) || '').toLowerCase();
     if (t.indexOf('[el cliente envio') === 0) continue;   // es una nota del bot, no del cliente
@@ -876,8 +919,12 @@ try {
   }
 } catch(e){}
 
+// La foto que se publica en el grupo es la de la CAPTURA, aunque despues el cliente haya mandado
+// otra imagen (ej. la foto de la cuenta).
+const idImagen = desdeOperacion ? String(ro.idImagen || '') : '';
+
 return [{ json: { aprobado: true, jid, nombre, nombreMostrar, numero, datosCuenta, idCuenta,
-                  montoComprobante, mensajeCombinado: combinado } }];
+                  montoComprobante, idImagen, mensajeCombinado: combinado } }];
 '@
 
 # ===================== CODIGO: SEPARAR CUENTAS (1 mensaje por cuenta) =====================
@@ -892,7 +939,10 @@ const ap = $('Detectar Aprobación').item.json;
 const nombre = ap.nombreMostrar || ap.nombre || 'Cliente';
 
 let lista = [];
-try { lista = $('Combinar').item.json.mensajes || []; } catch(e){}
+try {
+  const ro = $('Revisar Operacion').first().json || {};
+  lista = (ro.mensajesAprobar !== undefined) ? (ro.mensajesAprobar || []) : ($('Combinar').item.json.mensajes || []);
+} catch(e){ try { lista = $('Combinar').item.json.mensajes || []; } catch(e2){} }
 
 // Las notas que escribe el propio bot al leer una imagen no son cuentas del cliente.
 function limpiar(t){
@@ -904,10 +954,13 @@ function limpiar(t){
 }
 
 // Monto del bloque: "$30", "30$", "30 usd", "$30,50". Si no hay, null.
+// Primero se busca "$30" y despues "30$" EN LA MISMA LINEA. Con el salto de linea permitido, una
+// cedula con "$60" en la linea de abajo salia como monto ("Ci 11111111 / $60" -> $11111111).
 function montoDe(t){
-  const m = String(t).match(/\$\s*([0-9]+(?:[.,][0-9]{1,2})?)|([0-9]+(?:[.,][0-9]{1,2})?)\s*(?:\$|usd|dolares|dolar)/i);
+  const s = String(t);
+  const m = s.match(/\$[ 	]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ 	]*(?:\$|usd|dolares|dolar)/i);
   if (!m) return null;
-  const v = parseFloat(String(m[1] || m[2]).replace(',', '.'));
+  const v = parseFloat(String(m[1]).replace(',', '.'));
   return isNaN(v) ? null : v;
 }
 
@@ -1350,6 +1403,285 @@ return [{ json: { aviso:
   ' cuentas suman $' + redondo(suma) + '. Diferencia: $' + redondo(Math.abs(dif)) } }];
 '@
 
+# ===================== CODIGO: REVISAR OPERACION (captura + cuenta en cualquier orden) =====================
+$revisarOperacionCode = @'
+// ===== LA OPERACION DEL CLIENTE: CAPTURA + CUENTA, EN EL ORDEN EN QUE LLEGUEN =====
+// Antes el bot solo juntaba lo que llegaba dentro de su espera (30 s, o 60 s si llegaba una
+// captura). El 20/11 una clienta mando la cuenta y 14 minutos despues dos capturas del mismo
+// Zelle: el bot le contesto dos veces "Listo, recibido!" y NO paso nada al grupo.
+//
+// Ahora el bot RECUERDA, por cliente, lo que le falta (en Redis, clave 'op:<chat>'):
+//   - llega la cuenta sola       -> la guarda y le pide la captura
+//   - llega la captura sola      -> la guarda y le pide la cuenta
+//   - llega lo que faltaba       -> junta las dos y "Detectar Aprobacion" las pasa al grupo
+//   - llega una captura repetida -> NO la vuelve a pasar y le avisa al cliente
+//
+// Este nodo no manda nada: decide. Al agente le deja una nota con lo que tiene que contestar
+// (asi lo que se le dice al cliente y lo que se pasa al grupo no se pueden contradecir), y a
+// "Detectar Aprobacion" el texto con la captura y la cuenta ya juntas.
+const MINUTOS_PENDIENTE = __MINUTOS_PENDIENTE__;
+const MINUTOS_MISMO_DEPOSITO = __MINUTOS_MISMO_DEPOSITO__;
+const HORAS_RECORDAR = __HORAS_RECORDAR__;
+const ahora = Date.now();
+
+let base = {};
+try { base = $('Code in JavaScript').first().json || {}; } catch(e){}
+let mensajes = [];
+try { mensajes = $('Combinar').first().json.mensajes || []; } catch(e){}
+if (!Array.isArray(mensajes)) mensajes = [];
+
+// Lo que ya se sabia de este cliente.
+let op = {};
+try {
+  const raw = $('Redis Leer Operacion').first().json.operacion;
+  if (raw) op = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+} catch(e){ op = {}; }
+if (!op || typeof op !== 'object') op = {};
+const vigente = x => !!x && typeof x.ts === 'number' && (ahora - x.ts) <= MINUTOS_PENDIENTE * 60000;
+const cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuenta.mensajes)) ? op.cuenta.mensajes : [];
+const capturasGuardadas = Array.isArray(op.capturas) ? op.capturas.filter(vigente) : [];
+const hechos = Array.isArray(op.hechos) ? op.hechos.filter(h => h && (ahora - (h.ts || 0)) <= HORAS_RECORDAR * 3600000) : [];
+
+// ---------- que es una cuenta (lo mismo que usa "Detectar Aprobacion") ----------
+const cuentaPatterns = ['bancolombia', 'nequi', 'pago movil', 'banco', 'cuenta', 'numero de cuenta', 'titular', 'cedula', 'cc ', ' ci ', 'swift', 'interbank', 'binance', 'zelle'];
+const NOMBRES_CUENTA = ['banesco', 'mercantil', 'provincial', 'bdv', 'bicentenario', 'bancamiga', 'bnc', 'exterior',
+                        'pichincha', 'guayaquil', 'produbanco', 'pacifico', 'bolivariano', 'davivienda', 'daviplata',
+                        'plin', 'yape', 'paypal', 'usdt', 'trc20', 'erc20', 'bep20', 'wallet', 'billetera', 'iban'];
+function pareceCuenta(texto){
+  const bajo = ' ' + String(texto || '').toLowerCase() + ' ';
+  if (cuentaPatterns.some(p => bajo.indexOf(p) !== -1)) return true;
+  if (NOMBRES_CUENTA.some(p => new RegExp('(^|[^a-z0-9])' + p + '([^a-z0-9]|$)').test(bajo))) return true;
+  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
+  if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
+  return false;
+}
+
+// DATOS FIRMES: un numero largo, un correo o una direccion de billetera. Es lo unico que basta,
+// SIN captura de por medio, para tomar un texto como la cuenta destino del cliente. Las palabras
+// ("banco", "cuenta", "cedula") no alcanzan solas: "me pasas la cuenta para depositar?" es una
+// pregunta, no una cuenta, y no puede dispararle al agente una nota falsa de "ya paso su cuenta".
+function datosFirmes(texto){
+  const t = String(texto || '');
+  const bajo = ' ' + t.toLowerCase() + ' ';
+  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
+  if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
+  return /(^|\s)[A-Za-z0-9]{26,}(\s|$)/.test(t);
+}
+
+// Las notas que escribe el bot no son del cliente. Con las citas hay que fijarse: si el cliente
+// cita el mensaje donde el bot le mando NUESTRA cuenta del dia (o cualquier mensaje sin datos),
+// eso no es su cuenta destino y se quita. Pero si cita SU PROPIO mensaje con sus datos y agrega
+// lo que faltaba (paso el 20/11: cito "cedula / telefono / 0102 / 10$" y escribio "Banco
+// Venezuela / Titular ..."), lo citado SI es parte de su cuenta y se conserva.
+function textoDelCliente(t){
+  return String(t || '')
+    .replace(/\[El cliente envio un COMPROBANTE[^\]]*\]/gi, '')
+    .replace(/\[El cliente envio una imagen que no parece[^\]]*\]/gi, '')
+    .replace(/\[el cliente respondio citando[^"\]]*"([^\]]*)"\]/gi, (todo, citado) => {
+      const d = datosDe(citado);
+      return (d.length && !d.every(x => NUESTROS.has(x))) ? citado : '';
+    })
+    .replace(/\[el cliente respondio citando[^\]]*\]/gi, '')
+    .trim();
+}
+
+// Si lo que escribio son NUESTRAS cuentas (las del dia, donde el cliente paga), no es su cuenta
+// destino. Pasa cuando el cliente escribe "ya deposite en la 2205061301".
+function datosDe(t){
+  const s = String(t || '').toLowerCase();
+  const nums = s.replace(/([0-9])[ .-](?=[0-9])/g, '$1').match(/[0-9]{8,}/g) || [];
+  const correos = s.match(/[^ @\n]+@[^ @\n]+\.[a-z]{2,}/g) || [];
+  return nums.concat(correos);
+}
+const NUESTROS = new Set(datosDe((Array.isArray(base.cuentas) ? base.cuentas : []).map(c => (c && c.Datos) || '').join('\n')));
+function esCuentaNuestra(t){
+  const d = datosDe(t);
+  return d.length > 0 && d.every(x => NUESTROS.has(x));
+}
+
+// ---------- capturas: monto, referencia y huella, para reconocer las repetidas ----------
+// La huella es hexadecimal y trae numeros: hay que quitarla antes de buscar el monto o la
+// referencia, o "Referencia: no visible Huella: aaaa1111..." se leia como referencia 1111.
+function sinHuella(t){ return String(t || '').replace(/huella:\s*[0-9a-f]+/gi, ''); }
+function numero(s){
+  s = String(s || '').replace(/[.,]+$/, '');
+  const ult = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  if (ult === -1) return parseFloat(s);
+  const dec = s.slice(ult + 1);
+  if (dec.length === 3) return parseFloat(s.replace(/[.,]/g, ''));   // 1.500 = mil quinientos
+  return parseFloat(s.slice(0, ult).replace(/[.,]/g, '') + '.' + dec);
+}
+function montoDe(t){
+  const m = sinHuella(t).match(/monto[^0-9]{0,15}([0-9][0-9.,]*)/i);
+  if (!m) return null;
+  const v = numero(m[1]);
+  return isNaN(v) ? null : v;
+}
+function refDe(t){
+  const m = sinHuella(t).match(/(referencia|ref\.?|transacci[oó]n|documento|confirmaci[oó]n|operaci[oó]n|n[uú]mero)[^0-9\]]{0,25}([0-9]{4,})/i);
+  return m ? m[2] : '';
+}
+function huellaDe(t){
+  const m = String(t).match(/huella:\s*([0-9a-f]{8,})/i);
+  return m ? m[1].toLowerCase() : '';
+}
+// Un dato de lo que leyo la IA: "Banco: Banesco, ..." -> 'Banesco'.
+function campoDe(t, claves){
+  const m = sinHuella(t).match(new RegExp('(?:' + claves + ')\\s*:\\s*([^,\\]]+)', 'i'));
+  return m ? m[1].trim() : '';
+}
+function normal(x){
+  return String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+// Palabras demasiado comunes para decir que dos bancos o dos nombres son el mismo.
+const PALABRAS_COMUNES = ['banco', 'bank', 'banking', 'universal', 'nacional', 'credito', 'cuenta', 'ahorro', 'ahorros',
+                          'corriente', 'digital', 'secure', 'transfer', 'pago', 'movil', 'de', 'del', 'la', 'los', 'las', 'the'];
+// true = hablan de lo mismo, false = se contradicen, null = falta alguno de los dos y no se puede comparar.
+function parecidos(x, y){
+  x = normal(x); y = normal(y);
+  if (!x || !y) return null;
+  if (x === y || x.indexOf(y) !== -1 || y.indexOf(x) !== -1) return true;
+  const ys = y.split(' ');
+  return x.split(' ').some(w => w.length >= 4 && PALABRAS_COMUNES.indexOf(w) === -1 && ys.indexOf(w) !== -1);
+}
+// Todo lo que se puede comparar de una captura: monto, referencia, banco, destinatario y huella.
+function datosDeCaptura(texto, id){
+  return { id: id || '', texto, ts: ahora,
+           monto: montoDe(texto), ref: refDe(texto), huella: huellaDe(texto),
+           banco: campoDe(texto, 'banco|entidad'),
+           destino: campoDe(texto, 'destinatario|beneficiario|titular|nombre|enviad[oa] a') };
+}
+// El MISMO deposito se decide con el monto, la referencia y los datos bancarios (banco y
+// destinatario), nunca con uno solo:
+//   - la misma foto (huella)                                   -> repetido
+//   - cualquier dato que se CONTRADIGA (otro monto, otra referencia, otro banco o destinatario)
+//                                                              -> es otro deposito
+//   - misma referencia                                         -> repetido
+//   - sin referencia: mismo monto Y mismo banco o destinatario -> repetido (aunque pase tiempo)
+//   - sin referencia ni banco que comparar: solo el monto y unos pocos minutos (dos pantallas
+//     del mismo pago, ej. un Zelle)                            -> repetido
+// Si a las dos les falta el monto no se afirma nada: mejor pasar de mas que tragarse un deposito.
+function mismoDeposito(a, b){
+  if (!a || !b) return false;
+  if (a.huella && b.huella && a.huella === b.huella) return true;
+  const ma = (a.monto === undefined) ? null : a.monto, mb = (b.monto === undefined) ? null : b.monto;
+  if (ma !== null && mb !== null && Math.abs(ma - mb) >= 0.01) return false;
+  if (a.ref && b.ref && a.ref !== b.ref) return false;
+  const banco = parecidos(a.banco, b.banco), destino = parecidos(a.destino, b.destino);
+  if (banco === false || destino === false) return false;
+  if (a.ref && b.ref) return true;
+  if (ma === null || mb === null) return false;
+  if (banco === true || destino === true) return true;
+  return Math.abs((a.ts || 0) - (b.ts || 0)) <= MINUTOS_MISMO_DEPOSITO * 60000;
+}
+
+// ---------- lo que llego ahora ----------
+const RX_CAPTURA = /\[El cliente envio un COMPROBANTE[^\]]*\]/i;
+const capturas = [];
+for (const m of mensajes){
+  const t = String((m && m.texto) || '');
+  const c = t.match(RX_CAPTURA);
+  if (c) capturas.push(datosDeCaptura(c[0], (m && m.id) || ''));
+}
+
+// Una cuenta: SIN captura de por medio, solo con datos firmes. CON una captura (en este envio o
+// esperando guardada), tambien un texto con palabras de cuenta o banco, pero nunca una pregunta.
+const hayCaptura = capturas.length > 0 || capturasGuardadas.length > 0;
+const cuentasAhora = [];
+for (const m of mensajes){
+  const resto = textoDelCliente(String((m && m.texto) || ''));
+  if (!resto || esCuentaNuestra(resto)) continue;
+  const esCuenta = datosFirmes(resto) || (hayCaptura && resto.indexOf('?') === -1 && pareceCuenta(resto));
+  if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
+}
+
+const nuevas = [];
+for (let i = 0; i < capturas.length; i++){
+  const c = capturas[i];
+  const antes = capturas.slice(0, i).find(x => mismoDeposito(c, x));
+  if (antes){ c.clase = antes.clase; continue; }             // otra pantalla del mismo pago, en el mismo envio
+  if (hechos.some(h => mismoDeposito(c, h))){ c.clase = 'repetida'; continue; }
+  const g = capturasGuardadas.find(x => mismoDeposito(c, x));
+  if (g){                                                    // la volvio a mandar mientras falta la cuenta
+    c.clase = 'guardada';
+    if (!g.ref && c.ref) g.ref = c.ref;
+    if (!g.huella && c.huella) g.huella = c.huella;
+    if (!g.banco && c.banco) g.banco = c.banco;
+    if (!g.destino && c.destino) g.destino = c.destino;
+    continue;
+  }
+  c.clase = 'nueva';
+  nuevas.push(c);
+}
+const todasRepetidas = capturas.length > 0 && capturas.every(c => c.clase === 'repetida');
+
+// Varias cuentas (en un mensaje o en varios) se juntan; la misma cuenta escrita dos veces, no.
+// Si la misma cuenta llega otra vez MAS COMPLETA (ej. ahora con el banco y el titular), se queda
+// la version mas completa.
+function unirCuentas(a, b){
+  const out = [], donde = {};
+  for (const m of a.concat(b)){
+    const clave = datosDe(m.texto).sort().join('|') || String(m.texto).trim().toLowerCase();
+    const nueva = { id: m.id || '', texto: m.texto };
+    if (donde[clave] === undefined){ donde[clave] = out.length; out.push(nueva); continue; }
+    if (String(m.texto).length > String(out[donde[clave]].texto).length) out[donde[clave]] = nueva;
+  }
+  return out;
+}
+const capturasOp = capturasGuardadas.concat(nuevas);
+const cuentasOp = unirCuentas(cuentaGuardada, cuentasAhora);
+
+let estado = 'nada';
+if (todasRepetidas) estado = 'repetido';
+else if (capturasOp.length && cuentasOp.length) estado = 'completo';
+else if (capturasOp.length) estado = 'falta_cuenta';
+else if (cuentasAhora.length) estado = 'falta_captura';
+
+const NOTA = {
+  completo:      'ya tengo la captura del deposito y la cuenta destino de este cliente; se pasaron a operaciones. Responde SOLO: "Listo, recibido! Procesamos tu remesa enseguida ✅"',
+  falta_cuenta:  'ya tengo la captura del deposito pero todavia NO tengo la cuenta destino. Responde SOLO: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)"',
+  falta_captura: 'el cliente ya paso la cuenta destino pero todavia NO mando la captura del deposito. Si pregunto algo, respondelo; y pidele corto: "Recibi los datos de la cuenta 👍 Cuando hagas el deposito, enviame la captura"',
+  repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
+};
+const notaIA = NOTA[estado] ? '\n\n[ESTADO DE LA OPERACION: ' + NOTA[estado] + ']' : '';
+
+const huellaDeposito = c => ({ ref: c.ref || '', monto: (c.monto === undefined ? null : c.monto), huella: c.huella || '',
+                                banco: c.banco || '', destino: c.destino || '', ts: ahora });
+const nueva = { cuenta: null, capturas: [], hechos };
+let textoAprobar = '', mensajesAprobar = [], idImagen = '';
+if (estado === 'completo'){
+  textoAprobar = capturasOp.map(c => c.texto).join('\n') + '\n\n' + cuentasOp.map(m => m.texto).join('\n\n');
+  mensajesAprobar = capturasOp.map(c => ({ id: c.id, texto: c.texto })).concat(cuentasOp);
+  idImagen = (capturasOp[0] && capturasOp[0].id) || '';
+  // Se recuerdan TODAS las capturas de este deposito (tambien la segunda pantalla), para
+  // reconocerlas si las vuelve a mandar.
+  const recordar = capturasGuardadas.concat(capturas.filter(c => c.clase !== 'repetida'));
+  nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
+} else if (estado === 'falta_cuenta'){
+  nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
+                                         banco: c.banco || '', destino: c.destino || '' }));
+} else if (estado === 'falta_captura'){
+  nueva.cuenta = { mensajes: cuentasOp, ts: ahora };
+} else {
+  // repetido o nada: lo que estaba pendiente sigue pendiente
+  nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts } : null;
+  nueva.capturas = capturasGuardadas;
+}
+
+return [{ json: Object.assign({}, base, {
+  estadoOperacion: estado,
+  notaIA,
+  textoAprobar,
+  mensajesAprobar,
+  idImagen,
+  operacionNueva: JSON.stringify(nueva),
+  capturasLeidas: capturas.map(c => ({ ref: c.ref, monto: c.monto, clase: c.clase }))
+}), pairedItem: { item: 0 } }];
+'@
+$revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_PENDIENTE__', [string]$MINUTOS_OPERACION_PENDIENTE)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_MISMO_DEPOSITO__', [string]$MINUTOS_MISMO_DEPOSITO)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_RECORDAR__', [string]$HORAS_MEMORIA_OPERACION)
+
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
 $nodes = @(
@@ -1750,9 +2082,25 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1860,128); id = '6ac06fc7-1afb-49ab-893c-e2f2b5f8b995'; name = 'Code in JavaScript'
   },
   [ordered]@{
+    # Lo que el cliente tenia pendiente (cuenta sin captura, o captura sin cuenta) y las capturas
+    # que ya se pasaron al grupo. Ver "Revisar Operacion".
+    parameters = @{ operation = 'get'; key = "={{ 'op:' + `$('Prep Debounce').first().json.jid }}"; propertyName = 'operacion'; keyType = 'string'; options = @{} }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1280,48); id = 'a1b2c3d4-0001-4e00-9a00-operacion0001'; name = 'Redis Leer Operacion'; credentials = $redisCred
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $revisarOperacionCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1456,48); id = 'a1b2c3d4-0002-4e00-9a00-operacion0002'; name = 'Revisar Operacion'
+  },
+  [ordered]@{
+    parameters = @{ operation = 'set'; key = "={{ 'op:' + `$('Prep Debounce').first().json.jid }}"; value = '={{ $json.operacionNueva }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1632,48); id = 'a1b2c3d4-0003-4e00-9a00-operacion0003'; name = 'Redis Guardar Operacion'; credentials = $redisCred
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
     # Se usa el texto SIN la linea del comando ("modo mayor"/"modo detal"), para que el agente no
     # crea que el cliente le pregunto algo sobre tarifas. Si no hubo comando, es el mensaje tal cual.
-    parameters = @{ promptType = 'define'; text = "={{ `$('Detectar Comando Admin').first().json.textoLimpio || `$('Combinar').item.json.mensajeCombinado }}"; options = @{ systemMessage = $systemMsg } }
+    parameters = @{ promptType = 'define'; text = "={{ ((`$('Detectar Comando Admin').first().json.textoLimpio || `$('Combinar').item.json.mensajeCombinado) + (`$('Revisar Operacion').first().json.notaIA || '')).replace(/ Huella: [0-9a-f]+/gi, '') }}"; options = @{ systemMessage = $systemMsg } }
     type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1; position = @(1960,128); id = '2ac354a3-fe77-4708-80c5-b238454cfdd6'; name = 'AI Agent'; executeOnce = $true
     retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
   },
@@ -1800,7 +2148,7 @@ $nodes = @(
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2380,220); id = 'bb22cc33-dd44-4271-9bbb-redisimg0001'; name = 'Redis Leer ID Imagen'; credentials = $redisCred
   },
   [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.imgKeyId }}" } }, "convertToMp4": false }'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $("Detectar Aprobación").first().json.idImagen || $json.imgKeyId }}" } }, "convertToMp4": false }'; options = @{} }
     id = 'cc33dd44-ee55-4282-9ccc-redownload001'; name = 'Re-descargar Imagen'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2560,220)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
@@ -1932,7 +2280,10 @@ $connections = [ordered]@{
   'Consultar Mayorista'    = @{ main = @( ,@( @{ node='Consultar Cliente'; type='main'; index=0 } ) ) }
   'Consultar Cliente'      = @{ main = @( ,@( @{ node='Redis Leer Modo Admin'; type='main'; index=0 } ) ) }
   'Redis Leer Modo Admin'  = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
-  'Code in JavaScript'     = @{ main = @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) ) }
+  'Code in JavaScript'     = @{ main = @( ,@( @{ node='Redis Leer Operacion'; type='main'; index=0 } ) ) }
+  'Redis Leer Operacion'   = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
+  'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
+  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) ) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
   'Calculadora de Conversion' = @{ ai_tool = @( ,@( @{ node='AI Agent'; type='ai_tool'; index=0 } ) ) }

@@ -138,7 +138,7 @@ console.log('=== 5) Cuanto espera antes de contestar ===');
   };
   const conComprobante = correr(COMPROBANTE);
   const normal = correr('hola, cuanto esta la tasa?');
-  chk(conComprobante.espera === 60, 'con comprobante espera 60s', '-> ' + conComprobante.espera);
+  chk(conComprobante.espera === 100, 'con comprobante espera 100s', '-> ' + conComprobante.espera);
   chk(conComprobante.esComprobante === true, 'y lo marca para el sticker');
   chk(normal.espera === 30, 'un mensaje normal sigue en 30s', '-> ' + normal.espera);
   chk(normal.esComprobante === false, 'y no dispara el sticker');
