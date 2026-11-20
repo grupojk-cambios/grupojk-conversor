@@ -59,6 +59,13 @@ for (const [iso,esp] of [['2026-11-03T17:00:00Z','martes 3 de noviembre'],['2026
 const tarde = correr('2026-11-04T04:00:00Z').cuentas.find(c=>/ecuador/i.test(c.Pais));
 ok(tarde.Datos.split('\n')[1].includes('martes 3'), 'a las 11pm de Ecuador todavia dice el dia de hoy', '-> ' + tarde.Datos.split('\n')[1]);
 console.log('');
+console.log('--- red de seguridad de la memoria del chat ---');
+// El nodo "Memoria de Chat" trae su llave configurada, pero n8n lo ha guardado VACIO dos veces
+// (18/11 y 20/11) y entonces cae a su configuracion por defecto: lee $json.sessionId de lo que
+// le llega al agente. Si ese campo no existe, el bot falla con "No session ID found" con TODOS
+// los clientes. Por eso el nodo que alimenta al agente debe traerlo siempre.
+ok(r.sessionId === '584121112233@s.whatsapp.net', 'el agente recibe sessionId (el chat del cliente)', '-> ' + r.sessionId);
+console.log('');
 console.log(f ? ('FALLARON '+f) : 'TODO OK');
 
 process.exit(f ? 1 : 0);

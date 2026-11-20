@@ -88,6 +88,46 @@ console.log('=== 4) Casos que NO deben aprobar ===');
 }
 
 console.log('');
+console.log('=== 4b) CUENTAS SIN PALABRA DE BANCO (caso del 20/11) ===');
+{
+  // Un cliente mando el comprobante y esto: pais, numero de cuenta, titular, cedula y monto. Ninguna
+  // de las palabras de la lista (banco, cuenta, cedula...) aparece, asi que el bot le dijo
+  // "Listo, recibido!" al cliente y NO paso nada al grupo.
+  const COMP_CASO = '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: 35.00 USD, '
+    + 'Banco: Banco Pichincha C.A., Fecha: 2026/nov/20, Referencia: 031299]';
+  const CASO = ['Venezuela', '01020000000000012345', 'Maria Perez', '12345678', '35$'].join(SALTO);
+  const r = detectar(COMP_CASO + SALTO + SALTO + CASO);
+  chk(r.length === 1, 'aprueba la cuenta del caso real (20 digitos, sin la palabra banco)', '-> ' + r.length);
+  const d = r.length ? r[0].json.datosCuenta : '';
+  chk(/01020000000000012345/.test(d) && /Maria Perez/.test(d), 'y manda cuenta y titular');
+  chk(!/Banco Pichincha/.test(d), 'sin colar el banco del comprobante');
+
+  // Otras formas habituales de escribir una cuenta, todas sin la palabra "banco":
+  const otras = [
+    ['pago movil: telefono + banco + cedula', 'Banesco' + SALTO + '04120000000' + SALTO + 'V-12345678' + SALTO + '35$'],
+    ['cuenta con espacios', '0102 0000 0000 0001 2345' + SALTO + 'Maria Perez' + SALTO + '35$'],
+    ['solo nombre de banco venezolano', 'Mercantil Maria Perez V-12345678'],
+    ['correo (Zelle / PayPal)', 'maria.perez@example.com' + SALTO + 'Maria Perez'],
+    ['cuenta de Ecuador', 'Pichincha ahorro 2200000000 Ana Gomez 3000'],
+    ['wallet', 'USDT TRC20 TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'],
+  ];
+  for (const [nombre, texto] of otras) {
+    chk(detectar(COMP_CASO + SALTO + SALTO + texto).length === 1, 'aprueba: ' + nombre);
+  }
+
+  // Y lo que NO debe aprobar aunque haya comprobante:
+  const no = [
+    ['solo un monto', '35$'],
+    ['un agradecimiento', 'Gracias, ya envie'],
+    ['una hora y un monto', 'Lo hice a las 10:30 por 35 dolares'],
+    ['un numero corto', 'Mi codigo es 123456'],
+  ];
+  for (const [nombre, texto] of no) {
+    chk(detectar(COMP_CASO + SALTO + SALTO + texto).length === 0, 'NO aprueba: ' + nombre);
+  }
+}
+
+console.log('');
 console.log('=== 5) Cuanto espera antes de contestar ===');
 {
   const prep = code('Prep Debounce');

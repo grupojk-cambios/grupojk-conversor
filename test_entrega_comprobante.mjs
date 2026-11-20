@@ -291,6 +291,16 @@ console.log('=== 9) Cuentas multiples: cabecera, monto y a que mensaje citan ===
   chk(sinMonto[0].cuenta.indexOf('Ana Perez' + SALTO) === 0, 'sin monto, solo el nombre',
       '-> ' + JSON.stringify(sinMonto[0].cuenta.split(SALTO)[0]));
   chk(sinMonto[0].monto === null, 'y el monto queda vacio');
+
+  // Caso del 20/11: cuenta sin la palabra "banco". Antes no salia nada al grupo.
+  const luis = separar([
+    { id: 'C1', texto: '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: 35.00 USD, Banco: Banco Pichincha C.A.]' },
+    { id: 'L1', texto: ['Venezuela', '01020000000000012345', 'Maria Perez', '12345678', '35$'].join(SALTO) }
+  ], 'Cliente Prueba');
+  chk(luis.length === 1, 'la cuenta del caso real (sin la palabra banco) SI sale al grupo', '-> ' + luis.length);
+  chk(luis.length === 1 && luis[0].cuenta.indexOf('Cliente Prueba - $35') === 0, 'con cabecera nombre + monto',
+      '-> ' + JSON.stringify(luis.length ? luis[0].cuenta.split(SALTO)[0] : ''));
+  chk(luis.length === 1 && luis[0].idCuenta === 'L1', 'y cita el mensaje donde dio la cuenta');
 }
 
 console.log('');

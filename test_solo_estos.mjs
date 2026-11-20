@@ -46,7 +46,7 @@ function correr(lista, modo, jids, tablas, edadMin, extra) {
     json: { body: { data: {
       key: { remoteJid: j, fromMe: !!ex.fromMe, id: ex.idMensaje || 'A5ABCDEF0123456789ABCDEF01234567' },
       pushName: ex.pushName,
-      message: ex.texto ? { conversation: ex.texto } : undefined,
+      message: ex.mensaje ? ex.mensaje : (ex.texto ? { conversation: ex.texto } : undefined),
       messageTimestamp: ahora - Math.round((edadMin || 0) * 60)
     } } }
   }));
@@ -392,6 +392,24 @@ console.log('=== 16) Pausa: solo avisa de lo que importa, y una vez ===');
       '-> ' + r.items[0].claveAviso);
   chk(r.items[0].segundosAviso === 900, 'no repite en 15 minutos',
       '-> ' + r.items[0].segundosAviso + 's');
+}
+
+console.log('');
+console.log('=== 16b) Una reaccion (emoji) NO es un mensaje ===');
+{
+  // 20/11: un cliente reacciono con un emoji a un mensaje del bot y el bot le contesto
+  // "Hola Luis, en que puedo ayudarte hoy?". WhatsApp manda la reaccion como un mensaje sin
+  // texto; el bot lo tomaba por un mensaje vacio.
+  const tablas = { detal: [{ whatsapp: '584121234567', nombre: 'Maria' }], mayor: [] };
+  const reaccion = { reactionMessage: { key: { id: 'XYZ' }, text: '❤️' } };
+  const r1 = correr([], true, [CLIENTE], tablas, 0, { mensaje: reaccion });
+  chk(r1.length === 0, 'la reaccion de un cliente se descarta', '-> ' + r1.length + ' items');
+  const r2 = correr([], true, [CLIENTE], tablas, 0, { mensaje: reaccion, enPausa: true });
+  chk(r2.length === 0, 'tampoco avisa al grupo si el chat esta en pausa', '-> ' + r2.length);
+  const r3 = correr([], true, [CLIENTE], tablas, 0, { texto: 'hola' });
+  chk(r3.acciones[0] === 'seguir', 'un mensaje normal sigue pasando', '-> ' + r3.acciones[0]);
+  const r4 = correr([], true, [CLIENTE], tablas, 0, { mensaje: { imageMessage: { caption: '' } } });
+  chk(r4.acciones[0] === 'seguir', 'una foto sigue pasando', '-> ' + r4.acciones[0]);
 }
 
 console.log('');

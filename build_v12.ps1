@@ -386,7 +386,15 @@ try {
   }
 } catch(e){}
 
-return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, error: paises.length? null : 'Lista vacia' } }];
+// RED DE SEGURIDAD de la memoria del chat. El nodo "Memoria de Chat" trae su propia llave
+// configurada, pero n8n lo ha guardado VACIO dos veces (18/11 y 20/11): vuelve a su configuracion
+// por defecto, que lee justo este campo (sessionId) de lo que le llega al agente. Sin el campo,
+// el bot fallaba con "No session ID found" con TODOS los clientes y nadie se enteraba.
+// Con el campo, si el nodo se vuelve a vaciar el bot sigue funcionando (con una memoria mas corta).
+let sessionId = '';
+try { sessionId = String($('Webhook Evolution API').first().json.body.data.key.remoteJid || ''); } catch(e){}
+
+return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, sessionId, error: paises.length? null : 'Lista vacia' } }];
 '@
 
 # ===================== CODIGO DE LA CALCULADORA (Code Tool) =====================
@@ -809,8 +817,31 @@ let datosCuenta = original
   .replace(/\[El cliente envio una imagen con una CUENTA bancaria\.?\s*Datos:\s*([^\]]*)\]/gi, 'Cuenta (imagen): $1')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
+// Como se reconoce que un texto trae los datos de una cuenta. Antes solo se buscaban palabras
+// ("banco", "cuenta", "cedula"...) y el 20/11 un cliente mando "Venezuela / <cuenta de 20 digitos> /
+// <titular> / <cedula> / 35$": ninguna de esas palabras, asi que el bot le contesto al cliente
+// "Listo, recibido!" y NO paso nada al grupo. Ahora tambien cuenta:
+//   - un numero largo (cuenta o telefono de pago movil), aunque venga con espacios o guiones
+//   - un correo (Zelle, PayPal, Binance)
+//   - el nombre de un banco o billetera conocidos
+// Esto se aplica SOLO al texto que escribio el cliente: las anotaciones del bot ya se quitaron
+// arriba, asi que "Banco: Banco Guayaquil" del comprobante no cuenta (el error del 19/11).
 const cuentaPatterns = ['bancolombia', 'nequi', 'pago movil', 'banco', 'cuenta', 'numero de cuenta', 'titular', 'cedula', 'cc ', ' ci ', 'swift', 'interbank', 'binance', 'zelle'];
-const tieneCuenta = cuentaPatterns.some(p => datosCuenta.toLowerCase().includes(p));
+const NOMBRES_CUENTA = ['banesco', 'mercantil', 'provincial', 'bdv', 'bicentenario', 'bancamiga', 'bnc', 'exterior',
+                        'pichincha', 'guayaquil', 'produbanco', 'pacifico', 'bolivariano', 'davivienda', 'daviplata',
+                        'plin', 'yape', 'paypal', 'usdt', 'trc20', 'erc20', 'bep20', 'wallet', 'billetera', 'iban'];
+function pareceCuenta(texto){
+  const bajo = ' ' + String(texto || '').toLowerCase() + ' ';
+  if (cuentaPatterns.some(p => bajo.indexOf(p) !== -1)) return true;
+  // palabra entera, para que "plin" no salte con "complicado"
+  if (NOMBRES_CUENTA.some(p => new RegExp('(^|[^a-z0-9])' + p + '([^a-z0-9]|$)').test(bajo))) return true;
+  // 10 digitos seguidos o mas (se juntan los grupos: "0102 0000 0000 0001 2345")
+  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
+  // correo
+  if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
+  return false;
+}
+const tieneCuenta = pareceCuenta(datosCuenta);
 if (!tieneComprobante || !tieneCuenta) { return []; } // no hay ambos -> no aprobar
 let jid='', nombre='', numero='';
 try { jid = $('Webhook Evolution API').first().json.body.data.key.remoteJid || ''; nombre = String($('Webhook Evolution API').first().json.body.data.pushName || 'Cliente').normalize('NFKC'); numero = String(jid).replace(/\D/g,''); } catch(e){}
@@ -824,7 +855,7 @@ try {
   for (const m of lista){
     const t = String((m && m.texto) || '').toLowerCase();
     if (t.indexOf('[el cliente envio') === 0) continue;   // es una nota del bot, no del cliente
-    if (cuentaPatterns.some(p => t.indexOf(p) !== -1)) idCuenta = m.id || idCuenta;
+    if (pareceCuenta(t)) idCuenta = m.id || idCuenta;
   }
 } catch(e){}
 
@@ -882,7 +913,16 @@ function montoDe(t){
 
 const CLAVES = ['bancolombia','nequi','pago movil','banco','cuenta','titular','cedula','cc ',' ci ',
                 'swift','interbank','binance','zelle','pichincha','guayaquil','produbanco','pacifico',
-                'bancolombia','ahorro','corriente'];
+                'bancolombia','ahorro','corriente','banesco','mercantil','provincial','bdv','bicentenario',
+                'bancamiga','davivienda','daviplata','plin','yape','paypal','usdt','wallet','billetera'];
+// Un bloque tambien es una cuenta si trae un numero largo o un correo, aunque no diga "banco":
+// asi no se pierde el caso del 20/11 (pais, cuenta de 20 digitos, titular, cedula, monto).
+function esBloqueCuenta(bloque){
+  const bajo = ' ' + bloque.toLowerCase() + ' ';
+  if (CLAVES.some(k => bajo.indexOf(k) !== -1)) return true;
+  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
+  return /[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo);
+}
 
 const items = [];
 for (const m of lista){
@@ -892,7 +932,7 @@ for (const m of lista){
     const bloque = trozo.trim();
     if (!bloque) continue;
     const bajo = bloque.toLowerCase();
-    if (!CLAVES.some(k => bajo.indexOf(k) !== -1)) continue;   // no parece una cuenta
+    if (!esBloqueCuenta(bloque)) continue;   // no parece una cuenta
     const monto = montoDe(bloque);
     const cabecera = nombre + (monto !== null ? ' - $' + monto : '');
     items.push({ json: { cuenta: cabecera + '\n\n' + bloque, idCuenta: (m && m.id) || '', monto } });
@@ -1088,6 +1128,14 @@ if (llave.fromMe === true){
   return [{ json: { accionPausa: 'pausar', clave: clave, jid: jid,
                     segundos: MINUTOS_PAUSA * 60, motivo: 'auto' } }];
 }
+
+// ===== 2b) REACCIONES =====
+// Cuando un cliente reacciona con un emoji a un mensaje, WhatsApp lo manda como un mensaje mas
+// pero SIN texto. El bot lo trataba como un mensaje vacio y contestaba "Hola, en que puedo
+// ayudarte hoy?" (paso el 20/11 con un cliente, justo despues de mandar su comprobante). Una
+// reaccion no es una pregunta, asi que se descarta aqui. Las que hace Kelvin no llegan hasta
+// este punto: se tratan arriba, en el bloque de fromMe.
+if (msg.reactionMessage) return [];
 
 // ===== 3) A QUIEN SE LE CONTESTA =====
 function mismoNumero(a, b){
