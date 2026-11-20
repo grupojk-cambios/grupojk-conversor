@@ -183,7 +183,267 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// ===== A QUIEN LE CONTESTA EL BOT, Y CUANDO =====\n// Este nodo es lo PRIMERO despues del webhook y decide cuatro cosas:\n//   1. Descartar mensajes viejos (Evolution los reenvia en rafaga al reconectarse).\n//   2. Si escribio Kelvin, poner el chat en pausa (o leer sus comandos \"bot on\"/\"bot off\").\n//   3. Si el chat esta en pausa, no contestar y avisar al grupo.\n//   4. Si no, dejar pasar solo a los clientes autorizados.\n//\n// Todo lo que se descarta se descarta AQUI, antes de transcribir audios o leer imagenes\n// con la IA, que es lo que cuesta plata.\n//\n// La salida lleva siempre un campo accionPausa, que el nodo \"Router Pausa\" usa para\n// mandar el item por donde toca: seguir | pausar | reanudar | avisar.\nconst SOLO_ESTOS = [];\nconst MODO_SOLO_CLIENTES = true;\nconst MINUTOS_VIEJO = 20;\nconst MINUTOS_PAUSA = 60;\nconst HORAS_PAUSA_MANUAL = 12;\nconst MINUTOS_ENTRE_AVISOS = 15;\nconst PALABRAS_AVISO = [\u0027tasa\u0027,\u0027tasas\u0027,\u0027cambio\u0027,\u0027cambiar\u0027,\u0027precio\u0027,\u0027cuanto\u0027,\u0027cuesta\u0027,\u0027vale\u0027,\u0027cuenta\u0027,\u0027cuentas\u0027,\u0027banco\u0027,\u0027bancos\u0027,\u0027transferencia\u0027,\u0027deposito\u0027,\u0027pago\u0027,\u0027pagar\u0027,\u0027pague\u0027,\u0027enviar\u0027,\u0027envio\u0027,\u0027mandar\u0027,\u0027mando\u0027,\u0027recibir\u0027,\u0027recibe\u0027,\u0027remesa\u0027,\u0027remesas\u0027,\u0027giro\u0027,\u0027dolar\u0027,\u0027dolares\u0027,\u0027usdt\u0027,\u0027zelle\u0027,\u0027binance\u0027,\u0027bolivares\u0027,\u0027bolivar\u0027,\u0027pesos\u0027,\u0027soles\u0027,\u0027reales\u0027,\u0027euro\u0027,\u0027euros\u0027,\u0027efectivo\u0027,\u0027comprobante\u0027,\u0027disponible\u0027,\u0027saldo\u0027];\n\n// OJO: el mensaje NO viene en $input. Antes de este nodo hay varias consultas a Supabase y\n// a Redis, y esos nodos devuelven SUS filas: eso es lo que trae $input aca. El mensaje de\n// WhatsApp hay que ir a buscarlo al webhook.\nlet entran = [];\ntry { entran = $(\u0027Webhook Evolution API\u0027).all(); } catch(e){ entran = $input.all(); }\n\n// ===== 1) MENSAJES VIEJOS =====\n// Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo\n// pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.\n// Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.\nif (MINUTOS_VIEJO \u003e 0){\n  const ahora = Date.now() / 1000;\n  entran = entran.filter(it =\u003e {\n    let ts = 0;\n    try { ts = Number(it.json.body.data.messageTimestamp) || 0; } catch(e){}\n    if (!ts) return true;\n    return ((ahora - ts) / 60) \u003c= MINUTOS_VIEJO;\n  });\n}\nif (!entran.length) return [];\n\n// ===== 2) QUIEN ESCRIBIO =====\nconst dat  = (((entran[0] || {}).json || {}).body || {}).data || {};\nconst llave = dat.key || {};\nconst jid  = String(llave.remoteJid || \u0027\u0027);\nconst esGrupo = jid.indexOf(\u0027@g.us\u0027) !== -1;\nconst clave = \u0027pausaBot:\u0027 + jid;\n\nlet texto = \u0027\u0027;\ntry {\n  const m = dat.message || {};\n  texto = String(m.conversation || (m.extendedTextMessage || {}).text || \u0027\u0027).trim();\n} catch(e){}\nconst cmd = texto.toLowerCase().normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g,\u0027\u0027).replace(/[^a-z]/g,\u0027\u0027);\n\n// Como se sabe que escribio KELVIN y no el propio bot: los dos llegan con fromMe=true, pero\n// el id es distinto. Los que manda el bot (libreria Baileys) empiezan por \"3EB0\"; los que\n// se escriben desde el telefono o WhatsApp Web son mas largos y empiezan por otra cosa.\n// Si algun dia Baileys cambia eso, el bot se pausaria solo al responder: se destraba\n// escribiendo \"bot on\" en ese chat.\nconst loEscribioElBot = String(llave.id || \u0027\u0027).indexOf(\u00273EB0\u0027) === 0;\n\nif (llave.fromMe === true){\n  // En los grupos no hay nada que pausar: el bot no contesta en grupos.\n  if (esGrupo) return [];\n  if (cmd === \u0027boton\u0027)  return [{ json: { accionPausa: \u0027reanudar\u0027, clave: clave, jid: jid } }];\n  if (cmd === \u0027botoff\u0027) return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                                          segundos: HORAS_PAUSA_MANUAL * 3600, motivo: \u0027manual\u0027 } }];\n  if (loEscribioElBot) return [];   // fue el propio bot: no se pausa a si mismo\n  // Escribio Kelvin a mano -\u003e se pausa el chat. El TTL se renueva con cada mensaje suyo,\n  // asi que la hora cuenta desde el ULTIMO, no desde el primero.\n  return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                    segundos: MINUTOS_PAUSA * 60, motivo: \u0027auto\u0027 } }];\n}\n\n// ===== 3) A QUIEN SE LE CONTESTA =====\nfunction mismoNumero(a, b){\n  const x = String(a || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  const y = String(b || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  if (!x || !y) return false;\n  if (x === y) return true;\n  if (x.length \u003c 8 || y.length \u003c 8) return false;\n  return x.endsWith(y) || y.endsWith(x);\n}\n\n// Saca los numeros de una tabla. null = NO se pudo leer (nodo caido, credencial mala),\n// que es distinto de que la tabla este vacia.\nfunction numerosDe(nodo){\n  let items;\n  try { items = $(nodo).all(); } catch(e){ return null; }\n  if (items.some(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.error !== undefined)) return null;\n  return items\n    .filter(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.whatsapp \u0026\u0026 it.json.activo !== false)\n    .map(it =\u003e String(it.json.whatsapp));\n}\n\n// El nombre que Kelvin le puso al cliente en Supabase, para que el agente lo salude por su\n// nombre. Se busca aunque el filtro este apagado: no tiene que ver con dejar pasar o no.\nfunction nombreCargado(j){\n  for (const nodo of [\u0027Clientes Detal Permitidos\u0027, \u0027Clientes Mayor Permitidos\u0027]){\n    let items;\n    try { items = $(nodo).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.nombre \u0026\u0026 mismoNumero(j, f.whatsapp)) return String(f.nombre).trim();\n    }\n  }\n  return \u0027\u0027;\n}\n\n// De que tabla salio el cliente: eso decide su tarifa.\n//   clientes_bot_mayor -\u003e mayor   |   clientes_bot_detal -\u003e detal\n// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente\n// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.\nfunction tarifaCargada(j){\n  let enDetal = false, enMayor = false;\n  for (const par of [[\u0027Clientes Detal Permitidos\u0027,\u0027detal\u0027], [\u0027Clientes Mayor Permitidos\u0027,\u0027mayor\u0027]]){\n    let items;\n    try { items = $(par[0]).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.activo !== false \u0026\u0026 mismoNumero(j, f.whatsapp)){\n        if (par[1] === \u0027detal\u0027) enDetal = true; else enMayor = true;\n      }\n    }\n  }\n  if (enDetal) return \u0027detal\u0027;\n  if (enMayor) return \u0027mayor\u0027;\n  return \u0027\u0027;\n}\n\nfunction marcar(it){\n  let j = \u0027\u0027;\n  try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){ return it; }\n  const n = nombreCargado(j);\n  if (n) it.json.nombreCargado = n;\n  const t = tarifaCargada(j);\n  if (t) it.json.tarifaCargada = t;\n  it.json.accionPausa = \u0027seguir\u0027;\n  return it;\n}\n\n// null = no hay ningun filtro prendido -\u003e pasa todo.\n// [] = el filtro SI esta prendido pero no hay nadie cargado -\u003e no pasa nadie.\nlet permitidos = null;\nif (SOLO_ESTOS.length){\n  permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo\n} else if (MODO_SOLO_CLIENTES){\n  const detal = numerosDe(\u0027Clientes Detal Permitidos\u0027);\n  const mayor = numerosDe(\u0027Clientes Mayor Permitidos\u0027);\n  const appDetal = numerosDe(\u0027Perfiles Detal App\u0027);\n  const appMayor = numerosDe(\u0027Perfiles Mayor App\u0027);\n  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien\n  // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.\n  if (detal === null || mayor === null || appDetal === null || appMayor === null){\n    return entran.map(marcar);\n  }\n  permitidos = detal.concat(mayor, appDetal, appMayor);\n}\n\nlet pasan;\nif (permitidos === null){\n  pasan = entran.slice();                        // ningun filtro prendido\n} else {\n  pasan = [];\n  for (const it of entran){\n    let j = \u0027\u0027;\n    try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){}\n    if (j.indexOf(\u0027@g.us\u0027) !== -1) continue;     // un grupo no es un numero de persona\n    if (permitidos.some(n =\u003e mismoNumero(j, n))) pasan.push(it);\n  }\n}\nif (!pasan.length) return [];\n\n// ===== 4) LA PAUSA =====\n// Llego hasta aca: el bot le habria contestado. Si Kelvin esta atendiendo ese chat, no lo\n// hace, pero avisa al grupo para que el cliente no quede en el aire.\nlet enPausa = false;\ntry { enPausa = !!$(\u0027Redis Leer Pausa\u0027).first().json.pausaBot; } catch(e){}\nif (enPausa \u0026\u0026 !esGrupo){\n  // No se avisa de TODO lo que escriba. Si esta conversando de cosas personales con Kelvin,\n  // el grupo no tiene por que enterarse. Solo si menciona algo del negocio.\n  const limpio = texto.toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027);\n  const esDelNegocio = PALABRAS_AVISO.some(w =\u003e limpio.indexOf(w) !== -1);\n  if (!esDelNegocio) return [];\n\n  // Y aunque lo sea, se avisa UNA sola vez por rato. Sin esto, un cliente que escribe seis\n  // veces seguidas genera seis avisos.\n  let yaSeAviso = false;\n  try { yaSeAviso = !!$(\u0027Redis Leer Aviso\u0027).first().json.avisoPausa; } catch(e){}\n  if (yaSeAviso) return [];\n\n  const quien = String(dat.pushName || \u0027\u0027).trim() || jid.split(\u0027@\u0027)[0];\n  const recorte = texto.length \u003e 200 ? (texto.slice(0, 200) + \u0027...\u0027) : texto;\n  const aviso = \u0027El bot NO le contesto a \u0027 + quien + \u0027 (+\u0027 + jid.split(\u0027@\u0027)[0] + \u0027)\u0027\n    + \u0027 porque estas atendiendo ese chat.\\n\\nEscribio:\\n\"\u0027 + (recorte || \u0027(sin texto)\u0027) + \u0027\"\u0027\n    + \u0027\\n\\nSi quieres que el bot siga atendiendolo, escribe \"bot on\" en ese chat.\u0027;\n  return [{ json: { accionPausa: \u0027avisar\u0027, jid: jid, aviso: aviso,\n                    claveAviso: \u0027avisoPausa:\u0027 + jid, segundosAviso: MINUTOS_ENTRE_AVISOS * 60 } }];\n}\n\nreturn pasan.map(marcar);"
+                                         "operation":  "get",
+                                         "key":  "={{ $json.claveGrupoMsg }}",
+                                         "propertyName":  "pedido",
+                                         "keyType":  "string",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-leerpublic001",
+                      "name":  "Redis Leer Publicacion",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       60,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ $(\u0027Solo Estos Numeros\u0027).first().json.claveEntregado }}",
+                                         "propertyName":  "entregado",
+                                         "keyType":  "string",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-leerentreg001",
+                      "name":  "Redis Leer Entregado",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// La operadora respondio una publicacion del grupo con una foto. Aqui se decide si de verdad\n// hay que entregarsela a alguien.\n//\n// Se entrega SOLO si el mensaje que cito es una publicacion que hizo el bot: esa es toda la\n// autorizacion. Si cito cualquier otra cosa, no hay nada guardado y no pasa nada, en silencio.\nconst base = $(\u0027Solo Estos Numeros\u0027).first().json;\n\nlet crudo = \u0027\u0027;\ntry { crudo = $(\u0027Redis Leer Publicacion\u0027).first().json.pedido || \u0027\u0027; } catch(e){}\nif (!crudo) return [];               // no es una publicacion del bot\n\nlet yaSeEntrego = \u0027\u0027;\ntry { yaSeEntrego = $(\u0027Redis Leer Entregado\u0027).first().json.entregado || \u0027\u0027; } catch(e){}\nif (yaSeEntrego) return [];          // ya se le mando: no se repite\n\nlet p = null;\ntry { p = (typeof crudo === \u0027string\u0027) ? JSON.parse(crudo) : crudo; } catch(e){}\nif (!p || !p.jid) return [];\n\nreturn [{ json: {\n  jid: p.jid,\n  nombre: p.nombre || \u0027el cliente\u0027,\n  idCuenta: p.idCuenta || \u0027\u0027,        // para citarle el mensaje donde dio sus datos bancarios\n  idFoto: base.idFoto,               // la foto que mando la operadora\n  stanzaId: base.stanzaId,           // la publicacion citada, para citarla al confirmar\n  claveEntregado: base.claveEntregado,\n  jidGrupo: base.jidGrupo\n} }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       380,
+                                       -500
+                                   ],
+                      "id":  "d0e1f2a3-0000-4b00-9000-revisarped001",
+                      "name":  "Revisar Pedido"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $json.idFoto }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-bajarfoto0001",
+                      "name":  "Bajar Foto Operadora",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       540,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  1500,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify(Object.assign({ number: $(\"Revisar Pedido\").first().json.jid, mediatype: \"image\", mimetype: ($json.mimetype || \"image/jpeg\"), media: $json.base64 }, $(\"Revisar Pedido\").first().json.idCuenta ? { quoted: { key: { id: $(\"Revisar Pedido\").first().json.idCuenta } } } : {})) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-enviarcompr01",
+                      "name":  "Enviar Comprobante al Cliente",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       700,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  1500,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"number\": \"{{ $(\"Revisar Pedido\").first().json.jid }}\", \"sticker\": \"https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-pagado.webp\" }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-stickpagado01",
+                      "name":  "Sticker Pedido Pagado",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       860,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: $(\"Revisar Pedido\").first().json.jidGrupo, text: (\"Enviado a \" + $(\"Revisar Pedido\").first().json.nombre + \" OK\"), quoted: { key: { id: $(\"Revisar Pedido\").first().json.stanzaId } } }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-confirmgrup01",
+                      "name":  "Confirmar en el Grupo",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1020,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "1",
+                                         "expire":  true,
+                                         "ttl":  604800,
+                                         "keyType":  "string",
+                                         "key":  "={{ $(\u0027Revisar Pedido\u0027).first().json.claveEntregado }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-marcaentreg01",
+                      "name":  "Redis Marcar Entregado",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1180,
+                                       -500
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== A QUIEN LE CONTESTA EL BOT, Y CUANDO =====\n// Este nodo es lo PRIMERO despues del webhook y decide cuatro cosas:\n//   1. Descartar mensajes viejos (Evolution los reenvia en rafaga al reconectarse).\n//   2. Si escribio Kelvin, poner el chat en pausa (o leer sus comandos \"bot on\"/\"bot off\").\n//   3. Si el chat esta en pausa, no contestar y avisar al grupo.\n//   4. Si no, dejar pasar solo a los clientes autorizados.\n//\n// Todo lo que se descarta se descarta AQUI, antes de transcribir audios o leer imagenes\n// con la IA, que es lo que cuesta plata.\n//\n// La salida lleva siempre un campo accionPausa, que el nodo \"Router Pausa\" usa para\n// mandar el item por donde toca: seguir | pausar | reanudar | avisar.\nconst SOLO_ESTOS = [];\nconst MODO_SOLO_CLIENTES = true;\nconst MINUTOS_VIEJO = 20;\nconst MINUTOS_PAUSA = 60;\nconst HORAS_PAUSA_MANUAL = 12;\nconst MINUTOS_ENTRE_AVISOS = 15;\nconst PALABRAS_AVISO = [\u0027tasa\u0027,\u0027tasas\u0027,\u0027cambio\u0027,\u0027cambiar\u0027,\u0027precio\u0027,\u0027cuanto\u0027,\u0027cuesta\u0027,\u0027vale\u0027,\u0027cuenta\u0027,\u0027cuentas\u0027,\u0027banco\u0027,\u0027bancos\u0027,\u0027transferencia\u0027,\u0027deposito\u0027,\u0027pago\u0027,\u0027pagar\u0027,\u0027pague\u0027,\u0027enviar\u0027,\u0027envio\u0027,\u0027mandar\u0027,\u0027mando\u0027,\u0027recibir\u0027,\u0027recibe\u0027,\u0027remesa\u0027,\u0027remesas\u0027,\u0027giro\u0027,\u0027dolar\u0027,\u0027dolares\u0027,\u0027usdt\u0027,\u0027zelle\u0027,\u0027binance\u0027,\u0027bolivares\u0027,\u0027bolivar\u0027,\u0027pesos\u0027,\u0027soles\u0027,\u0027reales\u0027,\u0027euro\u0027,\u0027euros\u0027,\u0027efectivo\u0027,\u0027comprobante\u0027,\u0027disponible\u0027,\u0027saldo\u0027];\n\n// OJO: el mensaje NO viene en $input. Antes de este nodo hay varias consultas a Supabase y\n// a Redis, y esos nodos devuelven SUS filas: eso es lo que trae $input aca. El mensaje de\n// WhatsApp hay que ir a buscarlo al webhook.\nlet entran = [];\ntry { entran = $(\u0027Webhook Evolution API\u0027).all(); } catch(e){ entran = $input.all(); }\n\n// ===== 1) MENSAJES VIEJOS =====\n// Cuando Evolution se reconecta despues de estar caido manda de golpe todo lo que quedo\n// pendiente, incluso de hace dias. Sin esto el bot contesta conversaciones viejas.\n// Un mensaje sin fecha NO se descarta: ante la duda es mejor contestar de mas.\nif (MINUTOS_VIEJO \u003e 0){\n  const ahora = Date.now() / 1000;\n  entran = entran.filter(it =\u003e {\n    let ts = 0;\n    try { ts = Number(it.json.body.data.messageTimestamp) || 0; } catch(e){}\n    if (!ts) return true;\n    return ((ahora - ts) / 60) \u003c= MINUTOS_VIEJO;\n  });\n}\nif (!entran.length) return [];\n\n// ===== 2) QUIEN ESCRIBIO =====\nconst dat  = (((entran[0] || {}).json || {}).body || {}).data || {};\nconst llave = dat.key || {};\nconst jid  = String(llave.remoteJid || \u0027\u0027);\nconst esGrupo = jid.indexOf(\u0027@g.us\u0027) !== -1;\nconst clave = \u0027pausaBot:\u0027 + jid;\n\nlet texto = \u0027\u0027;\ntry {\n  const m = dat.message || {};\n  texto = String(m.conversation || (m.extendedTextMessage || {}).text || \u0027\u0027).trim();\n} catch(e){}\nconst cmd = texto.toLowerCase().normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g,\u0027\u0027).replace(/[^a-z]/g,\u0027\u0027);\n\n// Como se sabe que escribio KELVIN y no el propio bot: los dos llegan con fromMe=true, pero\n// el id es distinto. Los que manda el bot (libreria Baileys) empiezan por \"3EB0\"; los que\n// se escriben desde el telefono o WhatsApp Web son mas largos y empiezan por otra cosa.\n// Si algun dia Baileys cambia eso, el bot se pausaria solo al responder: se destraba\n// escribiendo \"bot on\" en ese chat.\nconst loEscribioElBot = String(llave.id || \u0027\u0027).indexOf(\u00273EB0\u0027) === 0;\n\n// ===== LA OPERADORA DEVUELVE EL COMPROBANTE DEL ENVIO =====\n// En el grupo de operaciones, cuando alguien RESPONDE (cita) una publicacion del bot con una\n// foto, esa foto es el comprobante de la transferencia y hay que hacersela llegar al cliente.\n//\n// Quien autoriza es el propio Redis: mas adelante se busca el mensaje citado en la lista de\n// publicaciones del bot, y si no esta, no pasa nada. Por eso aqui no hace falta comprobar de\n// que grupo viene ni quien escribio: citar cualquier otra cosa no dispara nada.\n//\n// Esto va ANTES del bloque de fromMe a proposito: la foto la puede mandar una operadora\n// (fromMe false) o el propio Kelvin (fromMe true), y mas abajo todo lo de grupos se descarta.\nconst msg = dat.message || {};\nconst img = msg.imageMessage || null;\nlet citado = \u0027\u0027;\ntry {\n  const ctx = dat.contextInfo || (img \u0026\u0026 img.contextInfo) || null;\n  citado = String((ctx \u0026\u0026 ctx.stanzaId) || \u0027\u0027);\n} catch(e){}\nif (esGrupo \u0026\u0026 img \u0026\u0026 citado){\n  return [{ json: { accionPausa: \u0027entregar\u0027,\n                    stanzaId: citado,\n                    claveGrupoMsg: \u0027grupoMsg:\u0027 + citado,\n                    claveEntregado: \u0027entregado:\u0027 + citado,\n                    idFoto: String(llave.id || \u0027\u0027),\n                    jidGrupo: jid } }];\n}\n\nif (llave.fromMe === true){\n  // En los grupos no hay nada que pausar: el bot no contesta en grupos.\n  if (esGrupo) return [];\n  if (cmd === \u0027boton\u0027)  return [{ json: { accionPausa: \u0027reanudar\u0027, clave: clave, jid: jid } }];\n  if (cmd === \u0027botoff\u0027) return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                                          segundos: HORAS_PAUSA_MANUAL * 3600, motivo: \u0027manual\u0027 } }];\n  if (loEscribioElBot) return [];   // fue el propio bot: no se pausa a si mismo\n  // Escribio Kelvin a mano -\u003e se pausa el chat. El TTL se renueva con cada mensaje suyo,\n  // asi que la hora cuenta desde el ULTIMO, no desde el primero.\n  return [{ json: { accionPausa: \u0027pausar\u0027, clave: clave, jid: jid,\n                    segundos: MINUTOS_PAUSA * 60, motivo: \u0027auto\u0027 } }];\n}\n\n// ===== 3) A QUIEN SE LE CONTESTA =====\nfunction mismoNumero(a, b){\n  const x = String(a || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  const y = String(b || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\n  if (!x || !y) return false;\n  if (x === y) return true;\n  if (x.length \u003c 8 || y.length \u003c 8) return false;\n  return x.endsWith(y) || y.endsWith(x);\n}\n\n// Saca los numeros de una tabla. null = NO se pudo leer (nodo caido, credencial mala),\n// que es distinto de que la tabla este vacia.\nfunction numerosDe(nodo){\n  let items;\n  try { items = $(nodo).all(); } catch(e){ return null; }\n  if (items.some(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.error !== undefined)) return null;\n  return items\n    .filter(it =\u003e it \u0026\u0026 it.json \u0026\u0026 it.json.whatsapp \u0026\u0026 it.json.activo !== false)\n    .map(it =\u003e String(it.json.whatsapp));\n}\n\n// El nombre que Kelvin le puso al cliente en Supabase, para que el agente lo salude por su\n// nombre. Se busca aunque el filtro este apagado: no tiene que ver con dejar pasar o no.\nfunction nombreCargado(j){\n  for (const nodo of [\u0027Clientes Detal Permitidos\u0027, \u0027Clientes Mayor Permitidos\u0027]){\n    let items;\n    try { items = $(nodo).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.nombre \u0026\u0026 mismoNumero(j, f.whatsapp)) return String(f.nombre).trim();\n    }\n  }\n  return \u0027\u0027;\n}\n\n// De que tabla salio el cliente: eso decide su tarifa.\n//   clientes_bot_mayor -\u003e mayor   |   clientes_bot_detal -\u003e detal\n// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente\n// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.\nfunction tarifaCargada(j){\n  let enDetal = false, enMayor = false;\n  for (const par of [[\u0027Clientes Detal Permitidos\u0027,\u0027detal\u0027], [\u0027Clientes Mayor Permitidos\u0027,\u0027mayor\u0027]]){\n    let items;\n    try { items = $(par[0]).all(); } catch(e){ continue; }\n    for (const it of items){\n      const f = (it \u0026\u0026 it.json) || {};\n      if (f.whatsapp \u0026\u0026 f.activo !== false \u0026\u0026 mismoNumero(j, f.whatsapp)){\n        if (par[1] === \u0027detal\u0027) enDetal = true; else enMayor = true;\n      }\n    }\n  }\n  if (enDetal) return \u0027detal\u0027;\n  if (enMayor) return \u0027mayor\u0027;\n  return \u0027\u0027;\n}\n\nfunction marcar(it){\n  let j = \u0027\u0027;\n  try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){ return it; }\n  const n = nombreCargado(j);\n  if (n) it.json.nombreCargado = n;\n  const t = tarifaCargada(j);\n  if (t) it.json.tarifaCargada = t;\n  it.json.accionPausa = \u0027seguir\u0027;\n  return it;\n}\n\n// null = no hay ningun filtro prendido -\u003e pasa todo.\n// [] = el filtro SI esta prendido pero no hay nadie cargado -\u003e no pasa nadie.\nlet permitidos = null;\nif (SOLO_ESTOS.length){\n  permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo\n} else if (MODO_SOLO_CLIENTES){\n  const detal = numerosDe(\u0027Clientes Detal Permitidos\u0027);\n  const mayor = numerosDe(\u0027Clientes Mayor Permitidos\u0027);\n  const appDetal = numerosDe(\u0027Perfiles Detal App\u0027);\n  const appMayor = numerosDe(\u0027Perfiles Mayor App\u0027);\n  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien\n  // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.\n  if (detal === null || mayor === null || appDetal === null || appMayor === null){\n    return entran.map(marcar);\n  }\n  permitidos = detal.concat(mayor, appDetal, appMayor);\n}\n\nlet pasan;\nif (permitidos === null){\n  pasan = entran.slice();                        // ningun filtro prendido\n} else {\n  pasan = [];\n  for (const it of entran){\n    let j = \u0027\u0027;\n    try { j = String(it.json.body.data.key.remoteJid || \u0027\u0027); } catch(e){}\n    if (j.indexOf(\u0027@g.us\u0027) !== -1) continue;     // un grupo no es un numero de persona\n    if (permitidos.some(n =\u003e mismoNumero(j, n))) pasan.push(it);\n  }\n}\nif (!pasan.length) return [];\n\n// ===== 4) LA PAUSA =====\n// Llego hasta aca: el bot le habria contestado. Si Kelvin esta atendiendo ese chat, no lo\n// hace, pero avisa al grupo para que el cliente no quede en el aire.\nlet enPausa = false;\ntry { enPausa = !!$(\u0027Redis Leer Pausa\u0027).first().json.pausaBot; } catch(e){}\nif (enPausa \u0026\u0026 !esGrupo){\n  // No se avisa de TODO lo que escriba. Si esta conversando de cosas personales con Kelvin,\n  // el grupo no tiene por que enterarse. Solo si menciona algo del negocio.\n  const limpio = texto.toLowerCase().normalize(\u0027NFD\u0027).replace(/[\\u0300-\\u036f]/g,\u0027\u0027);\n  const esDelNegocio = PALABRAS_AVISO.some(w =\u003e limpio.indexOf(w) !== -1);\n  if (!esDelNegocio) return [];\n\n  // Y aunque lo sea, se avisa UNA sola vez por rato. Sin esto, un cliente que escribe seis\n  // veces seguidas genera seis avisos.\n  let yaSeAviso = false;\n  try { yaSeAviso = !!$(\u0027Redis Leer Aviso\u0027).first().json.avisoPausa; } catch(e){}\n  if (yaSeAviso) return [];\n\n  const quien = String(dat.pushName || \u0027\u0027).trim() || jid.split(\u0027@\u0027)[0];\n  const recorte = texto.length \u003e 200 ? (texto.slice(0, 200) + \u0027...\u0027) : texto;\n  const aviso = \u0027El bot NO le contesto a \u0027 + quien + \u0027 (+\u0027 + jid.split(\u0027@\u0027)[0] + \u0027)\u0027\n    + \u0027 porque estas atendiendo ese chat.\\n\\nEscribio:\\n\"\u0027 + (recorte || \u0027(sin texto)\u0027) + \u0027\"\u0027\n    + \u0027\\n\\nSi quieres que el bot siga atendiendolo, escribe \"bot on\" en ese chat.\u0027;\n  return [{ json: { accionPausa: \u0027avisar\u0027, jid: jid, aviso: aviso,\n                    claveAviso: \u0027avisoPausa:\u0027 + jid, segundosAviso: MINUTOS_ENTRE_AVISOS * 60 } }];\n}\n\nreturn pasan.map(marcar);"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -287,6 +547,29 @@
                                                                                                                                  },
                                                                                                                     "rightValue":  "avisar",
                                                                                                                     "id":  "p-avisar",
+                                                                                                                    "leftValue":  "={{ $json.accionPausa }}"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         }
+                                                                      },
+                                                                      {
+                                                                          "outputKey":  "entregar",
+                                                                          "renameOutput":  true,
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  "entregar",
+                                                                                                                    "id":  "p-entregar",
                                                                                                                     "leftValue":  "={{ $json.accionPausa }}"
                                                                                                                 }
                                                                                                             ],
@@ -489,7 +772,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Prepara los datos para el debounce con Redis. El texto ya viene unificado (de texto directo o de audio transcrito).\nlet jid=\u0027\u0027, texto=\u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; } catch(e){}\ntry { texto = $json.texto || \u0027\u0027; } catch(e){}\nconst miTs = String(Date.now()) + \u0027-\u0027 + Math.random().toString(36).slice(2,8);\n\n// Si lo que llego es un COMPROBANTE, se espera mas antes de contestar. La gente manda\n// primero la foto del pago y tarda en escribir la cuenta destino; si se contesta a los 30\n// segundos, el comprobante y la cuenta caen en ejecuciones distintas y el bot nunca ve las\n// dos cosas juntas. Paso el 19/11: la clienta tardo 36 segundos.\nconst esComprobante = texto.indexOf(\u0027COMPROBANTE de pago\u0027) !== -1;\nconst espera = esComprobante ? 60 : 30;\n\nreturn [{ json: { jid, texto: texto || \u0027\u0027, miTs, esComprobante, espera,\n                  keyBuf: \u0027buf:\u0027+jid, keyTok: \u0027tok:\u0027+jid } }];"
+                                         "jsCode":  "// Prepara los datos para el debounce con Redis. El texto ya viene unificado (de texto directo o de audio transcrito).\nlet jid=\u0027\u0027, texto=\u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; } catch(e){}\ntry { texto = $json.texto || \u0027\u0027; } catch(e){}\nconst miTs = String(Date.now()) + \u0027-\u0027 + Math.random().toString(36).slice(2,8);\n\n// Si lo que llego es un COMPROBANTE, se espera mas antes de contestar. La gente manda\n// primero la foto del pago y tarda en escribir la cuenta destino; si se contesta a los 30\n// segundos, el comprobante y la cuenta caen en ejecuciones distintas y el bot nunca ve las\n// dos cosas juntas. Paso el 19/11: la clienta tardo 36 segundos.\nconst esComprobante = texto.indexOf(\u0027COMPROBANTE de pago\u0027) !== -1;\nconst espera = esComprobante ? 60 : 30;\n\n// El id de ESTE mensaje viaja con el texto. Hace falta despues para poder CITAR el mensaje\n// en el que el cliente escribio sus datos bancarios cuando se le mande el comprobante.\nlet idMensaje = \u0027\u0027;\ntry { idMensaje = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.id || \u0027\u0027; } catch(e){}\n\nreturn [{ json: { jid, texto: texto || \u0027\u0027, miTs, esComprobante, espera, idMensaje,\n                  keyBuf: \u0027buf:\u0027+jid, keyTok: \u0027tok:\u0027+jid } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -806,7 +1089,7 @@
                                          "list":  "={{ $(\u0027Prep Debounce\u0027).item.json.keyBuf }}",
                                          "operation":  "push",
                                          "tail":  true,
-                                         "messageData":  "={{ $(\u0027Prep Debounce\u0027).item.json.texto }}"
+                                         "messageData":  "={{ JSON.stringify({ id: $(\u0027Prep Debounce\u0027).item.json.idMensaje, texto: $(\u0027Prep Debounce\u0027).item.json.texto }) }}"
                                      },
                       "type":  "n8n-nodes-base.redis",
                       "typeVersion":  1,
@@ -947,7 +1230,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Junta todos los mensajes leidos de Redis en un solo texto.\nlet arr = [];\ntry { arr = $(\u0027Redis Leer Mensajes\u0027).item.json.mensajes; } catch(e){}\nif (!Array.isArray(arr)) arr = (arr === undefined || arr === null) ? [] : [arr];\nconst combinado = arr.join(\u0027\\n\\n\u0027).trim() || \u0027(sin texto)\u0027;\nreturn [{ json: { mensajeCombinado: combinado } }];"
+                                         "jsCode":  "// Junta todos los mensajes leidos de Redis en un solo texto, y conserva el id de cada uno.\n// Los ids hacen falta para citar despues el mensaje donde el cliente puso su cuenta.\nlet arr = [];\ntry { arr = $(\u0027Redis Leer Mensajes\u0027).item.json.mensajes; } catch(e){}\nif (!Array.isArray(arr)) arr = (arr === undefined || arr === null) ? [] : [arr];\n\n// Cada entrada es {\"id\":\"...\",\"texto\":\"...\"}. Se acepta tambien el formato VIEJO (texto\n// pelado): al desplegar puede haber mensajes guardados antes del cambio y no se pueden\n// perder.\nconst mensajes = [];\nfor (const x of arr){\n  if (x === undefined || x === null) continue;\n  if (typeof x === \u0027object\u0027){ mensajes.push({ id: x.id || \u0027\u0027, texto: String(x.texto || \u0027\u0027) }); continue; }\n  const cruda = String(x);\n  let obj = null;\n  try { obj = JSON.parse(cruda); } catch(e){}\n  if (obj \u0026\u0026 typeof obj === \u0027object\u0027 \u0026\u0026 obj.texto !== undefined) mensajes.push({ id: obj.id || \u0027\u0027, texto: String(obj.texto) });\n  else mensajes.push({ id: \u0027\u0027, texto: cruda });\n}\n\nconst combinado = mensajes.map(m =\u003e m.texto).join(\u0027\\n\\n\u0027).trim() || \u0027(sin texto)\u0027;\nreturn [{ json: { mensajeCombinado: combinado, mensajes } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -1380,7 +1663,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Detecta si hay comprobante + cuenta destino para APROBAR la operación y reenviar al grupo.\nconst original = String($(\u0027Combinar\u0027).item.json.mensajeCombinado || \u0027\u0027);\nconst combinado = original.toLowerCase();\nconst tieneComprobante = combinado.includes(\u0027[el cliente envio un comprobante\u0027);\n// Cuenta destino = lo que escribio el cliente, quitando las anotaciones internas del bot\n// ([El cliente envio ...]). Esto va ANTES de buscar la cuenta, y es importante: la anotacion\n// del comprobante dice \"Banco: Banco Guayaquil\", y como \"banco\" esta en la lista, el bot\n// creia que el cliente habia mandado la cuenta cuando solo habia mandado la foto del pago.\n// Paso el 19/11: aprobo la operacion y le mando al grupo \"(el cliente no escribio la cuenta)\".\nlet datosCuenta = original\n  .replace(/\\[El cliente envio un COMPROBANTE[^\\]]*\\]/gi, \u0027\u0027)\n  .replace(/\\[El cliente envio una imagen que no parece[^\\]]*\\]/gi, \u0027\u0027)\n  .replace(/\\[El cliente envio una imagen con una CUENTA bancaria\\.?\\s*Datos:\\s*([^\\]]*)\\]/gi, \u0027Cuenta (imagen): $1\u0027)\n  .replace(/\\n{3,}/g, \u0027\\n\\n\u0027)\n  .trim();\nconst cuentaPatterns = [\u0027bancolombia\u0027, \u0027nequi\u0027, \u0027pago movil\u0027, \u0027banco\u0027, \u0027cuenta\u0027, \u0027numero de cuenta\u0027, \u0027titular\u0027, \u0027cedula\u0027, \u0027cc \u0027, \u0027 ci \u0027, \u0027swift\u0027, \u0027interbank\u0027, \u0027binance\u0027, \u0027zelle\u0027];\nconst tieneCuenta = cuentaPatterns.some(p =\u003e datosCuenta.toLowerCase().includes(p));\nif (!tieneComprobante || !tieneCuenta) { return []; } // no hay ambos -\u003e no aprobar\nlet jid=\u0027\u0027, nombre=\u0027\u0027, numero=\u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; nombre = String($(\u0027Webhook Evolution API\u0027).first().json.body.data.pushName || \u0027Cliente\u0027).normalize(\u0027NFKC\u0027); numero = String(jid).replace(/\\D/g,\u0027\u0027); } catch(e){}\nreturn [{ json: { aprobado: true, jid, nombre, numero, datosCuenta, mensajeCombinado: combinado } }];"
+                                         "jsCode":  "// Detecta si hay comprobante + cuenta destino para APROBAR la operación y reenviar al grupo.\nconst original = String($(\u0027Combinar\u0027).item.json.mensajeCombinado || \u0027\u0027);\nconst combinado = original.toLowerCase();\nconst tieneComprobante = combinado.includes(\u0027[el cliente envio un comprobante\u0027);\n// Cuenta destino = lo que escribio el cliente, quitando las anotaciones internas del bot\n// ([El cliente envio ...]). Esto va ANTES de buscar la cuenta, y es importante: la anotacion\n// del comprobante dice \"Banco: Banco Guayaquil\", y como \"banco\" esta en la lista, el bot\n// creia que el cliente habia mandado la cuenta cuando solo habia mandado la foto del pago.\n// Paso el 19/11: aprobo la operacion y le mando al grupo \"(el cliente no escribio la cuenta)\".\nlet datosCuenta = original\n  .replace(/\\[El cliente envio un COMPROBANTE[^\\]]*\\]/gi, \u0027\u0027)\n  .replace(/\\[El cliente envio una imagen que no parece[^\\]]*\\]/gi, \u0027\u0027)\n  .replace(/\\[El cliente envio una imagen con una CUENTA bancaria\\.?\\s*Datos:\\s*([^\\]]*)\\]/gi, \u0027Cuenta (imagen): $1\u0027)\n  .replace(/\\n{3,}/g, \u0027\\n\\n\u0027)\n  .trim();\nconst cuentaPatterns = [\u0027bancolombia\u0027, \u0027nequi\u0027, \u0027pago movil\u0027, \u0027banco\u0027, \u0027cuenta\u0027, \u0027numero de cuenta\u0027, \u0027titular\u0027, \u0027cedula\u0027, \u0027cc \u0027, \u0027 ci \u0027, \u0027swift\u0027, \u0027interbank\u0027, \u0027binance\u0027, \u0027zelle\u0027];\nconst tieneCuenta = cuentaPatterns.some(p =\u003e datosCuenta.toLowerCase().includes(p));\nif (!tieneComprobante || !tieneCuenta) { return []; } // no hay ambos -\u003e no aprobar\nlet jid=\u0027\u0027, nombre=\u0027\u0027, numero=\u0027\u0027;\ntry { jid = $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid || \u0027\u0027; nombre = String($(\u0027Webhook Evolution API\u0027).first().json.body.data.pushName || \u0027Cliente\u0027).normalize(\u0027NFKC\u0027); numero = String(jid).replace(/\\D/g,\u0027\u0027); } catch(e){}\n\n// Cual de los mensajes del cliente traia la cuenta. Sirve para que, cuando la operadora\n// mande el comprobante del envio, el bot se lo pase al cliente CITANDO ese mensaje suyo y\n// quede claro a que cuenta corresponde. Si no se encuentra, va vacio y no se cita nada.\nlet idCuenta = \u0027\u0027;\ntry {\n  const lista = $(\u0027Combinar\u0027).item.json.mensajes || [];\n  for (const m of lista){\n    const t = String((m \u0026\u0026 m.texto) || \u0027\u0027).toLowerCase();\n    if (t.indexOf(\u0027[el cliente envio\u0027) === 0) continue;   // es una nota del bot, no del cliente\n    if (cuentaPatterns.some(p =\u003e t.indexOf(p) !== -1)) idCuenta = m.id || idCuenta;\n  }\n} catch(e){}\n\nreturn [{ json: { aprobado: true, jid, nombre, numero, datosCuenta, idCuenta, mensajeCombinado: combinado } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -1540,6 +1823,56 @@
                                                                  "id":  "70cMtifwmTdIqY1l",
                                                                  "name":  "Evolution apikey Kelvin 0380"
                                                              }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Detectar Aprobación\u0027).first().json.jid, nombre: $(\u0027Detectar Aprobación\u0027).first().json.nombre, idCuenta: $(\u0027Detectar Aprobación\u0027).first().json.idCuenta }) }}",
+                                         "expire":  true,
+                                         "ttl":  604800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-marcapubimg1",
+                      "name":  "Marcar Publicacion Imagen",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2740,
+                                       60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Detectar Aprobación\u0027).first().json.jid, nombre: $(\u0027Detectar Aprobación\u0027).first().json.nombre, idCuenta: $(\u0027Detectar Aprobación\u0027).first().json.idCuenta }) }}",
+                                         "expire":  true,
+                                         "ttl":  604800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-marcapubcta1",
+                      "name":  "Marcar Publicacion Cuenta",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       3280,
+                                       400
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
                                       }
                   },
                   {
@@ -1761,9 +2094,93 @@
                                                                   "type":  "main",
                                                                   "index":  0
                                                               }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "node":  "Redis Leer Publicacion",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
                                                           ]
                                                       ]
                                          },
+                        "Redis Leer Publicacion":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Redis Leer Entregado",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Redis Leer Entregado":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Revisar Pedido",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Revisar Pedido":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Bajar Foto Operadora",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Bajar Foto Operadora":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Enviar Comprobante al Cliente",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Enviar Comprobante al Cliente":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "Sticker Pedido Pagado",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          },
+                        "Sticker Pedido Pagado":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Confirmar en el Grupo",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Confirmar en el Grupo":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Redis Marcar Entregado",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
                         "Es mensaje de cliente?":  {
                                                        "main":  [
                                                                     [
@@ -2308,6 +2725,11 @@
                                                                          "node":  "Separar Cuentas",
                                                                          "type":  "main",
                                                                          "index":  0
+                                                                     },
+                                                                     {
+                                                                         "node":  "Marcar Publicacion Imagen",
+                                                                         "type":  "main",
+                                                                         "index":  0
                                                                      }
                                                                  ]
                                                              ]
@@ -2322,7 +2744,18 @@
                                                                  }
                                                              ]
                                                          ]
-                                            }
+                                            },
+                        "Enviar Cuenta Grupo":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Marcar Publicacion Cuenta",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                }
                     },
     "settings":  {
                      "executionOrder":  "v1"
