@@ -1344,11 +1344,12 @@ if (esGrupo && !img && citado){
   // Cito con texto. Solo cuenta si es algo CORTO ("." , "ok", "listo"): asi, discutir sobre
   // un pedido citandolo no dispara una entrega por accidente. La foto sale de la recordada.
   if (texto.length <= 12){
+    // "forzar" (Fase B): respondiendo el aviso de "este comprobante NO cuadra", se manda igual.
     return [{ json: { accionPausa: 'entregar', stanzaId: citado,
                       claveGrupoMsg: 'grupoMsg:' + citado,
                       claveEntregado: 'entregado:' + citado,
                       claveFoto: claveFoto,
-                      idFoto: '', jidGrupo: jid } }];
+                      idFoto: '', jidGrupo: jid, forzar: /forzar/i.test(texto) } }];
   }
 }
 
@@ -1537,14 +1538,19 @@ let p = null;
 try { p = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo; } catch(e){}
 if (!p || !p.jid) return [];
 
+// Si citaron el AVISO de "este comprobante NO cuadra" (Fase B), ese aviso trae la publicacion original:
+// la entrega, el "Enviado a ... OK" y la fila de Supabase son los de esa publicacion.
+const publicacion = String(p.publicacion || base.stanzaId || '');
 const comun = {
   jid: p.jid,
   nombre: p.nombre || 'el cliente',
   idCuenta: p.idCuenta || '',        // para citarle el mensaje donde dio sus datos bancarios
-  idCaptura: p.idCaptura || '',      // la captura del deposito: asi se marca "enviada" en Supabase
-  stanzaId: base.stanzaId,           // la publicacion citada, para citarla al confirmar
-  claveEntregado: base.claveEntregado,
-  jidGrupo: base.jidGrupo
+  idCaptura: p.idCaptura || '',      // la captura del deposito: con ella se buscan sus cuentas en Supabase
+  stanzaId: publicacion,             // la publicacion citada, para citarla al confirmar
+  claveEntregado: p.publicacion ? ('entregado:' + publicacion) : base.claveEntregado,
+  jidGrupo: base.jidGrupo,
+  // "forzar" solo vale respondiendo el aviso: ahi la operadora ya vio que no cuadraba.
+  forzar: !!(base.forzar && p.publicacion)
 };
 
 // Ya se le mando? No se repite, pero ahora SI se avisa: antes se quedaba callado y la
@@ -1559,6 +1565,7 @@ if (yaSeEntrego){
 // Que foto se manda: la del propio mensaje si la operadora cito CON la foto, o la ultima
 // que mando suelta si cito con un punto.
 let idFoto = String(base.idFoto || '');
+if (!idFoto && p.idFotoOperadora) idFoto = String(p.idFotoOperadora);   // "forzar": la misma foto que no cuadraba
 if (!idFoto){
   try { idFoto = String($('Redis Leer Ultima Foto').first().json.ultimaFoto || ''); } catch(e){}
 }
@@ -2138,6 +2145,122 @@ $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [strin
 $revisarOperacionCode = $revisarOperacionCode.Replace('__DIAS_ULTIMA_OPERACION__', [string]$DIAS_ULTIMA_OPERACION)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORARIO_JK__', $horarioJs)
 
+# ===================== PROMPT: LEER COMPROBANTE DE LA OPERADORA (Fase B) =====================
+$leerComprobanteOperadoraPrompt = 'Esta imagen es el comprobante de una transferencia que hizo una casa de cambio HACIA un beneficiario (transferencia bancaria, pago movil, Zelle, Binance, Nequi, etc.). Lee SOLO los datos del DESTINO (quien RECIBE el dinero), nunca los de quien envia. Responde SOLO JSON valido, sin texto extra: {"es_comprobante": true|false, "cuenta_destino": "numero de cuenta o telefono del destino tal como aparece (con asteriscos si esta oculto)", "cedula_destino": "", "titular_destino": "nombre de quien recibe", "banco_destino": "", "correo_destino": "", "billetera_destino": "", "monto": "", "moneda": "", "referencia": ""}. Si un dato no aparece, dejalo vacio. No inventes nada. es_comprobante = false si no es un comprobante de pago (por ejemplo, una foto de dinero en efectivo o de una persona).'
+
+# ===================== CODIGO: REVISAR COMPROBANTE (Fase B) =====================
+$revisarComprobanteCode = @'
+// ===== FASE B: ¿EL COMPROBANTE DE LA OPERADORA CUADRA CON LA CUENTA DEL CLIENTE? =====
+// Antes de mandarle al cliente la foto que devolvio la operadora, se lee (GPT-4o, "Leer Comprobante
+// Operadora") y se compara con la cuenta destino de ESA publicacion: numero de cuenta o telefono,
+// cedula, correo, billetera y titular. Lo que se quiere atrapar es el error grave: mandarle a un
+// cliente el comprobante de otro, por citar la publicacion equivocada.
+//   - algun dato coincide                  -> se entrega
+//   - los datos se contradicen             -> NO se entrega y se avisa en el grupo
+//   - no se pudo leer o no hay que comparar -> se entrega, como antes (una foto borrosa o una foto
+//                                             de una entrega en efectivo no frena la entrega)
+//   - la operadora respondio el aviso con "forzar" -> se entrega igual
+// El monto NO se compara: la cuenta suele estar en dolares y el comprobante en bolivares o pesos.
+const ped = $('Revisar Pedido').first().json || {};
+
+let leido = {};
+try {
+  const r = $('Leer Comprobante Operadora').first().json || {};
+  const t = String(r.content || r.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+  const a = t.indexOf('{'), z = t.lastIndexOf('}');
+  if (a !== -1 && z > a) leido = JSON.parse(t.slice(a, z + 1)) || {};
+} catch(e){ leido = {}; }
+if (!leido || typeof leido !== 'object') leido = {};
+
+let filas = [];
+try { filas = $('Leer Cuentas de la Operacion').all().map(i => i.json).filter(r => r && r.id && !r.error); } catch(e){ filas = []; }
+const listaDe = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch(e){ return []; } };
+const cuentaDe = r => (r ? (listaDe(r.cuentas)[0] || {}) : {});
+
+// ---------- comparar ----------
+const COMUNES = new Set(['banco', 'bank', 'cuenta', 'cta', 'ahorro', 'ahorros', 'corriente', 'cedula', 'titular', 'nombre', 'pago',
+  'movil', 'telefono', 'numero', 'nro', 'monto', 'usd', 'dolares', 'dolar', 'bolivares', 'pesos', 'soles', 'transferencia', 'cliente',
+  'venezuela', 'venezolano', 'colombia', 'ecuador', 'peru', 'panama', 'chile', 'mexico', 'zelle', 'binance', 'nequi', 'daviplata',
+  'bancolombia', 'davivienda', 'pichincha', 'guayaquil', 'produbanco', 'pacifico', 'bolivariano', 'internacional', 'austro', 'machala',
+  'banesco', 'mercantil', 'provincial', 'bdv', 'bicentenario', 'bancamiga', 'bnc', 'exterior', 'tesoro', 'sofitasa', 'plaza',
+  'activo', 'banplus', 'caroni', 'banfanb', 'venezolana', 'interbank', 'bcp', 'scotiabank', 'yape', 'plin', 'nacional', 'credito',
+  'universal', 'digital', 'coop', 'cooperativa', 'mutualista', 'jep', 'jardin', 'azuayo', 'julio', 'del', 'los', 'las', 'para',
+  'con', 'por', 'que', 'una', 'uno', 'mas', 'favor', 'porfa', 'gracias', 'hola', 'buenas', 'enviar', 'envio', 'recibe']);
+const norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const palabras = x => norm(x).replace(/[^a-z]+/g, ' ').split(' ').filter(w => w.length >= 3 && !COMUNES.has(w));
+const juntar = x => String(x || '').replace(/([0-9])[ .\-]+(?=[0-9])/g, '$1');
+const numerosCliente = t => (juntar(t).match(/[0-9]{6,}/g) || []);           // cuenta, telefono, cedula
+const gruposComprobante = t => (juntar(t).match(/[0-9]{4,}/g) || []);         // lo que se ve (puede venir con ****)
+function coinciden(visto, delCliente){
+  const k = Math.min(6, visto.length, delCliente.length);
+  return k >= 4 && visto.slice(-k) === delCliente.slice(-k);
+}
+// 'si' = coincide, 'no' = se contradice, 'nose' = no hay como comparar
+function evaluar(fila){
+  const texto = String(cuentaDe(fila).texto || '');
+  const nums = numerosCliente(texto);
+  const grupos = gruposComprobante(leido.cuenta_destino).concat(gruposComprobante(leido.cedula_destino));
+  const numeros = (grupos.length && nums.length) ? (grupos.some(g => nums.some(n => coinciden(g, n))) ? 'si' : 'no') : 'nose';
+  const correoVisto = (norm(leido.correo_destino).match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/) || [])[0];
+  const correos = norm(texto).match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/g) || [];
+  const correo = (correoVisto && correos.length) ? (correos.indexOf(correoVisto) !== -1 ? 'si' : 'no') : 'nose';
+  const bill = String(leido.billetera_destino || '').replace(/\s+/g, '').toLowerCase();
+  const tokens = (texto.match(/[A-Za-z0-9]{20,}/g) || []).map(x => x.toLowerCase());
+  const billetera = (bill.length >= 20 && tokens.length) ? (tokens.some(x => x.slice(-6) === bill.slice(-6)) ? 'si' : 'no') : 'nose';
+  const pv = palabras(leido.titular_destino), pc = palabras(texto);
+  const nombre = (pv.length && pc.length) ? (pv.some(w => pc.indexOf(w) !== -1) ? 'si' : 'no') : 'nose';
+  const datos = [numeros, correo, billetera];
+  // Los numeros, el correo o la billetera mandan; el nombre solo decide si no hay ninguno que comparar.
+  const resultado = datos.indexOf('si') !== -1 ? 'si' : (datos.indexOf('no') !== -1 ? 'no' : nombre);
+  return { resultado, numeros, correo, billetera, nombre };
+}
+
+// ---------- con que cuenta se compara ----------
+// La publicacion citada es una cuenta (primer id de su fila) o la foto de la captura (va con la primera
+// cuenta). Si es la foto, o la foto de la operadora coincide con OTRA cuenta del mismo deposito, se
+// usa esa: es el mismo cliente, y asi se marca enviada la cuenta correcta.
+const citada = filas.find(r => listaDe(r.id_msgs_grupo)[0] === ped.stanzaId) || null;
+const pendientes = filas.filter(r => r.estado !== 'enviada' && r.estado !== 'cancelada');
+const orden = [];
+for (const r of [].concat(citada ? [citada] : [], pendientes, filas)) if (orden.indexOf(r) === -1) orden.push(r);
+const evals = new Map(orden.map(r => [r, evaluar(r)]));
+const sePuedeLeer = leido.es_comprobante !== false && Object.keys(leido).length > 0;
+
+let elegida = null, cuadra = true, verificado = false, motivo = '';
+const coincide = sePuedeLeer ? orden.find(r => evals.get(r).resultado === 'si') : null;
+if (ped.forzar){
+  elegida = coincide || citada || pendientes[0] || null;
+  motivo = 'forzado desde el grupo';
+} else if (coincide){
+  elegida = coincide; verificado = true;
+  const e = evals.get(coincide);
+  motivo = 'coincide: ' + ['numeros', 'correo', 'billetera', 'nombre'].filter(k => e[k] === 'si').join(', ');
+} else {
+  const base = citada || pendientes[0] || filas[0] || null;
+  const contradice = sePuedeLeer && (citada ? evals.get(citada).resultado === 'no'
+                                            : (orden.length > 0 && orden.every(r => evals.get(r).resultado === 'no')));
+  elegida = base;
+  if (contradice){ cuadra = false; motivo = 'los datos del comprobante no son los de la cuenta'; }
+  else motivo = sePuedeLeer ? 'no hay datos para comparar' : 'no se pudo leer (o no es un comprobante)';
+}
+
+let aviso = '';
+if (!cuadra){
+  const vio = [leido.cuenta_destino && ('cuenta/tel ' + leido.cuenta_destino), leido.cedula_destino && ('cédula ' + leido.cedula_destino),
+               leido.correo_destino, leido.billetera_destino, leido.titular_destino && ('titular ' + leido.titular_destino), leido.banco_destino]
+              .filter(Boolean).join(' · ');
+  const delCliente = String(cuentaDe(elegida).texto || '').split('\n').map(l => l.trim()).filter(Boolean).join(' · ');
+  aviso = '⚠️ *Ojo: este comprobante NO cuadra con la cuenta de ' + (ped.nombre || 'el cliente') + '*\n\n'
+    + 'El comprobante dice: ' + (vio || '(no se leyó bien)') + '\n'
+    + 'La cuenta del cliente: ' + (delCliente || '(no la tengo)') + '\n\n'
+    + 'NO se le mandó al cliente. Si te equivocaste de foto, responde la cuenta con la foto correcta. '
+    + 'Si está bien así, responde a ESTE mensaje con la palabra *forzar* y se la mando.';
+}
+
+return [{ json: { cuadra, verificado, motivo, filaId: elegida ? elegida.id : null,
+                  idCuenta: (elegida && cuentaDe(elegida).id) || ped.idCuenta || '', leido, aviso } }];
+'@
+
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
 $nodes = @(
@@ -2288,10 +2411,56 @@ $nodes = @(
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
     credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
+  # ---------- FASE B: antes de mandarle la foto al cliente, se revisa que sea de SU cuenta ----------
+  [ordered]@{
+    parameters = @{ jsCode = $toBinarioImgCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(592,-752); id = 'a1b2c3d4-0013-4e00-9a00-faseb0000013'; name = 'Foto Operadora a Binario'
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    parameters = @{ resource = 'image'; operation = 'analyze'; modelId = @{ __rl = $true; value = 'gpt-4o'; mode = 'list'; cachedResultName = 'gpt-4o' }; inputType = 'base64'; binaryPropertyName = 'data'; text = $leerComprobanteOperadoraPrompt; options = @{} }
+    id = 'a1b2c3d4-0014-4e00-9a00-faseb0000014'; name = 'Leer Comprobante Operadora'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(768,-752)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
+    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
+  },
+  [ordered]@{
+    # Las cuentas del deposito (una fila por cuenta), para comparar con la foto.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_por_whatsapp'; returnAll = $false; limit = 20; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') }}" }
+    id = 'a1b2c3d4-0015-4e00-9a00-faseb0000015'; name = 'Leer Cuentas de la Operacion'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(944,-752)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $revisarComprobanteCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1120,-752); id = 'a1b2c3d4-0016-4e00-9a00-faseb0000016'; name = 'Revisar Comprobante'
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    # Si cuadra (o no se pudo comparar) -> se le manda al cliente. Si no cuadra -> aviso en el grupo.
+    # Solo se frena si la revision dijo EXPLICITAMENTE que no cuadra: si "Revisar Comprobante" fallara por
+    # cualquier error, la foto se entrega como antes (mejor eso que dejar al cliente sin su comprobante).
+    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.cuadra !== false }}'; value2 = '={{true}}' } ) } }
+    id = 'a1b2c3d4-0017-4e00-9a00-faseb0000017'; name = '¿Cuadra el Comprobante?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(1296,-752)
+  },
+  [ordered]@{
+    # El aviso de "este comprobante NO cuadra", citando la foto de la operadora.
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: $("Revisar Pedido").first().json.jidGrupo, text: $json.aviso, quoted: { key: { id: $("Revisar Pedido").first().json.idFoto } } }) }}'; options = @{} }
+    id = 'a1b2c3d4-0018-4e00-9a00-faseb0000018'; name = 'Avisar Comprobante No Cuadra'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1472,-592)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
+  },
+  [ordered]@{
+    # Se anota el aviso como una publicacion mas: si la operadora lo responde con "forzar", se entrega
+    # la misma foto; si lo responde con otra foto, se revisa esa.
+    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Revisar Pedido').first().json.jid, nombre: `$('Revisar Pedido').first().json.nombre, idCuenta: `$('Revisar Pedido').first().json.idCuenta, idCaptura: `$('Revisar Pedido').first().json.idCaptura, publicacion: `$('Revisar Pedido').first().json.stanzaId, idFotoOperadora: `$('Revisar Pedido').first().json.idFoto }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    id = 'a1b2c3d4-0019-4e00-9a00-faseb0000019'; name = 'Marcar Aviso No Cuadra'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1648,-592)
+    onError = 'continueRegularOutput'
+    credentials = $redisCred
+  },
   [ordered]@{
     # La foto va al cliente CITANDO el mensaje donde el escribio sus datos bancarios, para que
     # quede claro a que cuenta corresponde ese pago. Si no se supo cual era, se manda sin citar.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify(Object.assign({ number: $("Revisar Pedido").first().json.jid, mediatype: "image", mimetype: ($json.mimetype || "image/jpeg"), media: $json.base64 }, $("Revisar Pedido").first().json.idCuenta ? { quoted: { key: { id: $("Revisar Pedido").first().json.idCuenta } } } : {})) }}'; options = @{} }
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify(Object.assign({ number: $("Revisar Pedido").first().json.jid, mediatype: "image", mimetype: ($("Bajar Foto Operadora").first().json.mimetype || "image/jpeg"), media: $("Bajar Foto Operadora").first().json.base64 }, $("Revisar Comprobante").first().json.idCuenta ? { quoted: { key: { id: $("Revisar Comprobante").first().json.idCuenta } } } : {})) }}'; options = @{} }
     id = 'd0e1f2a3-0000-4b00-9000-enviarcompr01'; name = 'Enviar Comprobante al Cliente'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(700,-500)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
     credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
@@ -2320,7 +2489,7 @@ $nodes = @(
     # La operadora devolvio la foto de UNA cuenta y ya le llego al cliente: ESA cuenta queda
     # 'enviada' (hay una fila por cuenta). Se busca la fila por la publicacion que cito la operadora
     # (id_msgs_grupo). Solo si estaba en proceso.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ]) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ (`$('Revisar Comprobante').first().json.filaId ? 'id=eq.' + `$('Revisar Comprobante').first().json.filaId : 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ])) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
     id = 'a1b2c3d4-0011-4e00-9a00-registro00011'; name = 'Marcar Enviada en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,-752)
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
@@ -2754,7 +2923,13 @@ $connections = [ordered]@{
       @( ,@( @{ node='Avisar Repetido';      type='main'; index=0 } ) ) +
       @( ,@( @{ node='Bajar Foto Operadora'; type='main'; index=0 } ) )
     ) }
-  'Bajar Foto Operadora'   = @{ main = @( ,@( @{ node='Enviar Comprobante al Cliente'; type='main'; index=0 } ) ) }
+  'Bajar Foto Operadora'   = @{ main = @( ,@( @{ node='Foto Operadora a Binario'; type='main'; index=0 } ) ) }
+  'Foto Operadora a Binario' = @{ main = @( ,@( @{ node='Leer Comprobante Operadora'; type='main'; index=0 } ) ) }
+  'Leer Comprobante Operadora' = @{ main = @( ,@( @{ node='Leer Cuentas de la Operacion'; type='main'; index=0 } ) ) }
+  'Leer Cuentas de la Operacion' = @{ main = @( ,@( @{ node='Revisar Comprobante'; type='main'; index=0 } ) ) }
+  'Revisar Comprobante'    = @{ main = @( ,@( @{ node='¿Cuadra el Comprobante?'; type='main'; index=0 } ) ) }
+  '¿Cuadra el Comprobante?' = @{ main = (@( ,@( @{ node='Enviar Comprobante al Cliente'; type='main'; index=0 } ) ) + @( ,@( @{ node='Avisar Comprobante No Cuadra'; type='main'; index=0 } ) )) }
+  'Avisar Comprobante No Cuadra' = @{ main = @( ,@( @{ node='Marcar Aviso No Cuadra'; type='main'; index=0 } ) ) }
   'Enviar Comprobante al Cliente' = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
   'Fallo la Cita?'         = @{ main = (
       @( ,@( @{ node='Enviar Comprobante sin Cita'; type='main'; index=0 } ) ) +
