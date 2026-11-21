@@ -133,6 +133,11 @@ $MINUTOS_ENTRE_STICKERS_GRACIAS = 10
 # mensaje suena a bot (revision de los chats, 20/11).
 $HORAS_ENTRE_NOMBRES = 24
 
+# Registro en Supabase (tabla transacciones_por_whatsapp): cuantas operaciones del cliente se leen
+# en cada mensaje, y hasta cuantos dias atras cuenta la ultima para contestar "¿ya llego?".
+$OPERACIONES_A_LEER = 20
+$DIAS_ULTIMA_OPERACION = 7
+
 # Cada cuantos minutos, como MUCHO, se avisa de un mismo chat en pausa. Sin esto, un cliente
 # que escribe seis veces seguidas genera seis avisos y el grupo se vuelve ruido.
 $MINUTOS_ENTRE_AVISOS = 15
@@ -592,6 +597,7 @@ El cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea)
 Tarifa de este cliente: {{ $node["Code in JavaScript"].json.modo }} (detal=publico, mayor=mayorista). Nunca menciones lo mayorista a un cliente detal.
 {{ $node["Code in JavaScript"].json.clienteContexto ? ('CONTEXTO DEL CLIENTE (usalo con naturalidad para atender mejor): ' + $node["Code in JavaScript"].json.clienteContexto) : '' }}
 {{ $('Revisar Operacion').first().json.reglaNombre || '' }}
+{{ $('Revisar Operacion').first().json.contextoOperaciones || '' }}
 
 Tasas de hoy (Envio/Recibo ya con margen; "N/D" = no disponible):
 {{ JSON.stringify($node["Code in JavaScript"].json.lista) }}
@@ -616,6 +622,8 @@ REGLAS:
 - ESTADO DE LA OPERACION: si al final del mensaje ves "[ESTADO DE LA OPERACION: ...]", esa nota la pone el sistema despues de revisar la captura y la cuenta de este cliente, y MANDA sobre las reglas de comprobante de abajo: responde exactamente lo que dice. Nunca menciones esa nota al cliente.
 - COMPROBANTE DE PAGO: si ves "[El cliente envio un COMPROBANTE de pago...]", NUNCA digas "no tengo esa cuenta". Responde MUY corto, 1 sola linea. Si en el mensaje hay numeros de cuenta/cedula/banco/datos de una cuenta destino (aunque vengan reenviados o en numeros sueltos), confirma: "Listo, recibido! Procesamos tu remesa enseguida ✅" y NO preguntes nada mas. SOLO si NO hay ninguna cuenta en el mensaje, pide corto: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)". La cuenta destino es donde el destinatario RECIBE el dinero; el cliente puede dividir el monto en varias cuentas.
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
+- BENEFICIARIOS: nunca ofrezcas cuentas guardadas ni listas de beneficiarios. Si el cliente no manda los datos de la cuenta destino, pideselos simple: banco, numero de cuenta, titular y cedula (y el monto de cada una si son varias).
+- YA LLEGO? / COMO VA MI ENVIO? / YA SALIO?: contesta corto con la ULTIMA OPERACION DEL CLIENTE de arriba. EN PROCESO -> "Ya está en proceso 👍 Apenas salga te paso el comprobante por aquí." ENVIADA -> "Sí, ya salió <cuando> ✅ Te pasé el comprobante por aquí." EN ESPERA -> "Se procesa a partir de las 9:00 am 👍". Si arriba NO hay ULTIMA OPERACION DEL CLIENTE -> "Déjame revisar con un asesor y te confirmo enseguida." NUNCA digas que ya llegó si no dice ENVIADA.
 - Fuera de tema: "Solo remesas de JK."
 - Quejas o problema con un giro: "Un asesor te contacta enseguida."
 - Nunca pidas claves, cuentas ni documentos. No des consejo financiero.
@@ -1086,6 +1094,44 @@ const fila = [fecha, cliente, numero, cuenta, comprobante, tipo];
 return [{ json: { Fecha:fecha, Cliente:cliente, Numero:numero, CuentaDestino:cuenta, Comprobante:comprobante, Tipo:tipo, fila } }];
 '@
 
+# ===================== CODIGO: ARMAR FILA SUPABASE (registro de la operacion) =====================
+$armarFilaCode = @'
+// ===== LA FILA PARA SUPABASE (tabla transacciones_por_whatsapp) =====
+// Una fila por cada operacion completa (captura + cuenta) que el bot pasa a transferir. Cuando la
+// operadora devuelve la foto del envio, "Marcar Enviada en Supabase" la pasa a 'enviada'.
+// Los campos se llaman EXACTAMENTE como las columnas de la tabla: el nodo siguiente los guarda tal cual.
+const ap = $('Detectar Aprobación').first().json || {};
+let ro = {};
+try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
+const reg = ro.registro || {};
+const capturas = Array.isArray(reg.capturas) ? reg.capturas : [];
+const cuentas = Array.isArray(reg.cuentas) ? reg.cuentas : [];
+function aNumero(s){ const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v; }
+// El monto de cada cuenta, igual que "Separar Cuentas": primero "$60", si no "60$".
+function montoDe(t){
+  const s = String(t || '');
+  const m = s.match(/\$[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \t]*(?:\$|usd|dolares|dolar)/i);
+  return m ? aNumero(m[1]) : null;
+}
+const montos = capturas.map(c => c.monto).filter(m => typeof m === 'number' && !isNaN(m));
+const unicos = a => a.filter((x, i) => x && a.indexOf(x) === i);
+const fila = {
+  whatsapp: String(ap.numero || ap.jid || '').replace(/\D/g, ''),
+  nombre_cliente: ap.nombre || null,
+  estado: 'en_proceso',
+  monto_deposito: montos.length ? Math.round(montos.reduce((a, b) => a + b, 0) * 100) / 100 : null,
+  ref_deposito: unicos(capturas.map(c => c.ref)).join(', ') || null,
+  banco_origen: unicos(capturas.map(c => c.banco)).join(', ') || null,
+  huella_foto: (capturas.find(c => c.huella) || {}).huella || null,
+  id_msg_captura: ap.idImagen || (capturas[0] || {}).id || null,
+  capturas,
+  cuentas: cuentas.map(c => ({ id: c.id || '', texto: c.texto, monto: montoDe(c.texto) })),
+  fuera_de_horario: false,
+  publicado_en: new Date().toISOString()
+};
+return [{ json: fila }];
+'@
+
 # ===================== CODIGO: DETECTAR ASESOR (alerta) =====================
 $detectarCode = @'
 // Si la respuesta del bot indica que se necesita un asesor, arma la alerta. Si no, no hace nada.
@@ -1401,6 +1447,7 @@ const comun = {
   jid: p.jid,
   nombre: p.nombre || 'el cliente',
   idCuenta: p.idCuenta || '',        // para citarle el mensaje donde dio sus datos bancarios
+  idCaptura: p.idCaptura || '',      // la captura del deposito: asi se marca "enviada" en Supabase
   stanzaId: base.stanzaId,           // la publicacion citada, para citarla al confirmar
   claveEntregado: base.claveEntregado,
   jidGrupo: base.jidGrupo
@@ -1473,6 +1520,7 @@ const MINUTOS_MISMO_DEPOSITO = __MINUTOS_MISMO_DEPOSITO__;
 const HORAS_RECORDAR = __HORAS_RECORDAR__;
 const MINUTOS_ENTRE_STICKERS = __MINUTOS_STICKER_GRACIAS__;
 const HORAS_ENTRE_NOMBRES = __HORAS_NOMBRE__;
+const DIAS_ULTIMA_OPERACION = __DIAS_ULTIMA_OPERACION__;
 const ahora = Date.now();
 
 let base = {};
@@ -1492,6 +1540,15 @@ const vigente = x => !!x && typeof x.ts === 'number' && (ahora - x.ts) <= MINUTO
 const cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuenta.mensajes)) ? op.cuenta.mensajes : [];
 const capturasGuardadas = Array.isArray(op.capturas) ? op.capturas.filter(vigente) : [];
 const hechos = Array.isArray(op.hechos) ? op.hechos.filter(h => h && (ahora - (h.ts || 0)) <= HORAS_RECORDAR * 3600000) : [];
+
+// ---------- las operaciones ya registradas en Supabase (tabla transacciones_por_whatsapp) ----------
+// Las ultimas de este cliente, la mas reciente primero. Sirven para reconocer una captura repetida
+// aunque sea de hace semanas (Redis solo recuerda 48 h), para "la misma cuenta de siempre" y para
+// contestar "¿ya llego?". Si Supabase no responde, todo sigue como antes.
+let historial = [];
+try { historial = $('Consultar Operaciones WhatsApp').all().map(i => i.json).filter(r => r && r.id && !r.error); } catch(e){ historial = []; }
+historial.sort((a, b) => (Date.parse(b.creado) || 0) - (Date.parse(a.creado) || 0));
+const listaDe = v => { if (Array.isArray(v)) return v; try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch(e){ return []; } };
 
 // ---------- que es una cuenta (lo mismo que usa "Detectar Aprobacion") ----------
 const cuentaPatterns = ['bancolombia', 'nequi', 'pago movil', 'banco', 'cuenta', 'numero de cuenta', 'titular', 'cedula', 'cc ', ' ci ', 'swift', 'interbank', 'binance', 'zelle'];
@@ -1626,108 +1683,7 @@ function mismoDeposito(a, b){
   return Math.abs((a.ts || 0) - (b.ts || 0)) <= MINUTOS_MISMO_DEPOSITO * 60000;
 }
 
-// ---------- lo que llego ahora ----------
-const RX_CAPTURA = /\[El cliente envio un COMPROBANTE[^\]]*\]/i;
-const capturas = [];
-for (const m of mensajes){
-  const t = String((m && m.texto) || '');
-  const c = t.match(RX_CAPTURA);
-  if (c) capturas.push(datosDeCaptura(c[0], (m && m.id) || ''));
-}
-
-// Una cuenta: SIN captura de por medio, solo con datos firmes. CON una captura (en este envio o
-// esperando guardada), tambien un texto con palabras de cuenta o banco, pero nunca una pregunta.
-const hayCaptura = capturas.length > 0 || capturasGuardadas.length > 0;
-const cuentasAhora = [];
-for (const m of mensajes){
-  const resto = textoDelCliente(String((m && m.texto) || ''));
-  if (!resto || esCuentaNuestra(resto)) continue;
-  const esCuenta = datosFirmes(resto) || (hayCaptura && resto.indexOf('?') === -1 && pareceCuenta(resto));
-  if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
-}
-
-const nuevas = [];
-for (let i = 0; i < capturas.length; i++){
-  const c = capturas[i];
-  const antes = capturas.slice(0, i).find(x => mismoDeposito(c, x));
-  if (antes){ c.clase = antes.clase; continue; }             // otra pantalla del mismo pago, en el mismo envio
-  if (hechos.some(h => mismoDeposito(c, h))){ c.clase = 'repetida'; continue; }
-  const g = capturasGuardadas.find(x => mismoDeposito(c, x));
-  if (g){                                                    // la volvio a mandar mientras falta la cuenta
-    c.clase = 'guardada';
-    if (!g.ref && c.ref) g.ref = c.ref;
-    if (!g.huella && c.huella) g.huella = c.huella;
-    if (!g.banco && c.banco) g.banco = c.banco;
-    if (!g.destino && c.destino) g.destino = c.destino;
-    continue;
-  }
-  c.clase = 'nueva';
-  nuevas.push(c);
-}
-const todasRepetidas = capturas.length > 0 && capturas.every(c => c.clase === 'repetida');
-
-// Varias cuentas (en un mensaje o en varios) se juntan; la misma cuenta escrita dos veces, no.
-// Si la misma cuenta llega otra vez MAS COMPLETA (ej. ahora con el banco y el titular), se queda
-// la version mas completa.
-function unirCuentas(a, b){
-  const out = [], donde = {};
-  for (const m of a.concat(b)){
-    const clave = datosDe(m.texto).sort().join('|') || String(m.texto).trim().toLowerCase();
-    const nueva = { id: m.id || '', texto: m.texto };
-    if (donde[clave] === undefined){ donde[clave] = out.length; out.push(nueva); continue; }
-    if (String(m.texto).length > String(out[donde[clave]].texto).length) out[donde[clave]] = nueva;
-  }
-  return out;
-}
-const capturasOp = capturasGuardadas.concat(nuevas);
-const cuentasOp = unirCuentas(cuentaGuardada, cuentasAhora);
-
-let estado = 'nada';
-if (todasRepetidas) estado = 'repetido';
-else if (capturasOp.length && cuentasOp.length) estado = 'completo';
-else if (capturasOp.length) estado = 'falta_cuenta';
-else if (cuentasAhora.length) estado = 'falta_captura';
-
-const NOTA = {
-  completo:      'ya tengo la captura del deposito y la cuenta destino de este cliente; se pasaron a operaciones. Responde SOLO: "Listo, recibido! Procesamos tu remesa enseguida ✅"',
-  falta_cuenta:  'ya tengo la captura del deposito pero todavia NO tengo la cuenta destino. Responde SOLO: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)"',
-  falta_captura: 'el cliente ya paso la cuenta destino pero todavia NO mando la captura del deposito. Si pregunto algo, respondelo; y pidele corto: "Recibi los datos de la cuenta 👍 Cuando hagas el deposito, enviame la captura"',
-  repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
-};
-const notaIA = NOTA[estado] ? '\n\n[ESTADO DE LA OPERACION: ' + NOTA[estado] + ']' : '';
-
-const huellaDeposito = c => ({ ref: c.ref || '', monto: (c.monto === undefined ? null : c.monto), huella: c.huella || '',
-                                banco: c.banco || '', destino: c.destino || '', ts: ahora });
-const nueva = { cuenta: null, capturas: [], hechos };
-let textoAprobar = '', mensajesAprobar = [], idImagen = '';
-if (estado === 'completo'){
-  textoAprobar = capturasOp.map(c => c.texto).join('\n') + '\n\n' + cuentasOp.map(m => m.texto).join('\n\n');
-  mensajesAprobar = capturasOp.map(c => ({ id: c.id, texto: c.texto })).concat(cuentasOp);
-  idImagen = (capturasOp[0] && capturasOp[0].id) || '';
-  // Se recuerdan TODAS las capturas de este deposito (tambien la segunda pantalla), para
-  // reconocerlas si las vuelve a mandar.
-  const recordar = capturasGuardadas.concat(capturas.filter(c => c.clase !== 'repetida'));
-  nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
-} else if (estado === 'falta_cuenta'){
-  nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
-                                         banco: c.banco || '', destino: c.destino || '' }));
-} else if (estado === 'falta_captura'){
-  nueva.cuenta = { mensajes: cuentasOp, ts: ahora };
-} else {
-  // repetido o nada: lo que estaba pendiente sigue pendiente
-  nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts } : null;
-  nueva.capturas = capturasGuardadas;
-}
-
-// ===== CIERRES: "GRACIAS", "OK" SUELTOS Y MENSAJES SIN TEXTO =====
-// Revision de los chats (20/11): el 20% de lo que escriben los clientes es "gracias" u "ok". Todo
-// pasaba por la IA, que contestaba con relleno ("Aqui estoy para lo que necesites 😊").
-//   - solo un agradecimiento -> sticker A SU ORDEN, sin IA, como mucho 1 cada MINUTOS_ENTRE_STICKERS
-//   - solo un "ok" o "listo" -> nada, salvo que el ultimo mensaje del bot haya sido una pregunta
-//   - sin texto              -> nada
-// Solo cuando el mensaje es SOLO eso: "gracias, y la tasa?" u "ok, pasame la cuenta" van a la IA.
-// El nodo "¿Qué Responder?" usa esta decision. Lo inesperado va siempre a la IA, como antes.
-
+// ---------- palabras de cierre ("gracias", "ok") y de confirmacion ("si, esa") ----------
 // Palabras que pueden acompanar un "gracias" o un "ok" sin cambiar lo que significa.
 // "no" NO esta a proposito: "no gracias" es otra cosa.
 const RELLENO = ['ok','oki','okey','okay','okis','oks','okok','okidoki','listo','perfecto','vale','dale','bueno','buena',
@@ -1745,10 +1701,14 @@ const GRACIAS = ['gracias','gracia','grasias','grax','agradezco','agradecido','a
 // Lo que lo vuelve un "ok" suelto.
 const ACUSE = ['ok','oki','okey','okay','okis','oks','okok','okidoki','listo','perfecto','vale','dale','bien','bueno',
   'entendido','acuerdo','copiado','enterado','entiendo','hagale'];
+// Lo que confirma una cuenta propuesta ("¿te lo envio a esta cuenta?" -> "si, esa").
+const AFIRMA = ['si','sip','esa','ese','esas','esos','eso','misma','mismo','correcto','correcta','exacto','exacta','confirmo',
+  'confirmado','confirmada','afirmativo','claro','asi','es','ok','oki','okey','okis','okok','dale','listo','perfecto','vale','va'];
 
 // "Graciaaaas" = "gracias", "okk" = "ok": las letras repetidas se juntan (en las listas tambien).
 const simple = w => w.replace(/(.)\1+/g, '$1');
 const S_RELLENO = new Set(RELLENO.map(simple)), S_GRACIAS = new Set(GRACIAS.map(simple)), S_ACUSE = new Set(ACUSE.map(simple));
+const S_AFIRMA = new Set(AFIRMA.map(simple));
 const esRisa = w => /^(ja|je|ji|ha)+j?$/.test(w);
 const EMOJIS_OK = /👍|👌|✅|🫡|🤝|❤|🧡|💛|💚|💙|💜|🖤|🤍|😂|🤣|😅|😁|😀|😃|😄|😊|🙂|😉|😎|🥳|🎉|💪|🙌|👏|🫶|😘|🥰|😍|🔥/gu;
 function palabrasDe(t){
@@ -1786,6 +1746,186 @@ function ultimoFuePregunta(){
   return String(j.pregunta || '') === '1';
 }
 
+// ---------- depositos ya registrados en Supabase ----------
+// Pueden ser de hace semanas, asi que solo se toman como EL MISMO deposito con la misma foto o la
+// misma referencia (larga). "Mismo monto y mismo banco" es normal en un cliente que deposita lo
+// mismo cada semana. Las operaciones canceladas no cuentan.
+const hechosTabla = [];
+for (const r of historial){
+  if (r.estado === 'cancelada') continue;
+  const cs = listaDe(r.capturas);
+  if (cs.length) cs.forEach(c => hechosTabla.push({ ref: String((c && c.ref) || ''), monto: (c && typeof c.monto === 'number') ? c.monto : null, huella: String((c && c.huella) || '') }));
+  else hechosTabla.push({ ref: String(r.ref_deposito || ''), monto: (r.monto_deposito === null || r.monto_deposito === undefined) ? null : Number(r.monto_deposito), huella: String(r.huella_foto || '') });
+}
+function mismoDepositoViejo(a, b){
+  if (a.huella && b.huella && a.huella === b.huella) return true;
+  if (!a.ref || !b.ref || a.ref !== b.ref || a.ref.length < 6) return false;
+  if (a.monto !== null && a.monto !== undefined && b.monto !== null && Math.abs(a.monto - b.monto) >= 0.01) return false;
+  return true;
+}
+
+// ---------- "la misma cuenta de siempre" ----------
+// El bot NO ofrece listas de beneficiarios (a algunos clientes los enreda). Solo si el cliente lo
+// pide ("a la misma de siempre", "igual que la otra vez") y ya mando la captura, se le muestra la
+// ultima cuenta que uso y se le pide un "si". Sin captura, "la misma cuenta" casi siempre habla de
+// NUESTRA cuenta (donde deposita): eso lo contesta el agente como siempre.
+function pideLaMisma(t){
+  t = String(t || '');
+  if (/[?¿]/.test(t)) return false;
+  const x = ' ' + t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  return / mism[ao]s? (cuenta|cuentas|datos|persona|beneficiari[ao]|destinatari[ao]) /.test(x)
+      || / (la|el|los|las) mism[ao]s? (de|que) (siempre|antes|la otra vez|la vez pasada|la ultima vez|ayer|la anterior) /.test(x)
+      || / (la|el) de siempre /.test(x)
+      || / igual que (la otra vez|antes|siempre|la vez pasada|ayer|la anterior) /.test(x);
+}
+function esAfirmacion(t){
+  t = String(t || '');
+  if (/[?¿]/.test(t)) return false;
+  const w = palabrasDe(t);
+  if (!w.length || w.indexOf('no') !== -1) return false;
+  return w.some(x => S_AFIRMA.has(x) && x !== 'es' && x !== 'asi') && w.every(x => S_AFIRMA.has(x) || S_RELLENO.has(x) || esRisa(x));
+}
+// La cuenta de la vez pasada se muestra SIN su monto: el de hoy puede ser otro, y el grupo vería
+// un monto viejo en la cabecera.
+function sinMontos(t){
+  return String(t || '').split('\n').map(l => l
+      .replace(/monto\s*:?\s*\$?\s*[0-9][0-9.,]*\s*(\$|usd|dolares|dolar)?/gi, '')
+      .replace(/\$\s*[0-9][0-9.,]*/g, '')
+      .replace(/[0-9][0-9.,]*\s*(\$|usd\b|dolares|dolar)/gi, '')
+      .trim())
+    .filter(l => l.length).join('\n');
+}
+
+// ---------- lo que llego ahora ----------
+const RX_CAPTURA = /\[El cliente envio un COMPROBANTE[^\]]*\]/i;
+const capturas = [];
+for (const m of mensajes){
+  const t = String((m && m.texto) || '');
+  const c = t.match(RX_CAPTURA);
+  if (c) capturas.push(datosDeCaptura(c[0], (m && m.id) || ''));
+}
+
+// Una cuenta: SIN captura de por medio, solo con datos firmes. CON una captura (en este envio o
+// esperando guardada), tambien un texto con palabras de cuenta o banco, pero nunca una pregunta.
+const hayCaptura = capturas.length > 0 || capturasGuardadas.length > 0;
+const cuentasAhora = [];
+for (const m of mensajes){
+  const resto = textoDelCliente(String((m && m.texto) || ''));
+  if (!resto || esCuentaNuestra(resto)) continue;
+  if (pideLaMisma(resto) && !datosFirmes(resto)) continue;      // "a la misma cuenta de siempre" no ES una cuenta
+  const esCuenta = datosFirmes(resto) || (hayCaptura && resto.indexOf('?') === -1 && pareceCuenta(resto));
+  if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
+}
+
+// "La misma de siempre": si el turno pasado se le propuso una cuenta y ahora dice "si", es esa.
+// Si dice otra cosa, la propuesta se olvida (y se le vuelve a pedir la cuenta).
+const textoAhora = mensajes.map(m => textoDelCliente(String((m && m.texto) || ''))).filter(Boolean).join('\n');
+const propuestaVieja = (op.cuentaPropuesta && vigente(op.cuentaPropuesta) && Array.isArray(op.cuentaPropuesta.mensajes)) ? op.cuentaPropuesta.mensajes : [];
+let pideMisma = false, propuestaNueva = null;
+if (!cuentasAhora.length && propuestaVieja.length && esAfirmacion(textoAhora)){
+  propuestaVieja.forEach(m => cuentasAhora.push({ id: m.id || '', texto: m.texto }));
+} else if (!cuentasAhora.length && hayCaptura && pideLaMisma(textoAhora)){
+  pideMisma = true;
+  const filaCuenta = historial.find(r => r.estado !== 'cancelada' && listaDe(r.cuentas).some(c => c && c.texto));
+  const cs = filaCuenta ? listaDe(filaCuenta.cuentas).filter(c => c && c.texto) : [];
+  if (cs.length === 1){                       // si la vez pasada fueron varias, se le piden los datos
+    const texto = sinMontos(cs[0].texto);
+    if (texto) propuestaNueva = { mensajes: [{ id: '', texto }], ts: ahora };
+  }
+}
+
+const nuevas = [];
+for (let i = 0; i < capturas.length; i++){
+  const c = capturas[i];
+  const antes = capturas.slice(0, i).find(x => mismoDeposito(c, x));
+  if (antes){ c.clase = antes.clase; continue; }             // otra pantalla del mismo pago, en el mismo envio
+  if (hechos.some(h => mismoDeposito(c, h)) || hechosTabla.some(h => mismoDepositoViejo(c, h))){ c.clase = 'repetida'; continue; }
+  const g = capturasGuardadas.find(x => mismoDeposito(c, x));
+  if (g){                                                    // la volvio a mandar mientras falta la cuenta
+    c.clase = 'guardada';
+    if (!g.ref && c.ref) g.ref = c.ref;
+    if (!g.huella && c.huella) g.huella = c.huella;
+    if (!g.banco && c.banco) g.banco = c.banco;
+    if (!g.destino && c.destino) g.destino = c.destino;
+    continue;
+  }
+  c.clase = 'nueva';
+  nuevas.push(c);
+}
+const todasRepetidas = capturas.length > 0 && capturas.every(c => c.clase === 'repetida');
+
+// Varias cuentas (en un mensaje o en varios) se juntan; la misma cuenta escrita dos veces, no.
+// Si la misma cuenta llega otra vez MAS COMPLETA (ej. ahora con el banco y el titular), se queda
+// la version mas completa.
+function unirCuentas(a, b){
+  const out = [], donde = {};
+  for (const m of a.concat(b)){
+    const clave = datosDe(m.texto).sort().join('|') || String(m.texto).trim().toLowerCase();
+    const nueva = { id: m.id || '', texto: m.texto };
+    if (donde[clave] === undefined){ donde[clave] = out.length; out.push(nueva); continue; }
+    if (String(m.texto).length > String(out[donde[clave]].texto).length) out[donde[clave]] = nueva;
+  }
+  return out;
+}
+const capturasOp = capturasGuardadas.concat(nuevas);
+const cuentasOp = unirCuentas(cuentaGuardada, cuentasAhora);
+
+let estado = 'nada';
+if (todasRepetidas) estado = 'repetido';
+else if (capturasOp.length && cuentasOp.length) estado = 'completo';
+else if (capturasOp.length && propuestaNueva) estado = 'confirmar_cuenta';
+else if (capturasOp.length) estado = 'falta_cuenta';
+else if (cuentasAhora.length) estado = 'falta_captura';
+
+const NOTA = {
+  completo:      'ya tengo la captura del deposito y la cuenta destino de este cliente; se pasaron a operaciones. Responde SOLO: "Listo, recibido! Procesamos tu remesa enseguida ✅"',
+  falta_cuenta:  'ya tengo la captura del deposito pero todavia NO tengo la cuenta destino. Responde SOLO: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)"',
+  falta_captura: 'el cliente ya paso la cuenta destino pero todavia NO mando la captura del deposito. Si pregunto algo, respondelo; y pidele corto: "Recibi los datos de la cuenta 👍 Cuando hagas el deposito, enviame la captura"',
+  repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
+};
+if (propuestaNueva) NOTA.confirmar_cuenta = 'el cliente quiere usar la misma cuenta destino de la vez pasada. Responde SOLO esto, con la cuenta copiada tal cual: "¿Te lo envío a esta cuenta? 👇\n\n' + propuestaNueva.mensajes[0].texto + '\n\nResponde *sí* para confirmar"';
+if (pideMisma && !propuestaNueva) NOTA.falta_cuenta = 'el cliente pidio usar la misma cuenta de la vez pasada, pero no la tengo registrada (o la vez pasada fueron varias cuentas). Responde SOLO: "Recibí tu comprobante! 🙌 Pásame los datos de la cuenta destino porfa (banco, número, titular y cédula)"';
+const notaIA = NOTA[estado] ? '\n\n[ESTADO DE LA OPERACION: ' + NOTA[estado] + ']' : '';
+
+const huellaDeposito = c => ({ ref: c.ref || '', monto: (c.monto === undefined ? null : c.monto), huella: c.huella || '',
+                                banco: c.banco || '', destino: c.destino || '', ts: ahora });
+const nueva = { cuenta: null, capturas: [], hechos };
+let textoAprobar = '', mensajesAprobar = [], idImagen = '', registro = null;
+if (estado === 'completo'){
+  textoAprobar = capturasOp.map(c => c.texto).join('\n') + '\n\n' + cuentasOp.map(m => m.texto).join('\n\n');
+  mensajesAprobar = capturasOp.map(c => ({ id: c.id, texto: c.texto })).concat(cuentasOp);
+  idImagen = (capturasOp[0] && capturasOp[0].id) || '';
+  // Lo que se guarda en Supabase (ver "Armar Fila Supabase").
+  registro = {
+    capturas: capturasOp.map(c => ({ id: c.id || '', monto: (c.monto === undefined ? null : c.monto), ref: c.ref || '', banco: c.banco || '',
+                                     destino: c.destino || '', huella: c.huella || '', texto: String(c.texto || '') })),
+    cuentas: cuentasOp.map(m => ({ id: m.id || '', texto: m.texto }))
+  };
+  // Se recuerdan TODAS las capturas de este deposito (tambien la segunda pantalla), para
+  // reconocerlas si las vuelve a mandar.
+  const recordar = capturasGuardadas.concat(capturas.filter(c => c.clase !== 'repetida'));
+  nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
+} else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta'){
+  nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
+                                         banco: c.banco || '', destino: c.destino || '' }));
+  if (propuestaNueva) nueva.cuentaPropuesta = propuestaNueva;
+} else if (estado === 'falta_captura'){
+  nueva.cuenta = { mensajes: cuentasOp, ts: ahora };
+} else {
+  // repetido o nada: lo que estaba pendiente sigue pendiente
+  nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts } : null;
+  nueva.capturas = capturasGuardadas;
+}
+
+// ===== CIERRES: "GRACIAS", "OK" SUELTOS Y MENSAJES SIN TEXTO =====
+// Revision de los chats (20/11): el 20% de lo que escriben los clientes es "gracias" u "ok". Todo
+// pasaba por la IA, que contestaba con relleno ("Aqui estoy para lo que necesites 😊").
+//   - solo un agradecimiento -> sticker A SU ORDEN, sin IA, como mucho 1 cada MINUTOS_ENTRE_STICKERS
+//   - solo un "ok" o "listo" -> nada, salvo que el ultimo mensaje del bot haya sido una pregunta
+//   - sin texto              -> nada
+// Solo cuando el mensaje es SOLO eso: "gracias, y la tasa?" u "ok, pasame la cuenta" van a la IA.
+// El nodo "¿Qué Responder?" usa esta decision. Lo inesperado va siempre a la IA, como antes.
+
 let accion = 'ia', motivoAccion = '';
 if (estado === 'nada'){
   const cierre = tipoDeCierre(mensajes.map(m => (m && m.texto) || ''));
@@ -1814,8 +1954,39 @@ const reglaNombre = !nombreCliente ? '' : (tocaNombre
 if (typeof op.ultimoSaludo === 'number') nueva.ultimoSaludo = op.ultimoSaludo;
 if (accion === 'ia' && tocaNombre) nueva.ultimoSaludo = ahora;
 
+// ===== "¿YA LLEGO?": EL ESTADO DE LA ULTIMA OPERACION, PARA EL AGENTE =====
+// Se le pasa siempre (si es de los ultimos DIAS_ULTIMA_OPERACION dias); el prompt le dice que la
+// use solo si el cliente pregunta como va su envio. Las horas, en hora de Ecuador.
+function horaEc(ms){ const d = new Date(ms - 5 * 3600000); let h = d.getUTCHours(); const m = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return h + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ' ' + m; }
+function diaEc(ms){
+  const dia = x => Math.floor((x - 5 * 3600000) / 86400000);
+  const n = dia(ahora) - dia(ms);
+  if (n === 0) return 'hoy';
+  if (n === 1) return 'ayer';
+  const d = new Date(ms - 5 * 3600000);
+  return 'el ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+}
+const cuando = ms => diaEc(ms) + ' a las ' + horaEc(ms);
+let contextoOperaciones = '';
+const ultima = historial.find(r => r.estado !== 'cancelada' && r.estado !== 'repetida');
+const msUltima = ultima ? Date.parse(ultima.creado) : NaN;
+if (ultima && msUltima && (ahora - msUltima) <= DIAS_ULTIMA_OPERACION * 86400000){
+  const nCuentas = listaDe(ultima.cuentas).length;
+  let txt = 'ULTIMA OPERACION DEL CLIENTE (usala solo si pregunta si ya llego o como va su envio): recibida ' + cuando(msUltima)
+    + ((ultima.monto_deposito !== null && ultima.monto_deposito !== undefined) ? ', deposito de $' + Number(ultima.monto_deposito).toFixed(2) : '')
+    + (nCuentas ? ', ' + nCuentas + (nCuentas === 1 ? ' cuenta destino' : ' cuentas destino') : '') + '. Estado: ';
+  const msEnviada = Date.parse(ultima.enviada_en);
+  if (ultima.estado === 'enviada') txt += 'ENVIADA' + (msEnviada ? ' ' + cuando(msEnviada) : '') + ' (ya se le reenvio el comprobante por este chat).';
+  else if (ultima.estado === 'en_espera') txt += 'EN ESPERA (llego fuera de horario; se procesa al abrir).';
+  else if (ultima.estado === 'en_proceso') txt += 'EN PROCESO (ya esta con la operadora; falta que mande el comprobante).';
+  else txt += String(ultima.estado || '').toUpperCase() + '.';
+  contextoOperaciones = txt;
+}
+
 return [{ json: Object.assign({}, base, {
   estadoOperacion: estado,
+  contextoOperaciones,
+  registro,
   accion,
   motivoAccion,
   reglaNombre,
@@ -1832,6 +2003,7 @@ $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_MISMO_DEPOSITO_
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_RECORDAR__', [string]$HORAS_MEMORIA_OPERACION)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_STICKER_GRACIAS__', [string]$MINUTOS_ENTRE_STICKERS_GRACIAS)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [string]$HORAS_ENTRE_NOMBRES)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__DIAS_ULTIMA_OPERACION__', [string]$DIAS_ULTIMA_OPERACION)
 
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
@@ -2007,6 +2179,14 @@ $nodes = @(
     id = 'd0e1f2a3-0000-4b00-9000-marcaentreg01'; name = 'Redis Marcar Entregado'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1180,-500)
     onError = 'continueRegularOutput'
     credentials = $redisCred
+  },
+  [ordered]@{
+    # La operadora devolvio la foto y ya le llego al cliente: la operacion queda 'enviada'.
+    # Se busca por la captura del deposito (viaja en grupoMsg). Solo si estaba en proceso.
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
+    id = 'a1b2c3d4-0011-4e00-9a00-registro00011'; name = 'Marcar Enviada en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,-752)
+    onError = 'continueRegularOutput'
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
@@ -2247,6 +2427,14 @@ $nodes = @(
     onError = 'continueRegularOutput'; alwaysOutputData = $true
   },
   [ordered]@{
+    # Las ultimas operaciones de este cliente en transacciones_por_whatsapp, la mas reciente primero
+    # (ver "Revisar Operacion"). Si Supabase falla, el bot sigue sin eso.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_por_whatsapp'; returnAll = $false; limit = $OPERACIONES_A_LEER; filterType = 'string'; filterString = "={{ 'whatsapp=eq.' + `$('Prep Debounce').first().json.jid.split('@')[0].replace(/\D/g,'') + '&order=creado.desc' }}" }
+    id = 'a1b2c3d4-0008-4e00-9a00-registro00008'; name = 'Consultar Operaciones WhatsApp'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1632,48)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
     parameters = @{ jsCode = $revisarOperacionCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1456,48); id = 'a1b2c3d4-0002-4e00-9a00-operacion0002'; name = 'Revisar Operacion'
   },
@@ -2350,7 +2538,7 @@ $nodes = @(
   [ordered]@{
     # Se anota de quien es la publicacion que acaba de hacer el bot en el grupo. Cuando la
     # operadora RESPONDA ese mensaje con la foto del envio, asi se sabe a que cliente va.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: `$('Detectar Aprobación').first().json.idCuenta }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: `$('Detectar Aprobación').first().json.idCuenta, idCaptura: `$('Detectar Aprobación').first().json.idImagen }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
     id = 'd0e1f2a3-0000-4b00-9000-marcapubimg1'; name = 'Marcar Publicacion Imagen'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2740,60)
     onError = 'continueRegularOutput'
     credentials = $redisCred
@@ -2358,7 +2546,7 @@ $nodes = @(
   [ordered]@{
     # Se anota de quien es la publicacion que acaba de hacer el bot en el grupo. Cuando la
     # operadora RESPONDA ese mensaje con la foto del envio, asi se sabe a que cliente va.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: (`$('Separar Cuentas').item.json.idCuenta || `$('Detectar Aprobación').first().json.idCuenta) }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: (`$('Separar Cuentas').item.json.idCuenta || `$('Detectar Aprobación').first().json.idCuenta), idCaptura: `$('Detectar Aprobación').first().json.idImagen }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
     id = 'd0e1f2a3-0000-4b00-9000-marcapubcta1'; name = 'Marcar Publicacion Cuenta'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(3280,400)
     onError = 'continueRegularOutput'
     credentials = $redisCred
@@ -2377,6 +2565,19 @@ $nodes = @(
     parameters = @{ jsCode = $registrarOperacionCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2380,340); id = 'bb88cc99-dd00-4727-9bbb-registrarop1'; name = 'Registrar Operación'
     onError = 'continueRegularOutput'; alwaysOutputData = $true
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $armarFilaCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1808,768); id = 'a1b2c3d4-0009-4e00-9a00-registro00009'; name = 'Armar Fila Supabase'
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    # Guarda la operacion en transacciones_por_whatsapp ('en_proceso'). Si falla, la operacion
+    # igual se paso al grupo: solo queda sin registro.
+    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'transacciones_por_whatsapp'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
+    id = 'a1b2c3d4-0010-4e00-9a00-registro00010'; name = 'Guardar Operacion en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1984,768)
+    onError = 'continueRegularOutput'
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
   [ordered]@{
     parameters = @{ name = 'calculadora_remesas'; description = 'Convierte montos de dinero entre paises/monedas con las tasas oficiales del dia de JK Remesas. Usala para cualquier conversion de monto, para cruces entre dos paises, o cuando intervengan dolares, USDT o euros. Devuelve el resultado exacto.'; language = 'javaScript'; jsCode = $toolCode; specifyInputSchema = $true; schemaType = 'manual'; inputSchema = $inputSchema }
@@ -2464,7 +2665,8 @@ $connections = [ordered]@{
   'Redis Leer Modo Admin'  = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
   'Code in JavaScript'     = @{ main = @( ,@( @{ node='Redis Leer Operacion'; type='main'; index=0 } ) ) }
   'Redis Leer Operacion'   = @{ main = @( ,@( @{ node='Redis Leer Pregunta'; type='main'; index=0 } ) ) }
-  'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
+  'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Consultar Operaciones WhatsApp'; type='main'; index=0 } ) ) }
+  'Consultar Operaciones WhatsApp' = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
   'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
   'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 } ) ) }
   '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
@@ -2474,7 +2676,9 @@ $connections = [ordered]@{
   'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 }, @{ node='Redis Marcar Pregunta'; type='main'; index=0 } ) ) }
   'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
-  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }
+  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 }, @{ node='Armar Fila Supabase'; type='main'; index=0 } ) ) }
+  'Armar Fila Supabase'    = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
+  'Redis Marcar Entregado' = @{ main = @( ,@( @{ node='Marcar Enviada en Supabase'; type='main'; index=0 } ) ) }
   'Redis Leer ID Imagen'   = @{ main = @( ,@( @{ node='Re-descargar Imagen'; type='main'; index=0 } ) ) }
   'Re-descargar Imagen'    = @{ main = @( ,@( @{ node='Enviar Imagen Grupo'; type='main'; index=0 } ) ) }
   'Enviar Imagen Grupo'    = @{ main = @( ,@(

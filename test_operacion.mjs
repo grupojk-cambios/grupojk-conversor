@@ -330,8 +330,9 @@ console.log('=== 6) COMO QUEDA CABLEADO ===');
   const c = wf.connections;
   const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node).join(',');
   chk(sig('Code in JavaScript') === 'Redis Leer Operacion', 'Code in JavaScript -> Redis Leer Operacion');
-  chk(sig('Redis Leer Operacion') === 'Redis Leer Pregunta' && sig('Redis Leer Pregunta') === 'Revisar Operacion',
-      'Redis Leer Operacion -> Redis Leer Pregunta -> Revisar Operacion');
+  chk(sig('Redis Leer Operacion') === 'Redis Leer Pregunta' && sig('Redis Leer Pregunta') === 'Consultar Operaciones WhatsApp'
+      && sig('Consultar Operaciones WhatsApp') === 'Revisar Operacion',
+      'Redis Leer Operacion -> Leer Pregunta -> Consultar Operaciones -> Revisar Operacion');
   chk(sig('Revisar Operacion') === 'Redis Guardar Operacion', 'Revisar Operacion -> Redis Guardar Operacion');
   // Entre los dos esta "¿Qué Responder?" (gracias -> sticker, ok suelto -> nada); lo demas, a la IA.
   const respaldo = ((c['¿Qué Responder?'] || {}).main || [])[2] || [];
