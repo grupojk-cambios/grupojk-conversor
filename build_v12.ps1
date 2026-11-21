@@ -125,6 +125,14 @@ $MINUTOS_OPERACION_PENDIENTE = 120
 # como el mismo deposito (ej. dos pantallas distintas del mismo Zelle).
 $MINUTOS_MISMO_DEPOSITO = 15
 
+# "gracias" -> sticker A SU ORDEN, sin pasar por la IA. Como mucho uno cada tantos minutos por
+# cliente: si escribe "gracias" tres veces seguidas no le llegan tres stickers.
+$MINUTOS_ENTRE_STICKERS_GRACIAS = 10
+
+# El nombre del cliente se usa UNA sola vez cada tantas horas, al saludar. Repetirlo en cada
+# mensaje suena a bot (revision de los chats, 20/11).
+$HORAS_ENTRE_NOMBRES = 24
+
 # Cada cuantos minutos, como MUCHO, se avisa de un mismo chat en pausa. Sin esto, un cliente
 # que escribe seis veces seguidas genera seis avisos y el grupo se vuelve ruido.
 $MINUTOS_ENTRE_AVISOS = 15
@@ -366,6 +374,7 @@ for (const c of cuentas) {
 // Lee las operaciones previas del cliente (nodo "Consultar Cliente") y arma un contexto corto
 // para que el bot atienda mejor (saludar por nombre, saber a que pais suele enviar).
 let clienteContexto = '';
+let nombreCliente = '';
 try {
   // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal / _mayor).
   //    Le gana al del historial: ese lo escribio el, sabe como se llama el cliente.
@@ -377,6 +386,7 @@ try {
   //    ademas el pais al que suele enviar.
   const ops = $('Consultar Cliente').all().map(i => i.json).filter(o => o && (o.pais_destino || o.nombre_cliente));
   if (!nombre && ops.length) nombre = ((ops[0].nombre_cliente || '') + ' ' + (ops[0].apellido_cliente || '')).trim();
+  nombreCliente = nombre;
 
   let recurrente = '';
   const partes = [];
@@ -390,12 +400,34 @@ try {
   }
   if (partes.length) {
     let txt = 'Este cliente ' + partes.join(', ') + '.';
-    if (nombre) txt += ' Saludalo por su nombre con naturalidad.';
-    if (recurrente) txt += ' Si pide cotizar, puedes sugerir su destino habitual.';
+    // Aqui NO se le pide que lo salude por su nombre: eso lo decide "Revisar Operacion", que
+    // deja usar el nombre una sola vez cada 24 h (repetirlo en cada mensaje suena a bot).
+    if (recurrente) txt += ' Su destino habitual es solo contexto: no lo asumas; si no dice a donde envia, preguntale.';
     txt += ' No menciones montos ni datos viejos salvo que el cliente pregunte.';
     clienteContexto = txt;
   }
 } catch(e){}
+
+// ===== PAIS POR EL PREFIJO DEL NUMERO (solo como valor por defecto) =====
+// 27 de 34 clientes son de Ecuador (+593). Si el cliente pide "la cuenta" sin decir desde donde
+// deposita, se le da la del pais de su numero Y se le dice cual es, para que corrija si no es asi.
+// Lo que diga el cliente manda: puede depositar otra persona desde otro pais. El DESTINO (a donde
+// envia) nunca se saca del numero.
+const PREFIJOS = [['593', 'Ecuador'], ['57', 'Colombia'], ['58', 'Venezuela'], ['51', 'Perú'], ['1', 'Estados Unidos (Zelle)']];
+let paisPorPrefijo = '', prefijo = '';
+if (/@s\.whatsapp\.net$/.test(String(jid))) {
+  for (const par of PREFIJOS) {
+    // +1 son 11 digitos (1 + 10). Asi un numero raro que empiece por 1 no se toma por EE.UU.
+    if (senderDigits.indexOf(par[0]) === 0 && (par[0] !== '1' || senderDigits.length === 11)) { prefijo = par[0]; paisPorPrefijo = par[1]; break; }
+  }
+}
+if (paisPorPrefijo) {
+  clienteContexto = (clienteContexto ? clienteContexto + ' ' : '')
+    + 'Su numero es de ' + paisPorPrefijo + ' (+' + prefijo + '). Si pide la cuenta para depositar y NO dijo desde que pais deposita, '
+    + 'dale la de ' + paisPorPrefijo + ' y dilo claro en la misma respuesta (ej. "Te paso la cuenta de ' + paisPorPrefijo + ' 👇"), '
+    + 'para que corrija si no es asi. Si dice que deposita desde otro pais, o que deposita otra persona desde otro pais, '
+    + 'usa la cuenta de ESE pais. El pais DESTINO (a donde envia) NUNCA lo asumas por su numero.';
+}
 
 // RED DE SEGURIDAD de la memoria del chat. El nodo "Memoria de Chat" trae su propia llave
 // configurada, pero n8n lo ha guardado VACIO dos veces (18/11 y 20/11): vuelve a su configuracion
@@ -405,7 +437,7 @@ try {
 let sessionId = '';
 try { sessionId = String($('Webhook Evolution API').first().json.body.data.key.remoteJid || ''); } catch(e){}
 
-return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, sessionId, error: paises.length? null : 'Lista vacia' } }];
+return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, nombreCliente, paisPorPrefijo, sessionId, error: paises.length? null : 'Lista vacia' } }];
 '@
 
 # ===================== CODIGO DE LA CALCULADORA (Code Tool) =====================
@@ -553,12 +585,13 @@ $inputSchema = @'
 
 # ===================== SYSTEM MESSAGE DEL AGENTE =====================
 $systemMsg = @'
-=Eres asistente de *Cambios JK🚛* por WhatsApp. RESPONDE EN MAXIMO 2-3 LINEAS, directo y humano. 1-2 emojis maximo. NO repitas frases de cortesia.
+=Eres asistente de *Cambios JK🚛* por WhatsApp. RESPONDE EN MAXIMO 2-3 LINEAS, directo y humano. 1 emoji maximo (nunca 😊). NO repitas frases de cortesia.
 
 El cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea). Leelos todos y responde UNA sola vez, corto.
 
 Tarifa de este cliente: {{ $node["Code in JavaScript"].json.modo }} (detal=publico, mayor=mayorista). Nunca menciones lo mayorista a un cliente detal.
 {{ $node["Code in JavaScript"].json.clienteContexto ? ('CONTEXTO DEL CLIENTE (usalo con naturalidad para atender mejor): ' + $node["Code in JavaScript"].json.clienteContexto) : '' }}
+{{ $('Revisar Operacion').first().json.reglaNombre || '' }}
 
 Tasas de hoy (Envio/Recibo ya con margen; "N/D" = no disponible):
 {{ JSON.stringify($node["Code in JavaScript"].json.lista) }}
@@ -589,7 +622,17 @@ REGLAS:
 - Ver todas las tasas: {{ $node["Code in JavaScript"].json.appUrl }}
 {{ $node["Code in JavaScript"].json.hayEfectivoVe ? '- Efectivo Venezuela (dolares en efectivo). El precio PUEDE variar por ciudad, asi que SIEMPRE pregunta el estado/ciudad y calcula con la herramienta usando ESA ubicacion exacta como pais_destino (ej "Efectivo Venezuela Maracaibo"). Ubicaciones disponibles: ' + ($node["Code in JavaScript"].json.evUbicaciones || []).map(u => u.estado + (u.ciudades && u.ciudades.length ? ' (' + u.ciudades.join(', ') + ')' : '')).join('; ') + '. Si la ciudad NO esta en la lista, ahi no hay entrega en efectivo por ahora.' : '' }}
 
-PROHIBIDO repetir en cada mensaje cosas como "estoy aqui", "disponible", "para ayudarte", "cualquier consulta", "no dudes en". Responde lo justo y para. Suena como una persona, no como un bot.
+TONO (asi contesta Kelvin a sus clientes): corto, directo y cercano. Nunca uses 😊. PROHIBIDO usar frases de relleno como "aqui estoy", "estoy aqui", "disponible", "con gusto", "quedo atento", "para ayudarte", "cualquier consulta", "no dudes en". Responde lo justo y para. Suena como una persona, no como un bot.
+Ejemplos (cliente -> tu):
+- "Hola buen dia" -> "Hola, buen día 👋 Dime, ¿qué necesitas?"
+- "Buenas noches, disculpe la hora" -> "Buenas noches, tranquilo. Dime."
+- "Hola, estan abiertos?" -> "Hola, sí 👋 Dime qué necesitas."
+- "Que tasa hay hoy pa Colombia?" -> "¿Desde dónde envías y cuánto? Así te cotizo exacto."
+- "Cuenta pa Ecuador" -> (solo la cuenta del dia, tal cual, sin nada mas)
+- "Pasame la cuenta" (numero de Ecuador, no dijo el pais) -> "Te paso la cuenta de Ecuador 👇" y la cuenta del dia
+- "Ya deposite" (sin captura) -> "Listo, pásame la captura porfa."
+- "Puedo dividir en varias cuentas?" -> "Sí, claro. Pásame cada cuenta con el monto que va a cada una."
+- "Disculpa la demora" -> "Tranquilo, sin problema."
 
 MULTI-COTIZACION: si das varias cotizaciones (ej. desde Venezuela Y desde Ecuador), separa cada cotizacion con una linea que diga solamente "---" (tres guiones, sin nada mas, en una linea propia). Asi cada cotizacion sale como mensaje aparte en WhatsApp. Una sola cotizacion = sin "---".
 '@
@@ -1190,6 +1233,12 @@ if (llave.fromMe === true){
 // este punto: se tratan arriba, en el bloque de fromMe.
 if (msg.reactionMessage) return [];
 
+// ===== 2c) STICKERS, UBICACIONES Y MENSAJES BORRADOS =====
+// Tampoco traen texto. La revision de los chats (20/11) encontro 102 stickers y 16 ubicaciones de
+// clientes: el bot los tomaba por mensajes vacios y contestaba "Hola, en que puedo ayudarte?".
+// Los de Kelvin no llegan hasta aqui (bloque de fromMe).
+if (msg.stickerMessage || msg.locationMessage || msg.liveLocationMessage || msg.protocolMessage) return [];
+
 // ===== 3) A QUIEN SE LE CONTESTA =====
 function mismoNumero(a, b){
   const x = String(a || '').replace(/\D/g, '');
@@ -1422,6 +1471,8 @@ $revisarOperacionCode = @'
 const MINUTOS_PENDIENTE = __MINUTOS_PENDIENTE__;
 const MINUTOS_MISMO_DEPOSITO = __MINUTOS_MISMO_DEPOSITO__;
 const HORAS_RECORDAR = __HORAS_RECORDAR__;
+const MINUTOS_ENTRE_STICKERS = __MINUTOS_STICKER_GRACIAS__;
+const HORAS_ENTRE_NOMBRES = __HORAS_NOMBRE__;
 const ahora = Date.now();
 
 let base = {};
@@ -1668,8 +1719,106 @@ if (estado === 'completo'){
   nueva.capturas = capturasGuardadas;
 }
 
+// ===== CIERRES: "GRACIAS", "OK" SUELTOS Y MENSAJES SIN TEXTO =====
+// Revision de los chats (20/11): el 20% de lo que escriben los clientes es "gracias" u "ok". Todo
+// pasaba por la IA, que contestaba con relleno ("Aqui estoy para lo que necesites 😊").
+//   - solo un agradecimiento -> sticker A SU ORDEN, sin IA, como mucho 1 cada MINUTOS_ENTRE_STICKERS
+//   - solo un "ok" o "listo" -> nada, salvo que el ultimo mensaje del bot haya sido una pregunta
+//   - sin texto              -> nada
+// Solo cuando el mensaje es SOLO eso: "gracias, y la tasa?" u "ok, pasame la cuenta" van a la IA.
+// El nodo "¿Qué Responder?" usa esta decision. Lo inesperado va siempre a la IA, como antes.
+
+// Palabras que pueden acompanar un "gracias" o un "ok" sin cambiar lo que significa.
+// "no" NO esta a proposito: "no gracias" es otra cosa.
+const RELLENO = ['ok','oki','okey','okay','okis','oks','okok','okidoki','listo','perfecto','vale','dale','bueno','buena',
+  'bien','esta','muy','mucho','muchas','muchisimas','muchisimo','mil','de','verdad','todo','todos','por','su','tu','la','el',
+  'lo','le','te','a','al','y','e','que','mi','mis','amigo','amiga','hermano','hermana','mano','pana','bro','parcero','parce',
+  'rey','reina','amor','mija','mijo','sr','sra','senor','senora','don','dona','jefe','jefa','veci','vecino','vecina',
+  'kelvin','jk','cambios','equipo','ustedes','usted','ud','uds','dios','bendiga','bendiciones','bendicion','saludos',
+  'abrazo','abrazos','feliz','buen','buenas','buenos','dia','dias','tarde','tardes','noche','noches','fin','semana',
+  'hasta','manana','luego','pronto','chao','chau','bye','igualmente','excelente','genial','chevere','super','fino',
+  'recibido','recibida','recibi','llego','llegaron','ya','me','si','ah','aja','oh','eh','uy','hagale','entendido',
+  'acuerdo','copiado','enterado','entiendo','va'];
+// Lo que lo vuelve un agradecimiento.
+const GRACIAS = ['gracias','gracia','grasias','grax','agradezco','agradecido','agradecida','agradecidos','agradecemos',
+  'amable','thanks','thank','thx'];
+// Lo que lo vuelve un "ok" suelto.
+const ACUSE = ['ok','oki','okey','okay','okis','oks','okok','okidoki','listo','perfecto','vale','dale','bien','bueno',
+  'entendido','acuerdo','copiado','enterado','entiendo','hagale'];
+
+// "Graciaaaas" = "gracias", "okk" = "ok": las letras repetidas se juntan (en las listas tambien).
+const simple = w => w.replace(/(.)\1+/g, '$1');
+const S_RELLENO = new Set(RELLENO.map(simple)), S_GRACIAS = new Set(GRACIAS.map(simple)), S_ACUSE = new Set(ACUSE.map(simple));
+const esRisa = w => /^(ja|je|ji|ha)+j?$/.test(w);
+const EMOJIS_OK = /👍|👌|✅|🫡|🤝|❤|🧡|💛|💚|💙|💜|🖤|🤍|😂|🤣|😅|😁|😀|😃|😄|😊|🙂|😉|😎|🥳|🎉|💪|🙌|👏|🫶|😘|🥰|😍|🔥/gu;
+function palabrasDe(t){
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/🙏/g, ' gracias ').replace(/👍|👌|✅|🫡/g, ' ok ')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean).map(simple);
+}
+// 'vacio' | 'gracias' | 'acuse' | '' (cualquier otra cosa: la IA)
+function tipoDeCierre(textos){
+  // Lo citado no cuenta: solo lo que escribio ahora.
+  const crudo = textos.map(t => String(t || '').replace(/\[el cliente respondio citando[^\]]*\]/gi, ' ')).join('\n').trim();
+  if (!crudo) return 'vacio';
+  if (/[?¿]/.test(crudo)) return '';                       // una pregunta nunca es un cierre
+  const w = palabrasDe(crudo);
+  if (!w.length){
+    // Solo emojis. Los de "ok", risa o carino (👍 😂 ❤️) son como un "ok". Los de preocupacion o
+    // duda (😔 🤔 🚨 🤷) NO: ahi conviene que la IA pregunte que pasa. Un "." tambien va a la IA.
+    const resto = crudo.replace(EMOJIS_OK, '').replace(/[\u{1F3FB}-\u{1F3FF}\uFE0F\u200D]/gu, '').replace(/[\s.,!¡]+/g, '');
+    return (/\p{Extended_Pictographic}/u.test(crudo) && !resto) ? 'acuse' : '';
+  }
+  const frase = w.join(' ');
+  if (/(^| )gracias a dios( |$)/.test(frase)) return '';      // "bien, gracias a Dios" contesta un "como estas?"
+  if (/(^| )y (tu|usted|ustedes|ud|uds|vos)( |$)/.test(frase)) return '';   // "bien y tu" pregunta de vuelta
+  const sobra = (x, propias) => !(propias.has(x) || S_RELLENO.has(x) || esRisa(x));
+  if (w.some(x => S_GRACIAS.has(x)) && !w.some(x => sobra(x, S_GRACIAS))) return 'gracias';
+  if (w.some(x => S_ACUSE.has(x)) && !w.some(x => sobra(x, S_ACUSE))) return 'acuse';
+  return '';
+}
+// Si el ultimo mensaje del bot fue una pregunta (lo anota "Redis Marcar Pregunta" cada vez que la
+// IA contesta). true / false / null = no se sabe (Redis caido): ante la duda contesta la IA.
+function ultimoFuePregunta(){
+  let j;
+  try { j = $('Redis Leer Pregunta').first().json || {}; } catch(e){ return null; }
+  if (j.error) return null;
+  return String(j.pregunta || '') === '1';
+}
+
+let accion = 'ia', motivoAccion = '';
+if (estado === 'nada'){
+  const cierre = tipoDeCierre(mensajes.map(m => (m && m.texto) || ''));
+  if (cierre === 'vacio'){ accion = 'callar'; motivoAccion = 'mensaje sin texto'; }
+  else if (cierre === 'gracias'){
+    const reciente = typeof op.ultimoGracias === 'number' && (ahora - op.ultimoGracias) < MINUTOS_ENTRE_STICKERS * 60000;
+    accion = reciente ? 'callar' : 'gracias';
+    motivoAccion = reciente ? 'agradecimiento (ya tiene su sticker de hace poco)' : 'agradecimiento';
+  } else if (cierre === 'acuse'){
+    const p = ultimoFuePregunta();
+    accion = (p === false) ? 'callar' : 'ia';
+    motivoAccion = (p === false) ? 'ok suelto (el bot no habia preguntado nada)' : (p ? 'ok a una pregunta del bot' : 'ok suelto (no se sabe si el bot pregunto)');
+  }
+}
+if (typeof op.ultimoGracias === 'number') nueva.ultimoGracias = op.ultimoGracias;
+if (accion === 'gracias') nueva.ultimoGracias = ahora;
+
+// ===== EL NOMBRE DEL CLIENTE: UNA SOLA VEZ CADA 24 H =====
+// Antes el agente lo saludaba por su nombre en CADA mensaje. Ahora puede usarlo una vez (al
+// saludar) y despues no, hasta que pasen HORAS_ENTRE_NOMBRES. Un sticker no gasta el saludo.
+const nombreCliente = String(base.nombreCliente || '').trim();
+const tocaNombre = !!nombreCliente && !(typeof op.ultimoSaludo === 'number' && (ahora - op.ultimoSaludo) < HORAS_ENTRE_NOMBRES * 3600000);
+const reglaNombre = !nombreCliente ? '' : (tocaNombre
+  ? 'NOMBRE DEL CLIENTE: si lo saludas, puedes saludarlo por su nombre (' + nombreCliente + ') UNA sola vez en esta respuesta. No lo repitas despues.'
+  : 'NOMBRE DEL CLIENTE: NO escribas el nombre del cliente en esta respuesta (ya lo saludaste por su nombre hace poco). Contesta directo.');
+if (typeof op.ultimoSaludo === 'number') nueva.ultimoSaludo = op.ultimoSaludo;
+if (accion === 'ia' && tocaNombre) nueva.ultimoSaludo = ahora;
+
 return [{ json: Object.assign({}, base, {
   estadoOperacion: estado,
+  accion,
+  motivoAccion,
+  reglaNombre,
   notaIA,
   textoAprobar,
   mensajesAprobar,
@@ -1681,6 +1830,8 @@ return [{ json: Object.assign({}, base, {
 $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_PENDIENTE__', [string]$MINUTOS_OPERACION_PENDIENTE)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_MISMO_DEPOSITO__', [string]$MINUTOS_MISMO_DEPOSITO)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_RECORDAR__', [string]$HORAS_MEMORIA_OPERACION)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_STICKER_GRACIAS__', [string]$MINUTOS_ENTRE_STICKERS_GRACIAS)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [string]$HORAS_ENTRE_NOMBRES)
 
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
@@ -2089,12 +2240,43 @@ $nodes = @(
     onError = 'continueRegularOutput'; alwaysOutputData = $true
   },
   [ordered]@{
+    # Si el ultimo mensaje del bot fue una pregunta ('1') o no ('0'). Con eso "Revisar Operacion"
+    # decide si un "ok" suelto se contesta. Lo escribe "Redis Marcar Pregunta".
+    parameters = @{ operation = 'get'; key = "={{ 'preg:' + `$('Prep Debounce').first().json.jid }}"; propertyName = 'pregunta'; keyType = 'string'; options = @{} }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1456,48); id = 'a1b2c3d4-0004-4e00-9a00-cierres00004'; name = 'Redis Leer Pregunta'; credentials = $redisCred
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+  },
+  [ordered]@{
     parameters = @{ jsCode = $revisarOperacionCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1456,48); id = 'a1b2c3d4-0002-4e00-9a00-operacion0002'; name = 'Revisar Operacion'
   },
   [ordered]@{
     parameters = @{ operation = 'set'; key = "={{ 'op:' + `$('Prep Debounce').first().json.jid }}"; value = '={{ $json.operacionNueva }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1632,48); id = 'a1b2c3d4-0003-4e00-9a00-operacion0003'; name = 'Redis Guardar Operacion'; credentials = $redisCred
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    # Que se le contesta (lo decide "Revisar Operacion"):
+    #   gracias -> sticker A SU ORDEN | callar -> nada | todo lo demas -> la IA
+    # Lo que no calce en ninguna regla sale por la salida de respaldo, hacia la IA: si algo
+    # falla, el bot contesta como antes en vez de quedarse callado.
+    parameters = @{ options = @{ fallbackOutput = 'extra'; renameFallbackOutput = 'ia' }; rules = @{ values = @(
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'q-gracias'; leftValue = "={{ `$('Revisar Operacion').first().json.accion }}"; rightValue = 'gracias'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'gracias' },
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'q-callar'; leftValue = "={{ `$('Revisar Operacion').first().json.accion }}"; rightValue = 'callar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'callar' }
+    ) } }
+    type = 'n8n-nodes-base.switch'; typeVersion = 3.2; position = @(1984,48); id = 'a1b2c3d4-0005-4e00-9a00-cierres00005'; name = '¿Qué Responder?'
+  },
+  [ordered]@{
+    # "gracias" -> sticker A SU ORDEN, sin pasar por la IA.
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Prep Debounce").first().json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-a-su-orden.webp" }'; options = @{} }
+    id = 'a1b2c3d4-0006-4e00-9a00-cierres00006'; name = 'Sticker A Su Orden'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2160,208)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
+  },
+  [ordered]@{
+    # Anota si la respuesta de la IA fue una pregunta ('1') o no ('0'). Ver "Redis Leer Pregunta".
+    parameters = @{ operation = 'set'; key = "={{ 'preg:' + `$('Prep Debounce').first().json.jid }}"; value = '={{ /[?¿]/.test(String($json.output || "")) ? "1" : "0" }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1392,592); id = 'a1b2c3d4-0007-4e00-9a00-cierres00007'; name = 'Redis Marcar Pregunta'; credentials = $redisCred
     onError = 'continueRegularOutput'
   },
   [ordered]@{
@@ -2281,13 +2463,15 @@ $connections = [ordered]@{
   'Consultar Cliente'      = @{ main = @( ,@( @{ node='Redis Leer Modo Admin'; type='main'; index=0 } ) ) }
   'Redis Leer Modo Admin'  = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
   'Code in JavaScript'     = @{ main = @( ,@( @{ node='Redis Leer Operacion'; type='main'; index=0 } ) ) }
-  'Redis Leer Operacion'   = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
+  'Redis Leer Operacion'   = @{ main = @( ,@( @{ node='Redis Leer Pregunta'; type='main'; index=0 } ) ) }
+  'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
   'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
-  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) ) }
+  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 } ) ) }
+  '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
   'Calculadora de Conversion' = @{ ai_tool = @( ,@( @{ node='AI Agent'; type='ai_tool'; index=0 } ) ) }
-  'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 } ) ) }
+  'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 }, @{ node='Redis Marcar Pregunta'; type='main'; index=0 } ) ) }
   'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
   'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }

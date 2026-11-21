@@ -330,9 +330,13 @@ console.log('=== 6) COMO QUEDA CABLEADO ===');
   const c = wf.connections;
   const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node).join(',');
   chk(sig('Code in JavaScript') === 'Redis Leer Operacion', 'Code in JavaScript -> Redis Leer Operacion');
-  chk(sig('Redis Leer Operacion') === 'Revisar Operacion', 'Redis Leer Operacion -> Revisar Operacion');
+  chk(sig('Redis Leer Operacion') === 'Redis Leer Pregunta' && sig('Redis Leer Pregunta') === 'Revisar Operacion',
+      'Redis Leer Operacion -> Redis Leer Pregunta -> Revisar Operacion');
   chk(sig('Revisar Operacion') === 'Redis Guardar Operacion', 'Revisar Operacion -> Redis Guardar Operacion');
-  chk(sig('Redis Guardar Operacion') === 'AI Agent', 'Redis Guardar Operacion -> AI Agent');
+  // Entre los dos esta "¿Qué Responder?" (gracias -> sticker, ok suelto -> nada); lo demas, a la IA.
+  const respaldo = ((c['¿Qué Responder?'] || {}).main || [])[2] || [];
+  chk(sig('Redis Guardar Operacion') === '¿Qué Responder?' && respaldo.map(x => x.node).join() === 'AI Agent',
+      'Redis Guardar Operacion -> ¿Qué Responder? -> AI Agent');
   const txt = nodo('AI Agent').parameters.text;
   chk(/notaIA/.test(txt) && /Huella/.test(txt), 'el agente recibe la nota y no ve la huella');
   chk(/ESTADO DE LA OPERACION/.test(nodo('AI Agent').parameters.options.systemMessage), 'el prompt explica la nota');

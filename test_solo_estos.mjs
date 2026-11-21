@@ -413,6 +413,29 @@ console.log('=== 16b) Una reaccion (emoji) NO es un mensaje ===');
 }
 
 console.log('');
+console.log('=== 16c) Sticker, ubicacion o mensaje borrado: NO se contesta ===');
+{
+  // Revision de los chats (20/11): los clientes mandaron 102 stickers y 16 ubicaciones. El bot
+  // los tomaba por mensajes vacios y contestaba "Hola, en que puedo ayudarte?".
+  const tablas = { detal: [{ whatsapp: '584121234567', nombre: 'Maria' }], mayor: [] };
+  for (const [etiqueta, mensaje] of [
+    ['un sticker', { stickerMessage: { url: 'x', mimetype: 'image/webp' } }],
+    ['una ubicacion', { locationMessage: { degreesLatitude: -2.1, degreesLongitude: -79.9 } }],
+    ['una ubicacion en vivo', { liveLocationMessage: { degreesLatitude: -2.1 } }],
+    ['un mensaje borrado/editado', { protocolMessage: { type: 0 } }]
+  ]) {
+    const r = correr([], true, [CLIENTE], tablas, 0, { mensaje });
+    chk(r.length === 0, etiqueta + ' de un cliente se descarta', '-> ' + r.length + ' items');
+  }
+  const pausa = correr([], true, [CLIENTE], tablas, 0, { mensaje: { stickerMessage: {} }, enPausa: true });
+  chk(pausa.length === 0, 'un sticker tampoco avisa al grupo si el chat esta en pausa', '-> ' + pausa.length);
+  const audio = correr([], true, [CLIENTE], tablas, 0, { mensaje: { audioMessage: { seconds: 5 } } });
+  chk(audio.acciones[0] === 'seguir', 'una nota de voz sigue pasando', '-> ' + audio.acciones[0]);
+  const conPie = correr([], true, [CLIENTE], tablas, 0, { mensaje: { videoMessage: { caption: 'mira' } } });
+  chk(conPie.acciones[0] === 'seguir', 'un video con texto sigue pasando', '-> ' + conPie.acciones[0]);
+}
+
+console.log('');
 console.log('=== 17) Como quedo desplegado AHORA MISMO ===');
 {
   const l = nodo.parameters.jsCode.match(/const SOLO_ESTOS = (.*);/)[1];
