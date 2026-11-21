@@ -1,0 +1,522 @@
+{
+    "name":  "Liberar operaciones de la noche",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "color":  4,
+                                         "content":  "## Liberar operaciones de la noche\r\n**Lunes a sábado 9:05 y domingo 10:05** (hora de Ecuador).\r\n\r\nDe noche el bot atiende, pero NO pasa las operaciones a transferir: las deja en Supabase (`transacciones_por_whatsapp`) con estado **en_espera**. Este workflow, al abrir, toma cada una y:\r\n1. publica la captura y cada cuenta en el grupo de transferir, igual que de día\r\n2. guarda de quién es cada publicación, para que la foto de la operadora le llegue al cliente\r\n3. le manda al cliente el sticker **PEDIDO APROBADO**\r\n4. pasa las filas a **en_proceso**\r\n\r\nCredenciales: Evolution apikey Kelvin 0380, Redis memoria para Cambios JK, Supabase Cambios JK.\r\nSe genera con `build_liberar_noche.ps1`. No lo edites aquí: se pisa en el próximo despliegue.",
+                                         "width":  520,
+                                         "height":  360
+                                     },
+                      "id":  "b1c2d3e4-0000-4a00-8a00-liberar00000",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -120
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "expression":  "0 5 9 * * 1-6",
+                                                                           "field":  "cronExpression"
+                                                                       },
+                                                                       {
+                                                                           "expression":  "0 5 10 * * 0",
+                                                                           "field":  "cronExpression"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "b1c2d3e4-0001-4a00-8a00-liberar00001",
+                      "name":  "Cada Mañana",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "transacciones_por_whatsapp",
+                                         "filterString":  "estado=eq.en_espera\u0026order=creado.asc",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "getAll",
+                                         "returnAll":  true
+                                     },
+                      "id":  "b1c2d3e4-0002-4a00-8a00-liberar00002",
+                      "name":  "Leer Operaciones en Espera",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       176,
+                                       300
+                                   ],
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Las operaciones que llegaron fuera de horario (estado \u0027en_espera\u0027), una por deposito: las cuentas\r\n// de un mismo deposito comparten id_msg_captura. Se publican en el orden en que llegaron.\r\n// Si no hay ninguna, el workflow termina aqui sin hacer nada.\r\nconst PRUEBA = null;\r\nconst listaDe = v =\u003e { if (Array.isArray(v)) return v; try { const x = JSON.parse(v); return Array.isArray(x) ? x : []; } catch(e){ return []; } };\r\nconst filas = (PRUEBA || $input.all().map(i =\u003e i.json))\r\n  .filter(r =\u003e r \u0026\u0026 r.id !== undefined \u0026\u0026 r.id !== null \u0026\u0026 !r.error \u0026\u0026 r.estado === \u0027en_espera\u0027)\r\n  .sort((a, b) =\u003e ((Date.parse(a.creado) || 0) - (Date.parse(b.creado) || 0)) || (a.id - b.id));\r\nconst ops = [], donde = {};\r\nfor (const r of filas){\r\n  const clave = r.id_msg_captura || (\u0027fila-\u0027 + r.id);\r\n  if (donde[clave] === undefined){\r\n    const w = String(r.whatsapp || \u0027\u0027);\r\n    donde[clave] = ops.length;\r\n    ops.push({ jid: w.indexOf(\u0027@\u0027) !== -1 ? w : w + \u0027@s.whatsapp.net\u0027, nombre: r.nombre_cliente || \u0027Cliente\u0027,\r\n               idImagen: r.id_msg_captura || \u0027\u0027, filas: [] });\r\n  }\r\n  const op = ops[donde[clave]];\r\n  const c = listaDe(r.cuentas)[0] || {};\r\n  const monto = (typeof c.monto === \u0027number\u0027) ? c.monto : null;\r\n  // La misma cabecera que de dia: \"nombre - $monto\".\r\n  op.filas.push({ filaId: r.id, idCuenta: c.id || \u0027\u0027, monto,\r\n                  cuenta: op.nombre + (monto !== null ? \u0027 - $\u0027 + monto : \u0027\u0027) + \u0027\\n\\n\u0027 + String(c.texto || \u0027(sin datos de la cuenta: revisar el chat)\u0027) });\r\n}\r\nreturn ops.map(o =\u003e ({ json: o }));"
+                                     },
+                      "id":  "b1c2d3e4-0003-4a00-8a00-liberar00003",
+                      "name":  "Agrupar Operaciones",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       352,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "batchSize":  1,
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b1c2d3e4-0004-4a00-8a00-liberar00004",
+                      "name":  "Una por Una",
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       528,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $json.idImagen }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "b1c2d3e4-0005-4a00-8a00-liberar00005",
+                      "name":  "Bajar Captura",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       704,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "={{ $json.base64 ? \"http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin\" : \"http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin\" }}",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify($json.base64 ? { number: \"593961230380-1601657528@g.us\", mediatype: \"image\", mimetype: ($json.mimetype || \"image/jpeg\"), media: $json.base64, caption: (\"Cliente: \" + $(\"Una por Una\").first().json.nombre) } : { number: \"593961230380-1601657528@g.us\", text: (\"Cliente: \" + $(\"Una por Una\").first().json.nombre + \"\\n(No se pudo bajar la foto de la captura: revisala en el chat del cliente)\") }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "b1c2d3e4-0006-4a00-8a00-liberar00006",
+                      "name":  "Publicar Captura",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       880,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Una por Una\u0027).first().json.jid, nombre: $(\u0027Una por Una\u0027).first().json.nombre, idCuenta: (($(\u0027Una por Una\u0027).first().json.filas[0] || {}).idCuenta || \u0027\u0027), idCaptura: $(\u0027Una por Una\u0027).first().json.idImagen }) }}",
+                                         "expire":  true,
+                                         "ttl":  172800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "b1c2d3e4-0007-4a00-8a00-liberar00007",
+                      "name":  "Marcar Publicacion Captura",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1056,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"number\": \"{{ $(\"Una por Una\").first().json.jid }}\", \"sticker\": \"https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-aprobado.webp\" }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "b1c2d3e4-0008-4a00-8a00-liberar00008",
+                      "name":  "Sticker Pedido Aprobado",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1232,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Una publicacion por cuenta de ESTA operacion. La foto de la captura va con la primera cuenta:\r\n// si la operadora responde a la foto en vez de a la cuenta, se marca esa.\r\nconst op = $(\u0027Una por Una\u0027).first().json;\r\nconst idDe = j =\u003e String((j \u0026\u0026 j.key \u0026\u0026 j.key.id) || (j \u0026\u0026 j.data \u0026\u0026 j.data.key \u0026\u0026 j.data.key.id) || \u0027\u0027);\r\nlet idFoto = \u0027\u0027;\r\ntry { idFoto = idDe($(\u0027Publicar Captura\u0027).first().json); } catch(e){}\r\nreturn (op.filas || []).map((f, i) =\u003e ({ json: Object.assign({}, f, { idFoto: i === 0 ? idFoto : \u0027\u0027 }) }));"
+                                     },
+                      "id":  "b1c2d3e4-0009-4a00-8a00-liberar00009",
+                      "name":  "Separar Cuentas de la Operacion",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1408,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: \"593961230380-1601657528@g.us\", text: $json.cuenta }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "b1c2d3e4-0010-4a00-8a00-liberar00010",
+                      "name":  "Publicar Cuenta",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1584,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Una por Una\u0027).first().json.jid, nombre: $(\u0027Una por Una\u0027).first().json.nombre, idCuenta: ($(\u0027Separar Cuentas de la Operacion\u0027).item.json.idCuenta || \u0027\u0027), idCaptura: $(\u0027Una por Una\u0027).first().json.idImagen }) }}",
+                                         "expire":  true,
+                                         "ttl":  172800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "b1c2d3e4-0011-4a00-8a00-liberar00011",
+                      "name":  "Marcar Publicacion Cuenta",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1760,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Lo que se guarda en cada fila: ya esta en transferir (\u0027en_proceso\u0027), cuando, y el id de su\r\n// publicacion (con eso el bot la marca \u0027enviada\u0027 cuando la operadora devuelva la foto).\r\nconst separadas = $(\u0027Separar Cuentas de la Operacion\u0027).all().map(i =\u003e i.json);\r\nconst enviadas = $(\u0027Publicar Cuenta\u0027).all().map(i =\u003e i.json);\r\nconst idDe = j =\u003e String((j \u0026\u0026 j.key \u0026\u0026 j.key.id) || (j \u0026\u0026 j.data \u0026\u0026 j.data.key \u0026\u0026 j.data.key.id) || \u0027\u0027);\r\nconst ahora = new Date().toISOString();\r\nreturn separadas.map((f, i) =\u003e ({ json: { filaId: f.filaId, estado: \u0027en_proceso\u0027, publicado_en: ahora,\r\n                                          id_msgs_grupo: [idDe(enviadas[i]), f.idFoto].filter(Boolean) } }));"
+                                     },
+                      "id":  "b1c2d3e4-0012-4a00-8a00-liberar00012",
+                      "name":  "Armar Actualizacion",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1936,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "inputsToIgnore":  "filaId",
+                                         "tableId":  "transacciones_por_whatsapp",
+                                         "filterString":  "={{ \u0027id=eq.\u0027 + $json.filaId + \u0027\u0026estado=eq.en_espera\u0027 }}",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "update",
+                                         "dataToSend":  "autoMapInputData"
+                                     },
+                      "id":  "b1c2d3e4-0013-4a00-8a00-liberar00013",
+                      "name":  "Marcar En Proceso",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2112,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cada Mañana":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Leer Operaciones en Espera",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Leer Operaciones en Espera":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "node":  "Agrupar Operaciones",
+                                                                                "type":  "main",
+                                                                                "index":  0
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Agrupar Operaciones":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Una por Una",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Una por Una":  {
+                                            "main":  [
+                                                         [
+
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "node":  "Bajar Captura",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Bajar Captura":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Publicar Captura",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Publicar Captura":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Marcar Publicacion Captura",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Marcar Publicacion Captura":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "node":  "Sticker Pedido Aprobado",
+                                                                                "type":  "main",
+                                                                                "index":  0
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Sticker Pedido Aprobado":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Separar Cuentas de la Operacion",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Separar Cuentas de la Operacion":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "node":  "Publicar Cuenta",
+                                                                                     "type":  "main",
+                                                                                     "index":  0
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                        "Publicar Cuenta":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Marcar Publicacion Cuenta",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Marcar Publicacion Cuenta":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Armar Actualizacion",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Armar Actualizacion":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Marcar En Proceso",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Marcar En Proceso":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Una por Una",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil"
+                 }
+}

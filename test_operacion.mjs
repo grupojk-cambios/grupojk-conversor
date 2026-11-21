@@ -27,7 +27,7 @@ const NUESTRAS = [
   { Pais: 'Zelle', Metodo: 'Zelle', Datos: '*Zelle*\nempresa.zelle@example.com\nTitular Empresa' }
 ];
 
-let reloj = Date.parse('2026-11-20T22:00:00Z');
+let reloj = Date.parse('2026-11-20T22:00:00Z');   // 5:00 pm en Ecuador: ABIERTO (fuera de horario no se aprueba)
 const pasan = minutos => { reloj += minutos * 60000; };
 
 function revisar(mensajes, op) {
@@ -117,7 +117,7 @@ console.log('=== 1) CUENTA PRIMERO, CAPTURA 14 MIN DESPUES (el caso del 20/11) =
 console.log('');
 console.log('=== 2) CAPTURA PRIMERO, CUENTA DESPUES ===');
 {
-  reloj = Date.parse('2026-11-20T23:00:00Z');
+  reloj = Date.parse('2026-11-20T19:00:00Z');   // 2:00 pm en Ecuador (abierto)
   const r1 = revisar([{ id: 'FOTO9', texto: captura('35.00', '031299', 'eeee5555ffff6666') }], null);
   chk(r1.estadoOperacion === 'falta_cuenta', 'con la captura sola: falta la cuenta', '-> ' + r1.estadoOperacion);
   chk(/NO tengo la cuenta destino/.test(r1.notaIA), 'y le dice al agente que la pida');
@@ -143,7 +143,7 @@ console.log('=== 2) CAPTURA PRIMERO, CUENTA DESPUES ===');
 console.log('');
 console.log('=== 3) LO QUE NO DEBE DISPARAR NADA ===');
 {
-  reloj = Date.parse('2026-11-21T10:00:00Z');
+  reloj = Date.parse('2026-11-21T16:00:00Z');   // 11:00 am en Ecuador (abierto)
   const vieja = revisar([{ id: 'CTA20', texto: CUENTA_VE }], null);
   pasan(180);
   const r1 = revisar([{ id: 'FOTO20', texto: captura('60.00', '555001', 'abab1212cdcd3434') }], vieja.op);
@@ -168,7 +168,7 @@ console.log('=== 3) LO QUE NO DEBE DISPARAR NADA ===');
 console.log('');
 console.log('=== 4) VARIAS CAPTURAS O CUENTAS ===');
 {
-  reloj = Date.parse('2026-11-21T12:00:00Z');
+  reloj = Date.parse('2026-11-21T15:00:00Z');   // 10:00 am en Ecuador (abierto)
   const r1 = revisar([
     { id: 'F1', texto: captura('60.00', '', '0101010101010101') },
     { id: 'F2', texto: captura('60.00', '31700000099', '0202020202020202') },
@@ -336,7 +336,7 @@ console.log('=== 6) COMO QUEDA CABLEADO ===');
   chk(sig('Revisar Operacion') === 'Redis Guardar Operacion', 'Revisar Operacion -> Redis Guardar Operacion');
   // Entre los dos esta "¿Qué Responder?" (gracias -> sticker, ok suelto -> nada); lo demas, a la IA.
   const respaldo = ((c['¿Qué Responder?'] || {}).main || [])[2] || [];
-  chk(sig('Redis Guardar Operacion') === '¿Qué Responder?' && respaldo.map(x => x.node).join() === 'AI Agent',
+  chk(sig('Redis Guardar Operacion').split(',')[0] === '¿Qué Responder?' && respaldo.map(x => x.node).join() === 'AI Agent',
       'Redis Guardar Operacion -> ¿Qué Responder? -> AI Agent');
   const txt = nodo('AI Agent').parameters.text;
   chk(/notaIA/.test(txt) && /Huella/.test(txt), 'el agente recibe la nota y no ve la huella');

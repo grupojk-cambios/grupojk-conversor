@@ -138,6 +138,41 @@ $HORAS_ENTRE_NOMBRES = 24
 $OPERACIONES_A_LEER = 20
 $DIAS_ULTIMA_OPERACION = 7
 
+# Horario de atencion (hora de Ecuador). Igual que el workflow de apertura y cierre: lunes a sabado
+# de 9:00 a 18:00 y domingo de 10:00 a 14:00. Fuera de horario el bot atiende igual, pero una
+# operacion completa (captura + cuenta) NO se pasa a transferir: queda 'en_espera' en Supabase y la
+# publica el workflow "Liberar operaciones de la noche" al abrir (9:05; el domingo 10:05).
+$HORA_ABRE_SEMANA = 9
+$HORA_CIERRA_SEMANA = 18
+$HORA_ABRE_DOMINGO = 10
+$HORA_CIERRA_DOMINGO = 14
+
+# Codigo del horario, compartido por "Prep Debounce" y "Revisar Operacion".
+$horarioJs = @'
+// ===== HORARIO DE ATENCION (hora de Ecuador: UTC-5, sin horario de verano) =====
+// Lunes a sabado y domingo, como el workflow de apertura y cierre. Se cambia en build_v12.ps1
+// ($HORA_ABRE_SEMANA y compania), nunca aqui.
+const HORARIO_JK = { semana: [__ABRE_SEMANA__, __CIERRA_SEMANA__], domingo: [__ABRE_DOMINGO__, __CIERRA_DOMINGO__] };
+function horarioDe(ms){
+  const ec = new Date(ms - 5 * 3600000);
+  const dow = ec.getUTCDay();
+  const horas = ec.getUTCHours() + ec.getUTCMinutes() / 60;
+  const rango = (dow === 0) ? HORARIO_JK.domingo : HORARIO_JK.semana;
+  const abierto = horas >= rango[0] && horas < rango[1];
+  const medianoche = ms - (((ec.getUTCHours() * 60 + ec.getUTCMinutes()) * 60 + ec.getUTCSeconds()) * 1000 + ec.getUTCMilliseconds());
+  const esHoy = horas < rango[0];                      // de madrugada abre hoy; si ya cerro, manana
+  const dowAbre = esHoy ? dow : (dow + 1) % 7;
+  const horaAbre = (dowAbre === 0) ? HORARIO_JK.domingo[0] : HORARIO_JK.semana[0];
+  const proximaApertura = medianoche + (esHoy ? 0 : 86400000) + horaAbre * 3600000;
+  const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const conDia = (dowAbre === 0 || (!esHoy && dowAbre === 1)) ? ' ' + DIAS[dowAbre] : '';
+  const hora = (horaAbre % 12 || 12) + ':00 ' + (horaAbre >= 12 ? 'pm' : 'am');
+  return { abierto, proximaApertura, cuandoAbre: (esHoy ? 'hoy' : 'mañana') + conDia + ' a partir de las ' + hora };
+}
+'@
+$horarioJs = $horarioJs.Replace('__ABRE_SEMANA__', [string]$HORA_ABRE_SEMANA).Replace('__CIERRA_SEMANA__', [string]$HORA_CIERRA_SEMANA)
+$horarioJs = $horarioJs.Replace('__ABRE_DOMINGO__', [string]$HORA_ABRE_DOMINGO).Replace('__CIERRA_DOMINGO__', [string]$HORA_CIERRA_DOMINGO)
+
 # Cada cuantos minutos, como MUCHO, se avisa de un mismo chat en pausa. Sin esto, un cliente
 # que escribe seis veces seguidas genera seis avisos y el grupo se vuelve ruido.
 $MINUTOS_ENTRE_AVISOS = 15
@@ -598,6 +633,7 @@ Tarifa de este cliente: {{ $node["Code in JavaScript"].json.modo }} (detal=publi
 {{ $node["Code in JavaScript"].json.clienteContexto ? ('CONTEXTO DEL CLIENTE (usalo con naturalidad para atender mejor): ' + $node["Code in JavaScript"].json.clienteContexto) : '' }}
 {{ $('Revisar Operacion').first().json.reglaNombre || '' }}
 {{ $('Revisar Operacion').first().json.contextoOperaciones || '' }}
+{{ $('Revisar Operacion').first().json.horarioTexto || '' }}
 
 Tasas de hoy (Envio/Recibo ya con margen; "N/D" = no disponible):
 {{ JSON.stringify($node["Code in JavaScript"].json.lista) }}
@@ -623,7 +659,7 @@ REGLAS:
 - COMPROBANTE DE PAGO: si ves "[El cliente envio un COMPROBANTE de pago...]", NUNCA digas "no tengo esa cuenta". Responde MUY corto, 1 sola linea. Si en el mensaje hay numeros de cuenta/cedula/banco/datos de una cuenta destino (aunque vengan reenviados o en numeros sueltos), confirma: "Listo, recibido! Procesamos tu remesa enseguida ✅" y NO preguntes nada mas. SOLO si NO hay ninguna cuenta en el mensaje, pide corto: "Recibi tu comprobante! 🙌 Pasame la cuenta destino (banco, numero y titular)". La cuenta destino es donde el destinatario RECIBE el dinero; el cliente puede dividir el monto en varias cuentas.
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
 - BENEFICIARIOS: nunca ofrezcas cuentas guardadas ni listas de beneficiarios. Si el cliente no manda los datos de la cuenta destino, pideselos simple: banco, numero de cuenta, titular y cedula (y el monto de cada una si son varias).
-- YA LLEGO? / COMO VA MI ENVIO? / YA SALIO?: contesta corto con la ULTIMA OPERACION DEL CLIENTE de arriba. EN PROCESO -> "Ya está en proceso 👍 Apenas salga te paso el comprobante por aquí." ENVIADA -> "Sí, ya salió <cuando> ✅ Te pasé el comprobante por aquí." EN ESPERA -> "Se procesa a partir de las 9:00 am 👍". Si arriba NO hay ULTIMA OPERACION DEL CLIENTE -> "Déjame revisar con un asesor y te confirmo enseguida." NUNCA digas que ya llegó si no dice ENVIADA.
+- YA LLEGO? / COMO VA MI ENVIO? / YA SALIO?: contesta corto con la ULTIMA OPERACION DEL CLIENTE de arriba. EN PROCESO -> "Ya está en proceso 👍 Apenas salga te paso el comprobante por aquí." Si salio solo una parte (ej. "ya salio 1 de 2") -> "Ya salió 1 de 2 ✅ La otra está en proceso, apenas salga te paso el comprobante." ENVIADA -> "Sí, ya salió <cuando> ✅ Te pasé el comprobante por aquí." EN ESPERA -> "Se procesa a partir de las 9:00 am 👍". Si arriba NO hay ULTIMA OPERACION DEL CLIENTE -> "Déjame revisar con un asesor y te confirmo enseguida." NUNCA digas que ya llegó si no dice ENVIADA.
 - Fuera de tema: "Solo remesas de JK."
 - Quejas o problema con un giro: "Un asesor te contacta enseguida."
 - Nunca pidas claves, cuentas ni documentos. No des consejo financiero.
@@ -659,6 +695,11 @@ const miTs = String(Date.now()) + '-' + Math.random().toString(36).slice(2,8);
 // dos cosas juntas. Paso el 19/11: la clienta tardo 36 segundos.
 const esComprobante = texto.indexOf('COMPROBANTE de pago') !== -1;
 
+// De noche (fuera de horario) NO se manda el sticker de "verificando su deposito": nadie lo esta
+// verificando. Cuando tenga la captura y la cuenta, el bot le contesta "Recibido, se procesa...".
+__HORARIO_JK__
+const stickerVerificando = esComprobante && horarioDe(Date.now()).abierto;
+
 // Los datos de una CUENTA destino tambien esperan lo mismo (cuenta + foto). Solo cuentan los datos
 // FIRMES: un numero largo (cuenta o telefono de pago movil, aunque venga con espacios o guiones),
 // un correo (Zelle, PayPal) o una direccion de billetera. Una pregunta como "me pasas la cuenta?"
@@ -679,12 +720,13 @@ const espera = esperaLarga ? __ESPERA_OPERACION__ : __ESPERA_NORMAL__;
 let idMensaje = '';
 try { idMensaje = $('Webhook Evolution API').first().json.body.data.key.id || ''; } catch(e){}
 
-return [{ json: { jid, texto: texto || '', miTs, esComprobante, espera, idMensaje,
+return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerificando, espera, idMensaje,
                   keyBuf: 'buf:'+jid, keyTok: 'tok:'+jid } }];
 '@
 
 $prepCode = $prepCode.Replace('__ESPERA_OPERACION__', [string]$SEGUNDOS_ESPERA_OPERACION)
 $prepCode = $prepCode.Replace('__ESPERA_NORMAL__', [string]$SEGUNDOS_ESPERA)
+$prepCode = $prepCode.Replace('__HORARIO_JK__', $horarioJs)
 
 # ===================== CODIGO: TEXTO DIRECTO (mensajes de texto) =====================
 $textoDirectoCode = @'
@@ -897,6 +939,9 @@ $detectarAprobacionCode = @'
 let ro = {};
 try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
 const desdeOperacion = (ro.textoAprobar !== undefined);
+// Fuera de horario la operacion NO se aprueba ni se pasa a transferir: queda 'en_espera' en Supabase
+// ("Armar Filas Noche") y la publica al abrir el workflow "Liberar operaciones de la noche".
+if (ro.enEspera) return [];
 const original = desdeOperacion ? String(ro.textoAprobar || '') : String($('Combinar').item.json.mensajeCombinado || '');
 const combinado = original.toLowerCase();
 const tieneComprobante = combinado.includes('[el cliente envio un comprobante');
@@ -978,23 +1023,9 @@ return [{ json: { aprobado: true, jid, nombre, nombreMostrar, numero, datosCuent
                   montoComprobante, idImagen, mensajeCombinado: combinado } }];
 '@
 
-# ===================== CODIGO: SEPARAR CUENTAS (1 mensaje por cuenta) =====================
-$separarCuentasCode = @'
-// Una publicacion por cada cuenta que mando el cliente, con una cabecera que diga de quien
-// es y por cuanto. Antes salia el bloque pelado y la operadora no sabia de quien era.
-//
-// Se recorre mensaje por mensaje (no el texto junto) para que cada publicacion conserve el
-// id del mensaje del que salio: asi, cuando la operadora devuelva el comprobante, se le cita
-// al cliente el mensaje correcto aunque haya mandado las cuentas en varios mensajes.
-const ap = $('Detectar Aprobación').item.json;
-const nombre = ap.nombreMostrar || ap.nombre || 'Cliente';
-
-let lista = [];
-try {
-  const ro = $('Revisar Operacion').first().json || {};
-  lista = (ro.mensajesAprobar !== undefined) ? (ro.mensajesAprobar || []) : ($('Combinar').item.json.mensajes || []);
-} catch(e){ try { lista = $('Combinar').item.json.mensajes || []; } catch(e2){} }
-
+# ===================== CODIGO: CUENTAS POR BLOQUE (compartido) =====================
+$bloquesCuentasJs = @'
+// ===== CUENTAS DESTINO, UNA POR BLOQUE (lo usan "Separar Cuentas" y "Armar Filas Noche") =====
 // Las notas que escribe el propio bot al leer una imagen no son cuentas del cliente.
 function limpiar(t){
   return String(t || '')
@@ -1009,7 +1040,7 @@ function limpiar(t){
 // cedula con "$60" en la linea de abajo salia como monto ("Ci 11111111 / $60" -> $11111111).
 function montoDe(t){
   const s = String(t);
-  const m = s.match(/\$[ 	]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ 	]*(?:\$|usd|dolares|dolar)/i);
+  const m = s.match(/\$[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \t]*(?:\$|usd|dolares|dolar)/i);
   if (!m) return null;
   const v = parseFloat(String(m[1]).replace(',', '.'));
   return isNaN(v) ? null : v;
@@ -1028,29 +1059,47 @@ function esBloqueCuenta(bloque){
   return /[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo);
 }
 
-const items = [];
-for (const m of lista){
-  const t = limpiar(m && m.texto);
-  if (!t) continue;
-  for (const trozo of t.split(/\n\s*\n+/)){
-    const bloque = trozo.trim();
-    if (!bloque) continue;
-    const bajo = bloque.toLowerCase();
-    if (!esBloqueCuenta(bloque)) continue;   // no parece una cuenta
-    const monto = montoDe(bloque);
-    const cabecera = nombre + (monto !== null ? ' - $' + monto : '');
-    items.push({ json: { cuenta: cabecera + '\n\n' + bloque, idCuenta: (m && m.id) || '', monto } });
+// Un bloque por cuenta, con la cabecera "nombre - $monto". Se recorre mensaje por mensaje para que
+// cada bloque conserve el id del mensaje del que salio (para citarselo al cliente despues).
+// Si no se reconoce ningun bloque (lo escribio de una forma rara), va todo junto, como antes: es
+// preferible a dejar a la operadora sin la cuenta.
+function bloquesDeCuentas(lista, nombre, todoSiNada, idTodo){
+  const out = [];
+  for (const m of (lista || [])){
+    const t = limpiar(m && m.texto);
+    if (!t) continue;
+    for (const trozo of t.split(/\n\s*\n+/)){
+      const bloque = trozo.trim();
+      if (!bloque || !esBloqueCuenta(bloque)) continue;
+      const monto = montoDe(bloque);
+      out.push({ cuenta: nombre + (monto !== null ? ' - $' + monto : '') + '\n\n' + bloque, idCuenta: (m && m.id) || '', monto, texto: bloque });
+    }
   }
+  if (!out.length){
+    const todo = String(todoSiNada || '').trim();
+    if (todo) out.push({ cuenta: nombre + '\n\n' + todo, idCuenta: idTodo || '', monto: null, texto: todo });
+  }
+  return out;
 }
-
-// Si no se reconocio ningun bloque (el cliente lo escribio de una forma rara), se manda lo
-// que haya tal cual, como se hacia antes: es preferible a dejar a la operadora sin la cuenta.
-if (!items.length){
-  const todo = String(ap.datosCuenta || '').trim();
-  if (todo) items.push({ json: { cuenta: nombre + '\n\n' + todo, idCuenta: ap.idCuenta || '', monto: null } });
-}
-return items;
 '@
+
+# ===================== CODIGO: SEPARAR CUENTAS (1 mensaje por cuenta) =====================
+$separarCuentasCode = @'
+// Una publicacion por cada cuenta que mando el cliente, con una cabecera que diga de quien
+// es y por cuanto. Antes salia el bloque pelado y la operadora no sabia de quien era.
+const ap = $('Detectar Aprobación').item.json;
+const nombre = ap.nombreMostrar || ap.nombre || 'Cliente';
+
+let lista = [];
+try {
+  const ro = $('Revisar Operacion').first().json || {};
+  lista = (ro.mensajesAprobar !== undefined) ? (ro.mensajesAprobar || []) : ($('Combinar').item.json.mensajes || []);
+} catch(e){ try { lista = $('Combinar').item.json.mensajes || []; } catch(e2){} }
+
+__BLOQUES_CUENTAS__
+return bloquesDeCuentas(lista, nombre, ap.datosCuenta, ap.idCuenta).map(b => ({ json: b }));
+'@
+$separarCuentasCode = $separarCuentasCode.Replace('__BLOQUES_CUENTAS__', $bloquesCuentasJs)
 
 # ===================== CODIGO: SEPARAR RESPUESTA (1 mensaje por cotizacion) =====================
 $separarRespuestaCode = @'
@@ -1094,43 +1143,88 @@ const fila = [fecha, cliente, numero, cuenta, comprobante, tipo];
 return [{ json: { Fecha:fecha, Cliente:cliente, Numero:numero, CuentaDestino:cuenta, Comprobante:comprobante, Tipo:tipo, fila } }];
 '@
 
+# ===================== CODIGO: FILA DE UNA OPERACION (compartido) =====================
+$filaJs = @'
+// Lo comun a todas las cuentas de un deposito: quien, cuanto, referencia, banco y las capturas.
+function filaBase(reg, numeroOJid, nombre, idImagen){
+  reg = reg || {};
+  const capturas = Array.isArray(reg.capturas) ? reg.capturas : [];
+  const montos = capturas.map(c => c.monto).filter(m => typeof m === 'number' && !isNaN(m));
+  const unicos = a => a.filter((x, i) => x && a.indexOf(x) === i);
+  return {
+    whatsapp: String(numeroOJid || '').split('@')[0].replace(/\D/g, ''),
+    nombre_cliente: nombre || null,
+    monto_deposito: montos.length ? Math.round(montos.reduce((a, b) => a + b, 0) * 100) / 100 : null,
+    ref_deposito: unicos(capturas.map(c => c.ref)).join(', ') || null,
+    banco_origen: unicos(capturas.map(c => c.banco)).join(', ') || null,
+    huella_foto: (capturas.find(c => c.huella) || {}).huella || null,
+    id_msg_captura: idImagen || (capturas[0] || {}).id || null,
+    capturas
+  };
+}
+'@
+
 # ===================== CODIGO: ARMAR FILA SUPABASE (registro de la operacion) =====================
 $armarFilaCode = @'
-// ===== LA FILA PARA SUPABASE (tabla transacciones_por_whatsapp) =====
-// Una fila por cada operacion completa (captura + cuenta) que el bot pasa a transferir. Cuando la
-// operadora devuelve la foto del envio, "Marcar Enviada en Supabase" la pasa a 'enviada'.
-// Los campos se llaman EXACTAMENTE como las columnas de la tabla: el nodo siguiente los guarda tal cual.
+// ===== LAS FILAS PARA SUPABASE (tabla transacciones_por_whatsapp), DE DIA =====
+// UNA FILA POR CUENTA DESTINO: cada cuenta tiene su propio estado y pasa a 'enviada' cuando la
+// operadora devuelve la foto de ESA cuenta (pedido de Kelvin, 20/11). Las cuentas de un mismo
+// deposito comparten id_msg_captura. Corre DESPUES de publicar en el grupo, asi cada fila guarda el
+// id de su publicacion (id_msgs_grupo): con eso "Marcar Enviada en Supabase" encuentra la fila.
+// Los campos se llaman EXACTAMENTE como las columnas: el nodo siguiente los guarda tal cual.
+__FILA_OPERACION__
 const ap = $('Detectar Aprobación').first().json || {};
 let ro = {};
 try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
-const reg = ro.registro || {};
-const capturas = Array.isArray(reg.capturas) ? reg.capturas : [];
-const cuentas = Array.isArray(reg.cuentas) ? reg.cuentas : [];
-function aNumero(s){ const v = parseFloat(String(s).replace(',', '.')); return isNaN(v) ? null : v; }
-// El monto de cada cuenta, igual que "Separar Cuentas": primero "$60", si no "60$".
-function montoDe(t){
-  const s = String(t || '');
-  const m = s.match(/\$[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \t]*(?:\$|usd|dolares|dolar)/i);
-  return m ? aNumero(m[1]) : null;
-}
-const montos = capturas.map(c => c.monto).filter(m => typeof m === 'number' && !isNaN(m));
-const unicos = a => a.filter((x, i) => x && a.indexOf(x) === i);
-const fila = {
-  whatsapp: String(ap.numero || ap.jid || '').replace(/\D/g, ''),
-  nombre_cliente: ap.nombre || null,
+const idDe = j => String((j && j.key && j.key.id) || (j && j.data && j.data.key && j.data.key.id) || '');
+let separadas = [], enviadas = [], idFoto = '';
+try { separadas = $('Separar Cuentas').all().map(i => i.json); } catch(e){}
+try { enviadas = $('Enviar Cuenta Grupo').all().map(i => i.json); } catch(e){}
+try { idFoto = idDe($('Enviar Imagen Grupo').first().json); } catch(e){}
+const base = filaBase(ro.registro, ap.numero || ap.jid, ap.nombreMostrar || ap.nombre, ap.idImagen);
+const ahoraIso = new Date().toISOString();
+return separadas.map((c, i) => ({ json: Object.assign({}, base, {
   estado: 'en_proceso',
-  monto_deposito: montos.length ? Math.round(montos.reduce((a, b) => a + b, 0) * 100) / 100 : null,
-  ref_deposito: unicos(capturas.map(c => c.ref)).join(', ') || null,
-  banco_origen: unicos(capturas.map(c => c.banco)).join(', ') || null,
-  huella_foto: (capturas.find(c => c.huella) || {}).huella || null,
-  id_msg_captura: ap.idImagen || (capturas[0] || {}).id || null,
-  capturas,
-  cuentas: cuentas.map(c => ({ id: c.id || '', texto: c.texto, monto: montoDe(c.texto) })),
+  cuentas: [{ id: c.idCuenta || '', texto: c.texto || c.cuenta || '', monto: (c.monto === undefined ? null : c.monto) }],
+  // La foto de la captura va con la primera cuenta: si la operadora responde a la foto, es esa.
+  id_msgs_grupo: [idDe(enviadas[i]), i === 0 ? idFoto : ''].filter(Boolean),
   fuera_de_horario: false,
-  publicado_en: new Date().toISOString()
-};
-return [{ json: fila }];
+  publicado_en: ahoraIso,
+  notas: separadas.length > 1 ? ('Cuenta ' + (i + 1) + ' de ' + separadas.length + ' del mismo deposito') : null
+}) }));
 '@
+$armarFilaCode = $armarFilaCode.Replace('__FILA_OPERACION__', $filaJs)
+
+# ===================== CODIGO: ARMAR FILAS NOCHE (operacion completa fuera de horario) =====================
+$armarFilasNocheCode = @'
+// ===== OPERACION COMPLETA FUERA DE HORARIO -> 'en_espera' =====
+// De noche (o un domingo despues de las 2 pm) la operacion NO se pasa a transferir: se guarda aqui,
+// una fila por cuenta destino, y el workflow "Liberar operaciones de la noche" la publica al abrir
+// (9:05; el domingo 10:05), le manda al cliente el sticker de PEDIDO APROBADO y la pasa a
+// 'en_proceso'. Pedido de Kelvin (20/11): "para no enredarnos en nuestra contabilidad y revisiones
+// de la noche".
+let ro = {};
+try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
+if (!ro.enEspera) return [];
+__BLOQUES_CUENTAS__
+__FILA_OPERACION__
+let jid = '', pushName = '', nombreCargado = '';
+try { const d = $('Webhook Evolution API').first().json.body.data; jid = String(d.key.remoteJid || ''); pushName = String(d.pushName || '').trim(); } catch(e){}
+try { nombreCargado = String($('Solo Estos Numeros').first().json.nombreCargado || '').trim(); } catch(e){}
+const nombre = nombreCargado || pushName || 'Cliente';
+const cuentasTexto = ((ro.registro || {}).cuentas || []).map(c => c.texto).join('\n\n');
+const bloques = bloquesDeCuentas(ro.mensajesAprobar || [], nombre, cuentasTexto, '');
+const base = filaBase(ro.registro, jid, nombre, ro.idImagen);
+return bloques.map((b, i) => ({ json: Object.assign({}, base, {
+  estado: 'en_espera',
+  cuentas: [{ id: b.idCuenta || '', texto: b.texto, monto: b.monto }],
+  id_msgs_grupo: [],
+  fuera_de_horario: true,
+  publicado_en: null,
+  notas: bloques.length > 1 ? ('Cuenta ' + (i + 1) + ' de ' + bloques.length + ' del mismo deposito') : null
+}) }));
+'@
+$armarFilasNocheCode = $armarFilasNocheCode.Replace('__BLOQUES_CUENTAS__', $bloquesCuentasJs).Replace('__FILA_OPERACION__', $filaJs)
 
 # ===================== CODIGO: DETECTAR ASESOR (alerta) =====================
 $detectarCode = @'
@@ -1522,6 +1616,8 @@ const MINUTOS_ENTRE_STICKERS = __MINUTOS_STICKER_GRACIAS__;
 const HORAS_ENTRE_NOMBRES = __HORAS_NOMBRE__;
 const DIAS_ULTIMA_OPERACION = __DIAS_ULTIMA_OPERACION__;
 const ahora = Date.now();
+__HORARIO_JK__
+const hor = horarioDe(ahora);
 
 let base = {};
 try { base = $('Code in JavaScript').first().json || {}; } catch(e){}
@@ -1536,7 +1632,14 @@ try {
   if (raw) op = (typeof raw === 'string') ? JSON.parse(raw) : raw;
 } catch(e){ op = {}; }
 if (!op || typeof op !== 'object') op = {};
-const vigente = x => !!x && typeof x.ts === 'number' && (ahora - x.ts) <= MINUTOS_PENDIENTE * 60000;
+// Lo pendiente vale MINUTOS_PENDIENTE. Si llego fuera de horario, vale hasta MINUTOS_PENDIENTE
+// despues de abrir (una captura de las 11 pm espera la cuenta hasta las 11 am). Se guarda en 'hasta'.
+const vigente = x => !!x && typeof x.ts === 'number'
+  && ((typeof x.hasta === 'number') ? ahora <= x.hasta : (ahora - x.ts) <= MINUTOS_PENDIENTE * 60000);
+function venceEn(ts){
+  const h = horarioDe(ts), base = ts + MINUTOS_PENDIENTE * 60000;
+  return h.abierto ? base : Math.max(base, h.proximaApertura + MINUTOS_PENDIENTE * 60000);
+}
 const cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuenta.mensajes)) ? op.cuenta.mensajes : [];
 const capturasGuardadas = Array.isArray(op.capturas) ? op.capturas.filter(vigente) : [];
 const hechos = Array.isArray(op.hechos) ? op.hechos.filter(h => h && (ahora - (h.ts || 0)) <= HORAS_RECORDAR * 3600000) : [];
@@ -1826,11 +1929,14 @@ if (!cuentasAhora.length && propuestaVieja.length && esAfirmacion(textoAhora)){
   propuestaVieja.forEach(m => cuentasAhora.push({ id: m.id || '', texto: m.texto }));
 } else if (!cuentasAhora.length && hayCaptura && pideLaMisma(textoAhora)){
   pideMisma = true;
+  // Hay una fila por cuenta: las de la ultima operacion comparten el id de la captura.
   const filaCuenta = historial.find(r => r.estado !== 'cancelada' && listaDe(r.cuentas).some(c => c && c.texto));
-  const cs = filaCuenta ? listaDe(filaCuenta.cuentas).filter(c => c && c.texto) : [];
+  const filasOp = !filaCuenta ? [] : historial.filter(r => r.estado !== 'cancelada'
+    && (filaCuenta.id_msg_captura ? r.id_msg_captura === filaCuenta.id_msg_captura : r.id === filaCuenta.id));
+  const cs = [].concat.apply([], filasOp.map(r => listaDe(r.cuentas))).filter(c => c && c.texto);
   if (cs.length === 1){                       // si la vez pasada fueron varias, se le piden los datos
     const texto = sinMontos(cs[0].texto);
-    if (texto) propuestaNueva = { mensajes: [{ id: '', texto }], ts: ahora };
+    if (texto) propuestaNueva = { mensajes: [{ id: '', texto }], ts: ahora, hasta: venceEn(ahora) };
   }
 }
 
@@ -1884,6 +1990,10 @@ const NOTA = {
   repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
 };
 if (propuestaNueva) NOTA.confirmar_cuenta = 'el cliente quiere usar la misma cuenta destino de la vez pasada. Responde SOLO esto, con la cuenta copiada tal cual: "¿Te lo envío a esta cuenta? 👇\n\n' + propuestaNueva.mensajes[0].texto + '\n\nResponde *sí* para confirmar"';
+// Fuera de horario la operacion completa NO se pasa a transferir: queda 'en_espera' (ver "Armar
+// Filas Noche") y se publica al abrir. Al cliente solo se le dice que se recibio y cuando se procesa.
+const enEspera = (estado === 'completo') && !hor.abierto;
+if (enEspera) NOTA.completo = 'ya tengo la captura del deposito y la cuenta destino de este cliente, pero estamos CERRADOS: la operacion queda guardada y se pasa a operaciones al abrir. Responde SOLO: "Recibido ✅ Se procesa ' + hor.cuandoAbre + '"';
 if (pideMisma && !propuestaNueva) NOTA.falta_cuenta = 'el cliente pidio usar la misma cuenta de la vez pasada, pero no la tengo registrada (o la vez pasada fueron varias cuentas). Responde SOLO: "Recibí tu comprobante! 🙌 Pásame los datos de la cuenta destino porfa (banco, número, titular y cédula)"';
 const notaIA = NOTA[estado] ? '\n\n[ESTADO DE LA OPERACION: ' + NOTA[estado] + ']' : '';
 
@@ -1907,13 +2017,14 @@ if (estado === 'completo'){
   nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
 } else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta'){
   nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
-                                         banco: c.banco || '', destino: c.destino || '' }));
+                                         banco: c.banco || '', destino: c.destino || '',
+                                         hasta: (typeof c.hasta === 'number') ? c.hasta : venceEn(c.ts || ahora) }));
   if (propuestaNueva) nueva.cuentaPropuesta = propuestaNueva;
 } else if (estado === 'falta_captura'){
-  nueva.cuenta = { mensajes: cuentasOp, ts: ahora };
+  nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
 } else {
   // repetido o nada: lo que estaba pendiente sigue pendiente
-  nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts } : null;
+  nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts, hasta: op.cuenta.hasta } : null;
   nueva.capturas = capturasGuardadas;
 }
 
@@ -1971,22 +2082,43 @@ let contextoOperaciones = '';
 const ultima = historial.find(r => r.estado !== 'cancelada' && r.estado !== 'repetida');
 const msUltima = ultima ? Date.parse(ultima.creado) : NaN;
 if (ultima && msUltima && (ahora - msUltima) <= DIAS_ULTIMA_OPERACION * 86400000){
-  const nCuentas = listaDe(ultima.cuentas).length;
+  // Una fila por cuenta destino: las de la misma operacion comparten el id de la captura.
+  const delMismo = historial.filter(r => r.estado !== 'cancelada' && r.estado !== 'repetida'
+    && (ultima.id_msg_captura ? r.id_msg_captura === ultima.id_msg_captura : r.id === ultima.id));
+  const n = delMismo.length;
+  const enviadas = delMismo.filter(r => r.estado === 'enviada');
+  const msEnviada = Math.max.apply(null, [0].concat(enviadas.map(r => Date.parse(r.enviada_en) || 0)));
   let txt = 'ULTIMA OPERACION DEL CLIENTE (usala solo si pregunta si ya llego o como va su envio): recibida ' + cuando(msUltima)
     + ((ultima.monto_deposito !== null && ultima.monto_deposito !== undefined) ? ', deposito de $' + Number(ultima.monto_deposito).toFixed(2) : '')
-    + (nCuentas ? ', ' + nCuentas + (nCuentas === 1 ? ' cuenta destino' : ' cuentas destino') : '') + '. Estado: ';
-  const msEnviada = Date.parse(ultima.enviada_en);
-  if (ultima.estado === 'enviada') txt += 'ENVIADA' + (msEnviada ? ' ' + cuando(msEnviada) : '') + ' (ya se le reenvio el comprobante por este chat).';
-  else if (ultima.estado === 'en_espera') txt += 'EN ESPERA (llego fuera de horario; se procesa al abrir).';
-  else if (ultima.estado === 'en_proceso') txt += 'EN PROCESO (ya esta con la operadora; falta que mande el comprobante).';
-  else txt += String(ultima.estado || '').toUpperCase() + '.';
+    + ', ' + n + (n === 1 ? ' cuenta destino' : ' cuentas destino') + '. Estado: ';
+  if (n && enviadas.length === n){
+    txt += 'ENVIADA' + (msEnviada ? ' ' + cuando(msEnviada) : '') + (n > 1 ? ' (las ' + n + ' cuentas)' : '') + ' (ya se le reenvio el comprobante por este chat).';
+  } else if (enviadas.length){
+    const faltan = n - enviadas.length;
+    txt += 'EN PROCESO: ya salio ' + enviadas.length + ' de ' + n + (msEnviada ? ' (la ultima ' + cuando(msEnviada) + ')' : '')
+      + '; falta el comprobante de ' + (faltan === 1 ? 'la otra cuenta' : 'las otras ' + faltan) + '.';
+  } else if (delMismo.some(r => r.estado === 'en_espera')){
+    txt += 'EN ESPERA (llego fuera de horario; se procesa ' + (hor.abierto ? 'en unos minutos' : hor.cuandoAbre) + ').';
+  } else {
+    txt += 'EN PROCESO (ya esta con la operadora; falta que mande el comprobante).';
+  }
   contextoOperaciones = txt;
 }
+
+// ===== FUERA DE HORARIO: LO QUE EL AGENTE TIENE QUE SABER =====
+const horarioTexto = hor.abierto ? '' : ('HORARIO: ahora estamos CERRADOS (abrimos ' + hor.cuandoAbre + '). Atiende igual, pero esto MANDA sobre las otras reglas: '
+  + 'si pide una cotizacion, COTIZALE NORMAL (con la herramienta, como siempre) y al final agrega una linea aparte: "Estamos cerrados, abrimos ' + hor.cuandoAbre + ' 🕘"; '
+  + 'si pide la cuenta para depositar, dasela igual (la del dia) y agrega "El depósito se procesa ' + hor.cuandoAbre + ' 👍"; '
+  + 'si es una queja o necesita un asesor: "Un asesor te contacta ' + hor.cuandoAbre + '".');
 
 return [{ json: Object.assign({}, base, {
   estadoOperacion: estado,
   contextoOperaciones,
   registro,
+  enEspera,
+  abierto: hor.abierto,
+  cuandoAbre: hor.cuandoAbre,
+  horarioTexto,
   accion,
   motivoAccion,
   reglaNombre,
@@ -2004,6 +2136,7 @@ $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_RECORDAR__', [str
 $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_STICKER_GRACIAS__', [string]$MINUTOS_ENTRE_STICKERS_GRACIAS)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [string]$HORAS_ENTRE_NOMBRES)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__DIAS_ULTIMA_OPERACION__', [string]$DIAS_ULTIMA_OPERACION)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__HORARIO_JK__', $horarioJs)
 
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
@@ -2083,7 +2216,10 @@ $nodes = @(
   },
   [ordered]@{
     # Entregar o avisar que ya se entrego?
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.accion }}'; value2 = 'repetido'; operation = 'equals' } ) } }
+    # OJO: en este tipo de nodo (IF v1, condicion "boolean") la operacion se llama 'equal', no 'equals'.
+    # Con 'equals' n8n se caia ("compareOperationFunctions... is not a function") y la foto de la
+    # operadora nunca le llegaba al cliente. Se compara como verdadero/falso, igual que los demas IF.
+    parameters = @{ conditions = @{ boolean = @( @{ value1 = "={{ `$json.accion === 'repetido' }}"; value2 = '={{true}}' } ) } }
     id = 'd0e1f2a3-0000-4b00-9000-esrepetido001'; name = 'Ya Se Entrego?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(460,-420)
   },
   [ordered]@{
@@ -2181,9 +2317,10 @@ $nodes = @(
     credentials = $redisCred
   },
   [ordered]@{
-    # La operadora devolvio la foto y ya le llego al cliente: la operacion queda 'enviada'.
-    # Se busca por la captura del deposito (viaja en grupoMsg). Solo si estaba en proceso.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
+    # La operadora devolvio la foto de UNA cuenta y ya le llego al cliente: ESA cuenta queda
+    # 'enviada' (hay una fila por cuenta). Se busca la fila por la publicacion que cito la operadora
+    # (id_msgs_grupo). Solo si estaba en proceso.
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ]) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
     id = 'a1b2c3d4-0011-4e00-9a00-registro00011'; name = 'Marcar Enviada en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,-752)
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
@@ -2244,7 +2381,7 @@ $nodes = @(
   [ordered]@{
     # Llego un comprobante? Entonces se le manda el sticker de "verificando su deposito"
     # enseguida, sin esperar, para que el cliente sepa que se recibio.
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.esComprobante }}'; value2 = '={{true}}' } ) } }
+    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.stickerVerificando }}'; value2 = '={{true}}' } ) } }
     id = 'd0e1f2a3-0000-4b00-9000-escomprob0001'; name = 'Llego un Comprobante?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(300,-120)
   },
   [ordered]@{
@@ -2568,14 +2705,20 @@ $nodes = @(
   },
   [ordered]@{
     parameters = @{ jsCode = $armarFilaCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1808,768); id = 'a1b2c3d4-0009-4e00-9a00-registro00009'; name = 'Armar Fila Supabase'
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3728,208); id = 'a1b2c3d4-0009-4e00-9a00-registro00009'; name = 'Armar Fila Supabase'
     onError = 'continueRegularOutput'
   },
   [ordered]@{
-    # Guarda la operacion en transacciones_por_whatsapp ('en_proceso'). Si falla, la operacion
+    # Fuera de horario: la operacion completa queda 'en_espera' (no se publica). Ver el codigo.
+    parameters = @{ jsCode = $armarFilasNocheCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,-128); id = 'a1b2c3d4-0012-4e00-9a00-horario000012'; name = 'Armar Filas Noche'
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    # Guarda la operacion en transacciones_por_whatsapp ('en_proceso'; de noche, 'en_espera'). Si falla, la operacion
     # igual se paso al grupo: solo queda sin registro.
     parameters = @{ resource = 'row'; operation = 'create'; tableId = 'transacciones_por_whatsapp'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'a1b2c3d4-0010-4e00-9a00-registro00010'; name = 'Guardar Operacion en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1984,768)
+    id = 'a1b2c3d4-0010-4e00-9a00-registro00010'; name = 'Guardar Operacion en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3904,208)
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
@@ -2668,7 +2811,8 @@ $connections = [ordered]@{
   'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Consultar Operaciones WhatsApp'; type='main'; index=0 } ) ) }
   'Consultar Operaciones WhatsApp' = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
   'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
-  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 } ) ) }
+  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 }, @{ node='Armar Filas Noche'; type='main'; index=0 } ) ) }
+  'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
   '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
@@ -2676,7 +2820,7 @@ $connections = [ordered]@{
   'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 }, @{ node='Redis Marcar Pregunta'; type='main'; index=0 } ) ) }
   'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
-  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 }, @{ node='Armar Fila Supabase'; type='main'; index=0 } ) ) }
+  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }
   'Armar Fila Supabase'    = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
   'Redis Marcar Entregado' = @{ main = @( ,@( @{ node='Marcar Enviada en Supabase'; type='main'; index=0 } ) ) }
   'Redis Leer ID Imagen'   = @{ main = @( ,@( @{ node='Re-descargar Imagen'; type='main'; index=0 } ) ) }
@@ -2687,7 +2831,7 @@ $connections = [ordered]@{
     ) ) }
   'Separar Cuentas'        = @{ main = @( ,@( @{ node='Enviar Cuenta Grupo'; type='main'; index=0 } ) ) }
   'Enviar Cuenta Grupo'    = @{ main = @( ,@( @{ node='Marcar Publicacion Cuenta'; type='main'; index=0 } ) ) }
-  'Marcar Publicacion Cuenta' = @{ main = @( ,@( @{ node='Revisar Montos'; type='main'; index=0 } ) ) }
+  'Marcar Publicacion Cuenta' = @{ main = @( ,@( @{ node='Revisar Montos'; type='main'; index=0 }, @{ node='Armar Fila Supabase'; type='main'; index=0 } ) ) }
   'Revisar Montos'         = @{ main = @( ,@( @{ node='Avisar Montos';    type='main'; index=0 } ) ) }
 }
 

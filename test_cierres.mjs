@@ -233,7 +233,7 @@ console.log('=== 9) Como quedo conectado ===');
   chk(sale('Redis Leer Operacion').join() === 'Redis Leer Pregunta', 'Redis Leer Operacion -> Redis Leer Pregunta', '-> ' + sale('Redis Leer Operacion'));
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp' && sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion',
       'Redis Leer Pregunta -> Consultar Operaciones WhatsApp -> Revisar Operacion');
-  chk(sale('Redis Guardar Operacion').join() === '¿Qué Responder?', 'Redis Guardar Operacion -> ¿Qué Responder?', '-> ' + sale('Redis Guardar Operacion'));
+  chk(sale('Redis Guardar Operacion')[0] === '¿Qué Responder?', 'Redis Guardar Operacion -> ¿Qué Responder?', '-> ' + sale('Redis Guardar Operacion'));
   chk(sale('¿Qué Responder?', 0).join() === 'Sticker A Su Orden', 'salida "gracias" -> Sticker A Su Orden');
   chk(sale('¿Qué Responder?', 1).length === 0, 'salida "callar" -> nada');
   chk(sale('¿Qué Responder?', 2).join() === 'AI Agent', 'todo lo demas (incluido lo inesperado) -> AI Agent');

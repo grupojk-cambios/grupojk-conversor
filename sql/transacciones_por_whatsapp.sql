@@ -1,6 +1,8 @@
 -- ============================================================================
 --  Tabla transacciones_por_whatsapp: el registro de cada operacion que llega
---  por el bot de WhatsApp (una fila por deposito del cliente).
+--  por el bot de WhatsApp. UNA FILA POR CUENTA DESTINO: cada cuenta tiene su propio
+--  estado y pasa a 'enviada' cuando la operadora devuelve la foto de ESA cuenta.
+--  Las cuentas de un mismo deposito comparten id_msg_captura.
 --
 --  Es APARTE de la tabla "transacciones" de la app, que no se toca.
 --  Se corrio en Supabase -> SQL Editor el 20/11/2026.
@@ -8,7 +10,8 @@
 --
 --  Estados:
 --    pendiente  : falta la cuenta destino o la captura del deposito
---    en_espera  : completa, pero llego fuera de horario; se publica al abrir
+--    en_espera  : completa, pero llego fuera de horario; la publica al abrir el
+--                 workflow "Liberar operaciones de la noche" (9:05; domingo 10:05)
 --    en_proceso : publicada en el grupo de transferir
 --    enviada    : la operadora devolvio la foto del envio y le llego al cliente
 --    repetida   : la captura era de un deposito que ya se habia recibido
