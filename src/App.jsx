@@ -188,9 +188,10 @@ function App() {
     const isMayorAuth = sessionStorage.getItem('jk_mayor_auth')
     if (isMayorAuth) setMayorAuth(true)
 
-    sincronizarGoogleSheets().finally(() => {
-        setSheetsReady(true)
-    })
+    Promise.race([
+      sincronizarGoogleSheets(),
+      new Promise(r => setTimeout(r, 8000))
+    ]).finally(() => setSheetsReady(true))
 
     return () => subscription.unsubscribe()
   }, [])
