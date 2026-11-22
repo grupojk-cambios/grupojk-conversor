@@ -1,4 +1,4 @@
-// Prueba de la Entrega 2: el registro de cada operacion en Supabase (tabla transacciones_por_whatsapp).
+// Prueba de la Entrega 2: el registro de cada operacion en Supabase (tabla transacciones_detal_por_whatsapp).
 //
 //   - al publicarse una operacion en transferir se guarda UNA FILA POR CUENTA destino ('en_proceso')
 //   - cuando la operadora devuelve la foto de una cuenta, ESA fila pasa a 'enviada' (1 por 1)
@@ -219,7 +219,7 @@ console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviad
   const rp = new Function('$', code('Revisar Pedido'))($)[0].json;
   chk(rp.idCaptura === 'FOTO1', 'Revisar Pedido pasa el id de la captura', '-> ' + rp.idCaptura);
   const up = nodo('Marcar Enviada en Supabase').parameters;
-  chk(up.operation === 'update' && up.tableId === 'transacciones_por_whatsapp', 'actualiza la tabla transacciones_por_whatsapp');
+  chk(up.operation === 'update' && up.tableId === 'transacciones_detal_por_whatsapp', 'actualiza la tabla transacciones_detal_por_whatsapp');
   chk(/id_msgs_grupo=cs\./.test(up.filterString) && /Revisar Pedido[^}]*stanzaId/.test(up.filterString), 'busca la fila de ESA cuenta: la publicacion que cito la operadora');
   const expr = String(up.filterString).replace(/^=\{\{/, '').replace(/\}\}$/, '');
   const filtro = new Function('$', 'return (' + expr + ');')(n => ({ first: () => ({ json: { stanzaId: 'GRUPO-B' } }) }));
@@ -243,7 +243,7 @@ console.log('=== 6) Como quedo conectado ===');
   chk(sale('Redis Marcar Entregado').join() === 'Marcar Enviada en Supabase', 'Redis Marcar Entregado -> Marcar Enviada en Supabase');
 
   const leer = nodo('Consultar Operaciones WhatsApp');
-  chk(leer.parameters.tableId === 'transacciones_por_whatsapp' && leer.parameters.operation === 'getAll', 'lee la tabla nueva');
+  chk(leer.parameters.tableId === 'transacciones_detal_por_whatsapp' && leer.parameters.operation === 'getAll', 'lee la tabla nueva');
   chk(/whatsapp=eq\./.test(leer.parameters.filterString) && /order=creado\.desc/.test(leer.parameters.filterString), 'del cliente, las mas recientes primero');
   const guardar = nodo('Guardar Operacion en Supabase');
   chk(guardar.parameters.operation === 'create' && guardar.parameters.dataToSend === 'autoMapInputData', 'guarda la fila tal cual la arma el nodo anterior');

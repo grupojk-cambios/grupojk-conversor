@@ -5,7 +5,7 @@
 #  Lunes a sabado 9:05 y domingo 10:05 (hora de Ecuador).
 #
 #  De noche el bot de WhatsApp atiende, pero las operaciones completas (captura +
-#  cuenta) NO las pasa a transferir: las deja en Supabase (transacciones_por_whatsapp)
+#  cuenta) NO las pasa a transferir: las deja en Supabase (transacciones_detal_por_whatsapp)
 #  con estado 'en_espera', una fila por cuenta destino. Este workflow las toma al
 #  abrir y, una operacion por vez:
 #    1. publica la captura y cada cuenta en el grupo de transferir, igual que de dia
@@ -103,7 +103,7 @@ $nota = @'
 ## Liberar operaciones de la noche
 **Lunes a sábado 9:05 y domingo 10:05** (hora de Ecuador).
 
-De noche el bot atiende, pero NO pasa las operaciones a transferir: las deja en Supabase (`transacciones_por_whatsapp`) con estado **en_espera**. Este workflow, al abrir, toma cada una y:
+De noche el bot atiende, pero NO pasa las operaciones a transferir: las deja en Supabase (`transacciones_detal_por_whatsapp`) con estado **en_espera**. Este workflow, al abrir, toma cada una y:
 1. publica la captura y cada cuenta en el grupo de transferir, igual que de día
 2. guarda de quién es cada publicación, para que la foto de la operadora le llegue al cliente
 3. le manda al cliente el sticker **PEDIDO APROBADO**
@@ -128,7 +128,7 @@ $nodes = @(
   [ordered]@{
     # Las filas en espera, la mas vieja primero. Si Supabase falla, no se publica nada (se reintenta
     # al dia siguiente; Kelvin ve el error en las ejecuciones).
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_por_whatsapp'; returnAll = $true; filterType = 'string'; filterString = $filtroEspera }
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_detal_por_whatsapp'; returnAll = $true; filterType = 'string'; filterString = $filtroEspera }
     id = 'b1c2d3e4-0002-4a00-8a00-liberar00002'; name = 'Leer Operaciones en Espera'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(176,300)
     alwaysOutputData = $true; credentials = $supaCred
   },
@@ -183,7 +183,7 @@ $nodes = @(
   },
   [ordered]@{
     # Solo si sigue en espera: si por algo ya se habia publicado, no se toca.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id=eq.' + `$json.filaId + '&estado=eq.en_espera' }}"; dataToSend = 'autoMapInputData'; inputsToIgnore = 'filaId' }
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_detal_por_whatsapp'; filterType = 'string'; filterString = "={{ 'id=eq.' + `$json.filaId + '&estado=eq.en_espera' }}"; dataToSend = 'autoMapInputData'; inputsToIgnore = 'filaId' }
     id = 'b1c2d3e4-0013-4a00-8a00-liberar00013'; name = 'Marcar En Proceso'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2112,300)
     onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
   }

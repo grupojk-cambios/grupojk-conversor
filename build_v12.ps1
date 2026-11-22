@@ -133,7 +133,7 @@ $MINUTOS_ENTRE_STICKERS_GRACIAS = 10
 # mensaje suena a bot (revision de los chats, 20/11).
 $HORAS_ENTRE_NOMBRES = 24
 
-# Registro en Supabase (tabla transacciones_por_whatsapp): cuantas operaciones del cliente se leen
+# Registro en Supabase (tabla transacciones_detal_por_whatsapp): cuantas operaciones del cliente se leen
 # en cada mensaje, y hasta cuantos dias atras cuenta la ultima para contestar "¿ya llego?".
 $OPERACIONES_A_LEER = 20
 $DIAS_ULTIMA_OPERACION = 7
@@ -1231,7 +1231,7 @@ function filaBase(reg, numeroOJid, nombre, idImagen){
 
 # ===================== CODIGO: ARMAR FILA SUPABASE (registro de la operacion) =====================
 $armarFilaCode = @'
-// ===== LAS FILAS PARA SUPABASE (tabla transacciones_por_whatsapp), DE DIA =====
+// ===== LAS FILAS PARA SUPABASE (tabla transacciones_detal_por_whatsapp), DE DIA =====
 // UNA FILA POR CUENTA DESTINO: cada cuenta tiene su propio estado y pasa a 'enviada' cuando la
 // operadora devuelve la foto de ESA cuenta (pedido de Kelvin, 20/11). Las cuentas de un mismo
 // deposito comparten id_msg_captura. Corre DESPUES de publicar en el grupo, asi cada fila guarda el
@@ -1716,7 +1716,7 @@ const cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuen
 const capturasGuardadas = Array.isArray(op.capturas) ? op.capturas.filter(vigente) : [];
 const hechos = Array.isArray(op.hechos) ? op.hechos.filter(h => h && (ahora - (h.ts || 0)) <= HORAS_RECORDAR * 3600000) : [];
 
-// ---------- las operaciones ya registradas en Supabase (tabla transacciones_por_whatsapp) ----------
+// ---------- las operaciones ya registradas en Supabase (tabla transacciones_detal_por_whatsapp) ----------
 // Las ultimas de este cliente, la mas reciente primero. Sirven para reconocer una captura repetida
 // aunque sea de hace semanas (Redis solo recuerda 48 h), para "la misma cuenta de siempre" y para
 // contestar "¿ya llego?". Si Supabase no responde, todo sigue como antes.
@@ -2525,7 +2525,7 @@ $nodes = @(
   },
   [ordered]@{
     # Las cuentas del deposito (una fila por cuenta), para comparar con la foto.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_por_whatsapp'; returnAll = $false; limit = 20; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') }}" }
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_detal_por_whatsapp'; returnAll = $false; limit = 20; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') }}" }
     id = 'a1b2c3d4-0015-4e00-9a00-faseb0000015'; name = 'Leer Cuentas de la Operacion'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(944,-752)
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
@@ -2589,7 +2589,7 @@ $nodes = @(
     # La operadora devolvio la foto de UNA cuenta y ya le llego al cliente: ESA cuenta queda
     # 'enviada' (hay una fila por cuenta). Se busca la fila por la publicacion que cito la operadora
     # (id_msgs_grupo). Solo si estaba en proceso.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_por_whatsapp'; filterType = 'string'; filterString = "={{ (`$('Revisar Comprobante').first().json.filaId ? 'id=eq.' + `$('Revisar Comprobante').first().json.filaId : 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ])) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_detal_por_whatsapp'; filterType = 'string'; filterString = "={{ (`$('Revisar Comprobante').first().json.filaId ? 'id=eq.' + `$('Revisar Comprobante').first().json.filaId : 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ])) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
     id = 'a1b2c3d4-0011-4e00-9a00-registro00011'; name = 'Marcar Enviada en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,-752)
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
@@ -2833,9 +2833,9 @@ $nodes = @(
     onError = 'continueRegularOutput'; alwaysOutputData = $true
   },
   [ordered]@{
-    # Las ultimas operaciones de este cliente en transacciones_por_whatsapp, la mas reciente primero
+    # Las ultimas operaciones de este cliente en transacciones_detal_por_whatsapp, la mas reciente primero
     # (ver "Revisar Operacion"). Si Supabase falla, el bot sigue sin eso.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_por_whatsapp'; returnAll = $false; limit = $OPERACIONES_A_LEER; filterType = 'string'; filterString = "={{ 'whatsapp=eq.' + `$('Prep Debounce').first().json.jid.split('@')[0].replace(/\D/g,'') + '&order=creado.desc' }}" }
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_detal_por_whatsapp'; returnAll = $false; limit = $OPERACIONES_A_LEER; filterType = 'string'; filterString = "={{ 'whatsapp=eq.' + `$('Prep Debounce').first().json.jid.split('@')[0].replace(/\D/g,'') + '&order=creado.desc' }}" }
     id = 'a1b2c3d4-0008-4e00-9a00-registro00008'; name = 'Consultar Operaciones WhatsApp'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1632,48)
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
@@ -2984,9 +2984,9 @@ $nodes = @(
     onError = 'continueRegularOutput'
   },
   [ordered]@{
-    # Guarda la operacion en transacciones_por_whatsapp ('en_proceso'; de noche, 'en_espera'). Si falla, la operacion
+    # Guarda la operacion en transacciones_detal_por_whatsapp ('en_proceso'; de noche, 'en_espera'). Si falla, la operacion
     # igual se paso al grupo: solo queda sin registro.
-    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'transacciones_por_whatsapp'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
+    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'transacciones_detal_por_whatsapp'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
     id = 'a1b2c3d4-0010-4e00-9a00-registro00010'; name = 'Guardar Operacion en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3904,208)
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }

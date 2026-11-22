@@ -1,5 +1,5 @@
 -- ============================================================================
---  Tabla transacciones_por_whatsapp: el registro de cada operacion que llega
+--  Tabla transacciones_detal_por_whatsapp: el registro de cada operacion que llega
 --  por el bot de WhatsApp. UNA FILA POR CUENTA DESTINO: cada cuenta tiene su propio
 --  estado y pasa a 'enviada' cuando la operadora devuelve la foto de ESA cuenta.
 --  Las cuentas de un mismo deposito comparten id_msg_captura.
@@ -18,7 +18,7 @@
 --    cancelada
 -- ============================================================================
 
-create table if not exists public.transacciones_por_whatsapp (
+create table if not exists public.transacciones_detal_por_whatsapp (
   id               bigint generated always as identity primary key,
   creado           timestamptz not null default now(),
   actualizado      timestamptz not null default now(),
@@ -40,11 +40,11 @@ create table if not exists public.transacciones_por_whatsapp (
   notas            text
 );
 
-comment on column public.transacciones_por_whatsapp.estado is
+comment on column public.transacciones_detal_por_whatsapp.estado is
   'pendiente: falta cuenta o captura | en_espera: completa fuera de horario, se publica al abrir | en_proceso: publicada en transferir | enviada: la operadora devolvio la foto | repetida | cancelada';
 
-create index if not exists tpw_whatsapp_idx  on public.transacciones_por_whatsapp (whatsapp, creado desc);
-create index if not exists tpw_en_espera_idx on public.transacciones_por_whatsapp (creado) where estado = 'en_espera';
+create index if not exists tpw_whatsapp_idx  on public.transacciones_detal_por_whatsapp (whatsapp, creado desc);
+create index if not exists tpw_en_espera_idx on public.transacciones_detal_por_whatsapp (creado) where estado = 'en_espera';
 
 create or replace function public.tpw_tocar_actualizado() returns trigger
 language plpgsql set search_path = public as $$
@@ -54,10 +54,11 @@ begin
 end;
 $$;
 
-drop trigger if exists tpw_actualizado on public.transacciones_por_whatsapp;
-create trigger tpw_actualizado before update on public.transacciones_por_whatsapp
+drop trigger if exists tpw_actualizado on public.transacciones_detal_por_whatsapp;
+create trigger tpw_actualizado before update on public.transacciones_detal_por_whatsapp
   for each row execute function public.tpw_tocar_actualizado();
 
 -- Seguridad: RLS prendido y SIN politicas. La clave publica de la app no ve nada;
 -- el bot entra con la clave de servicio (credencial "Supabase Cambios JK" de n8n).
-alter table public.transacciones_por_whatsapp enable row level security;
+alter table public.transacciones_detal_por_whatsapp enable row level security;
+-- Nota 22/11: la tabla se renombro con:  alter table public.transacciones_por_whatsapp rename to transacciones_detal_por_whatsapp;

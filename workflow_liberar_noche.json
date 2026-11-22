@@ -4,7 +4,7 @@
                   {
                       "parameters":  {
                                          "color":  4,
-                                         "content":  "## Liberar operaciones de la noche\r\n**Lunes a sábado 9:05 y domingo 10:05** (hora de Ecuador).\r\n\r\nDe noche el bot atiende, pero NO pasa las operaciones a transferir: las deja en Supabase (`transacciones_por_whatsapp`) con estado **en_espera**. Este workflow, al abrir, toma cada una y:\r\n1. publica la captura y cada cuenta en el grupo de transferir, igual que de día\r\n2. guarda de quién es cada publicación, para que la foto de la operadora le llegue al cliente\r\n3. le manda al cliente el sticker **PEDIDO APROBADO**\r\n4. pasa las filas a **en_proceso**\r\n\r\nCredenciales: Evolution apikey Kelvin 0380, Redis memoria para Cambios JK, Supabase Cambios JK.\r\nSe genera con `build_liberar_noche.ps1`. No lo edites aquí: se pisa en el próximo despliegue.",
+                                         "content":  "## Liberar operaciones de la noche\r\n**Lunes a sábado 9:05 y domingo 10:05** (hora de Ecuador).\r\n\r\nDe noche el bot atiende, pero NO pasa las operaciones a transferir: las deja en Supabase (`transacciones_detal_por_whatsapp`) con estado **en_espera**. Este workflow, al abrir, toma cada una y:\r\n1. publica la captura y cada cuenta en el grupo de transferir, igual que de día\r\n2. guarda de quién es cada publicación, para que la foto de la operadora le llegue al cliente\r\n3. le manda al cliente el sticker **PEDIDO APROBADO**\r\n4. pasa las filas a **en_proceso**\r\n\r\nCredenciales: Evolution apikey Kelvin 0380, Redis memoria para Cambios JK, Supabase Cambios JK.\r\nSe genera con `build_liberar_noche.ps1`. No lo edites aquí: se pisa en el próximo despliegue.",
                                          "width":  520,
                                          "height":  360
                                      },
@@ -43,7 +43,7 @@
                   },
                   {
                       "parameters":  {
-                                         "tableId":  "transacciones_por_whatsapp",
+                                         "tableId":  "transacciones_detal_por_whatsapp",
                                          "filterString":  "estado=eq.en_espera\u0026order=creado.asc",
                                          "resource":  "row",
                                          "filterType":  "string",
@@ -342,7 +342,7 @@
                   {
                       "parameters":  {
                                          "inputsToIgnore":  "filaId",
-                                         "tableId":  "transacciones_por_whatsapp",
+                                         "tableId":  "transacciones_detal_por_whatsapp",
                                          "filterString":  "={{ \u0027id=eq.\u0027 + $json.filaId + \u0027\u0026estado=eq.en_espera\u0027 }}",
                                          "resource":  "row",
                                          "filterType":  "string",
