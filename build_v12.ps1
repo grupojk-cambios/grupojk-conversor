@@ -797,7 +797,11 @@ return [{ json: { mimetype: $json.mimetype || 'image/jpeg' }, binary: { data: { 
 '@
 
 # ===================== PROMPT: LEER IMAGEN (vision) =====================
-$leerImagenPrompt = 'Esta imagen la envio un cliente de una casa de cambio de remesas por WhatsApp. Clasificala y responde SOLO en JSON valido sin texto extra: {"tipo": "comprobante|cuenta|otra", "resumen": "datos clave en una sola linea"}. comprobante = recibo o captura de un pago/transferencia que el cliente hizo (extrae monto, banco, fecha, referencia). cuenta = datos de una cuenta bancaria (extrae banco, numero de cuenta, titular, cedula). otra = cualquier otra cosa.'
+# El resumen va SIEMPRE con el mismo formato ("Monto: ..., Banco: ..., Fecha: ..., Referencia: ..."): de ahi
+# sacan el monto y la referencia "Revisar Operacion" (repetidas), "Detectar Aprobación" y la cabecera de la
+# cuenta en transferir. El 21/11 la IA escribio "$30,00 Transferencia a ..." sin "Monto:" y la cuenta salio
+# sin precio.
+$leerImagenPrompt = 'Esta imagen la envio un cliente de una casa de cambio de remesas por WhatsApp. Clasificala y responde SOLO en JSON valido sin texto extra: {"tipo": "comprobante|cuenta|otra", "resumen": "..."}. comprobante = recibo o captura de un pago/transferencia que el cliente hizo; el resumen DEBE ir asi, en una sola linea: "Monto: <monto con su moneda, ej. $30,00>, Banco: <banco desde donde pago>, Fecha: <fecha>, Referencia: <numero de referencia, de comprobante o de transaccion>". cuenta = datos de una cuenta bancaria; el resumen asi: "Banco: <banco>, Cuenta: <numero>, Titular: <nombre>, Cedula: <cedula>". Si un dato no se ve, escribe "no visible". otra = cualquier otra cosa (resumen corto).'
 
 # ===================== CODIGO: TEXTO DE IMAGEN =====================
 $textoImagenCode = @'
@@ -1010,7 +1014,10 @@ let montoComprobante = null;
 try {
   const trozo = original.match(/\[El cliente envio un COMPROBANTE[^\]]*\]/i);
   if (trozo){
-    const n = trozo[0].match(/monto[^0-9]{0,12}([0-9]+(?:[.,][0-9]{1,2})?)/i);
+    // Con la etiqueta "Monto:"; si la IA no la puso, el primer monto con "$" ("$30,00", caso del 21/11).
+    const sinH = trozo[0].replace(/huella:\s*[0-9a-f]+/gi, '');
+    const n = sinH.match(/monto[^0-9]{0,12}([0-9]+(?:[.,][0-9]{1,2})?)(?![0-9])/i)
+           || sinH.match(/(?:\$|usd|us\$)[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)(?![0-9])/i);
     if (n){ const v = parseFloat(n[1].replace(',', '.')); if (!isNaN(v)) montoComprobante = v; }
   }
 } catch(e){}
@@ -1025,9 +1032,10 @@ return [{ json: { aprobado: true, jid, nombre, nombreMostrar, numero, datosCuent
 
 # ===================== CODIGO: CUENTAS POR BLOQUE (compartido) =====================
 $bloquesCuentasJs = @'
-// ===== CUENTAS DESTINO, UNA POR BLOQUE (lo usan "Separar Cuentas" y "Armar Filas Noche") =====
+// ===== CUENTAS DESTINO, UNA POR BLOQUE (lo usan "Separar Cuentas", "Armar Filas Noche" y "Revisar Operacion") =====
+// Los nombres son propios (montoDelBloque, limpiarNotasBot...) para no chocar con los de "Revisar Operacion".
 // Las notas que escribe el propio bot al leer una imagen no son cuentas del cliente.
-function limpiar(t){
+function limpiarNotasBot(t){
   return String(t || '')
     .replace(/\[El cliente envio un COMPROBANTE[^\]]*\]/gi, '')
     .replace(/\[El cliente envio una imagen que no parece[^\]]*\]/gi, '')
@@ -1038,7 +1046,7 @@ function limpiar(t){
 // Monto del bloque: "$30", "30$", "30 usd", "$30,50". Si no hay, null.
 // Primero se busca "$30" y despues "30$" EN LA MISMA LINEA. Con el salto de linea permitido, una
 // cedula con "$60" en la linea de abajo salia como monto ("Ci 11111111 / $60" -> $11111111).
-function montoDe(t){
+function montoDelBloque(t){
   const s = String(t);
   const m = s.match(/\$[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \t]*(?:\$|usd|dolares|dolar)/i);
   if (!m) return null;
@@ -1046,7 +1054,7 @@ function montoDe(t){
   return isNaN(v) ? null : v;
 }
 
-const CLAVES = ['bancolombia','nequi','pago movil','banco','cuenta','titular','cedula','cc ',' ci ',
+const CLAVES_CUENTA = ['bancolombia','nequi','pago movil','banco','cuenta','titular','cedula','cc ',' ci ',
                 'swift','interbank','binance','zelle','pichincha','guayaquil','produbanco','pacifico',
                 'bancolombia','ahorro','corriente','banesco','mercantil','provincial','bdv','bicentenario',
                 'bancamiga','davivienda','daviplata','plin','yape','paypal','usdt','wallet','billetera'];
@@ -1054,30 +1062,87 @@ const CLAVES = ['bancolombia','nequi','pago movil','banco','cuenta','titular','c
 // asi no se pierde el caso del 20/11 (pais, cuenta de 20 digitos, titular, cedula, monto).
 function esBloqueCuenta(bloque){
   const bajo = ' ' + bloque.toLowerCase() + ' ';
-  if (CLAVES.some(k => bajo.indexOf(k) !== -1)) return true;
+  if (CLAVES_CUENTA.some(k => bajo.indexOf(k) !== -1)) return true;
   if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, '$1'))) return true;
   return /[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo);
+}
+
+// ---------- cuantas cuentas trae un mensaje ----------
+// Antes se partia el mensaje en cada renglon vacio. Pero muchos clientes escriben UNA cuenta con
+// renglones vacios en el medio ("Banco / (vacio) / numero / (vacio) / titular y cedula / (vacio) / $60"),
+// y al grupo iban 2 o 3 publicaciones sin monto (revision de los chats reales, 21/11). Ahora las cuentas
+// se cuentan por lo que las identifica: un numero de cuenta o telefono, un correo o una billetera.
+// La cedula NO cuenta: "C.I: 0900000001" tiene 10 digitos pero no es otra cuenta.
+function tieneIdentificador(p){
+  for (const l of String(p).split('\n')){
+    // Tampoco un telefono de contacto ("Contactanos al 09...", "WhatsApp 09...").
+    const sinCedula = l.replace(/(c\.?\s?i\b\.?|c\.?\s?c\b\.?|c[eé]d(ula)?\b\.?|rif\b|dni\b|pasaporte|\b[ve]-)\s*:?\s*[0-9][0-9 .\-]*/gi, ' ')
+                       .replace(/(cont[aá]ct\w*|whats?app|wsp)\s*(al|:)?\s*\+?[0-9][0-9 .\-]*/gi, ' ');
+    if (/[0-9]{10,}/.test(sinCedula.replace(/([0-9])[ .\-](?=[0-9])/g, '$1'))) return true;
+    if (/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(l)) return true;
+    if (/(^|\s)[A-Za-z0-9]{26,}(\s|$)/.test(l)) return true;
+  }
+  return false;
+}
+// Con que suele empezar una cuenta (para saber donde empieza la siguiente).
+const BANCOS_INICIO = /(banco|bank|bancolombia|nequi|daviplata|pago\s*m[oó]vil|zelle|binance|pichincha|guayaquil|produbanco|pac[ií]fico|banesco|mercantil|provincial|bdv|bicentenario|bancamiga|bnc|davivienda|interbank|bcp|scotiabank|yape|plin|paypal|usdt)/i;
+// Un pedazo que es solo el monto ("$60", "40$", "Monto 25 usd").
+const soloMonto = p => String(p).length <= 30 && montoDelBloque(p) !== null && !/[0-9]{6,}/.test(String(p).replace(/[ .,\-]/g, ''));
+// Un pedazo que parece el nombre del titular (pocas palabras, solo letras). La charla no ("gracias amigo").
+const CHARLA = /\b(hola|buen[oa]s?|d[ií]as|tardes|noches|gracias|porfa|favor|amig[oa]|herman[oa]|ok|listo|dale|saludos|bendiciones|av[ií]same|avisa|espero|cuando|llegue)\b/i;
+const nombreProbable = p => /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü .']{3,60}$/.test(String(p)) && String(p).trim().split(/\s+/).length <= 5 && !CHARLA.test(p);
+function cuentasDelMensaje(t){
+  const partes = String(t).split(/\n\s*\n+/).map(x => x.trim()).filter(Boolean);
+  const sirve = p => esBloqueCuenta(p) || soloMonto(p) || nombreProbable(p);
+  // De cada cuenta se quita lo que viene antes de sus datos (el saludo) y la charla.
+  const armar = piezas => { const d = piezas.findIndex(p => esBloqueCuenta(p)); return d === -1 ? '' : piezas.slice(d).filter(sirve).join('\n'); };
+  const conId = partes.filter(tieneIdentificador).length;
+  if (conId <= 1) return [armar(partes)].filter(Boolean);          // UNA sola cuenta, aunque traiga renglones vacios
+  // VARIAS cuentas: cada una empieza con su banco o su numero; el titular, la cedula y el monto que vienen
+  // despues son de esa misma cuenta.
+  const grupos = [];
+  let actual = null;
+  for (const p of partes){
+    const id = tieneIdentificador(p);
+    const otra = actual && actual.id && (id || (BANCOS_INICIO.test(p) && !soloMonto(p)));
+    if (!actual || otra){ actual = { piezas: [], id: false }; grupos.push(actual); }
+    actual.piezas.push(p);
+    if (id) actual.id = true;
+  }
+  return grupos.map(g => armar(g.piezas)).filter(Boolean);
 }
 
 // Un bloque por cuenta, con la cabecera "nombre - $monto". Se recorre mensaje por mensaje para que
 // cada bloque conserve el id del mensaje del que salio (para citarselo al cliente despues).
 // Si no se reconoce ningun bloque (lo escribio de una forma rara), va todo junto, como antes: es
 // preferible a dejar a la operadora sin la cuenta.
-function bloquesDeCuentas(lista, nombre, todoSiNada, idTodo){
+// El monto del deposito: la suma de las capturas, solo si se les leyo el monto a TODAS (si no, el de
+// respaldo, o nada). Sirve para la cabecera cuando el cliente mando UNA sola cuenta sin monto.
+function montoDelDeposito(ro, respaldo){
+  const cs = ((ro && ro.registro) || {}).capturas || [];
+  if (cs.length && cs.every(c => typeof c.monto === 'number' && !isNaN(c.monto))) return Math.round(cs.reduce((a, c) => a + c.monto, 0) * 100) / 100;
+  return (typeof respaldo === 'number' && !isNaN(respaldo)) ? respaldo : null;
+}
+
+function bloquesDeCuentas(lista, nombre, todoSiNada, idTodo, montoDeposito){
   const out = [];
   for (const m of (lista || [])){
-    const t = limpiar(m && m.texto);
+    const t = limpiarNotasBot(m && m.texto);
     if (!t) continue;
-    for (const trozo of t.split(/\n\s*\n+/)){
-      const bloque = trozo.trim();
-      if (!bloque || !esBloqueCuenta(bloque)) continue;
-      const monto = montoDe(bloque);
+    for (const bloque of cuentasDelMensaje(t)){
+      const monto = montoDelBloque(bloque);
       out.push({ cuenta: nombre + (monto !== null ? ' - $' + monto : '') + '\n\n' + bloque, idCuenta: (m && m.id) || '', monto, texto: bloque });
     }
   }
   if (!out.length){
     const todo = String(todoSiNada || '').trim();
     if (todo) out.push({ cuenta: nombre + '\n\n' + todo, idCuenta: idTodo || '', monto: null, texto: todo });
+  }
+  // UNA sola cuenta y sin monto: va con el monto del deposito (21/11: la clienta mando banco, cedula y
+  // telefono, y en transferir la cuenta salio sin precio). Con varias cuentas no se reparte nada.
+  if (out.length === 1 && out[0].monto === null && typeof montoDeposito === 'number' && !isNaN(montoDeposito)){
+    out[0].monto = montoDeposito;
+    out[0].cuenta = nombre + ' - $' + montoDeposito + '\n\n' + out[0].texto;
   }
   return out;
 }
@@ -1090,14 +1155,14 @@ $separarCuentasCode = @'
 const ap = $('Detectar Aprobación').item.json;
 const nombre = ap.nombreMostrar || ap.nombre || 'Cliente';
 
-let lista = [];
+let lista = [], ro = {};
 try {
-  const ro = $('Revisar Operacion').first().json || {};
+  ro = $('Revisar Operacion').first().json || {};
   lista = (ro.mensajesAprobar !== undefined) ? (ro.mensajesAprobar || []) : ($('Combinar').item.json.mensajes || []);
 } catch(e){ try { lista = $('Combinar').item.json.mensajes || []; } catch(e2){} }
 
 __BLOQUES_CUENTAS__
-return bloquesDeCuentas(lista, nombre, ap.datosCuenta, ap.idCuenta).map(b => ({ json: b }));
+return bloquesDeCuentas(lista, nombre, ap.datosCuenta, ap.idCuenta, montoDelDeposito(ro, ap.montoComprobante)).map(b => ({ json: b }));
 '@
 $separarCuentasCode = $separarCuentasCode.Replace('__BLOQUES_CUENTAS__', $bloquesCuentasJs)
 
@@ -1213,7 +1278,7 @@ try { const d = $('Webhook Evolution API').first().json.body.data; jid = String(
 try { nombreCargado = String($('Solo Estos Numeros').first().json.nombreCargado || '').trim(); } catch(e){}
 const nombre = nombreCargado || pushName || 'Cliente';
 const cuentasTexto = ((ro.registro || {}).cuentas || []).map(c => c.texto).join('\n\n');
-const bloques = bloquesDeCuentas(ro.mensajesAprobar || [], nombre, cuentasTexto, '');
+const bloques = bloquesDeCuentas(ro.mensajesAprobar || [], nombre, cuentasTexto, '', montoDelDeposito(ro, null));
 const base = filaBase(ro.registro, jid, nombre, ro.idImagen);
 return bloques.map((b, i) => ({ json: Object.assign({}, base, {
   estado: 'en_espera',
@@ -1730,13 +1795,17 @@ function numero(s){
   return parseFloat(s.slice(0, ult).replace(/[.,]/g, '') + '.' + dec);
 }
 function montoDe(t){
-  const m = sinHuella(t).match(/monto[^0-9]{0,15}([0-9][0-9.,]*)/i);
+  // Con la etiqueta "Monto:"; si la IA no la puso, el primer monto con "$" o "USD" ("$30,00", caso del 21/11).
+  const x = sinHuella(t);
+  const m = x.match(/monto[^0-9]{0,15}([0-9][0-9.,]*)/i)
+         || x.match(/(?:\$|usd|us\$)[ \t]*([0-9][0-9.,]*)/i)
+         || x.match(/([0-9][0-9.,]*)[ \t]*(?:\$|usd|d[oó]lares)/i);
   if (!m) return null;
   const v = numero(m[1]);
   return isNaN(v) ? null : v;
 }
 function refDe(t){
-  const m = sinHuella(t).match(/(referencia|ref\.?|transacci[oó]n|documento|confirmaci[oó]n|operaci[oó]n|n[uú]mero)[^0-9\]]{0,25}([0-9]{4,})/i);
+  const m = sinHuella(t).match(/(referencia|ref\.?|transacci[oó]n|documento|comprobante|confirmaci[oó]n|operaci[oó]n|n[uú]mero|nro\.?)[^0-9\]]{0,25}([0-9]{4,})/i);
   return m ? m[2] : '';
 }
 function huellaDe(t){
@@ -1906,6 +1975,8 @@ function sinMontos(t){
     .filter(l => l.length).join('\n');
 }
 
+__BLOQUES_CUENTAS__
+
 // ---------- lo que llego ahora ----------
 const RX_CAPTURA = /\[El cliente envio un COMPROBANTE[^\]]*\]/i;
 const capturas = [];
@@ -1968,24 +2039,40 @@ for (let i = 0; i < capturas.length; i++){
 const todasRepetidas = capturas.length > 0 && capturas.every(c => c.clase === 'repetida');
 
 // Varias cuentas (en un mensaje o en varios) se juntan; la misma cuenta escrita dos veces, no.
-// Si la misma cuenta llega otra vez MAS COMPLETA (ej. ahora con el banco y el titular), se queda
-// la version mas completa.
-function unirCuentas(a, b){
-  const out = [], donde = {};
-  for (const m of a.concat(b)){
-    const clave = datosDe(m.texto).sort().join('|') || String(m.texto).trim().toLowerCase();
-    const nueva = { id: m.id || '', texto: m.texto };
-    if (donde[clave] === undefined){ donde[clave] = out.length; out.push(nueva); continue; }
-    if (String(m.texto).length > String(out[donde[clave]].texto).length) out[donde[clave]] = nueva;
-  }
-  return out;
+// Por cada cuenta se queda la version CON monto (21/11: si la mando sin monto, se le pide y la vuelve a
+// mandar con monto); si las dos tienen o no tienen monto, la mas completa (ej. ahora con el banco y el
+// titular). Los mensajes viejos que ya no aportan ninguna cuenta se descartan: asi al grupo no van repetidas.
+function depurarCuentas(msgs){
+  const gana = {};
+  msgs.forEach((m, i) => {
+    let bl = bloquesDeCuentas([m], '', '', '', null).map(b => ({ texto: b.texto, monto: b.monto }));
+    if (!bl.length) bl = [{ texto: String((m && m.texto) || ''), monto: montoDelBloque((m && m.texto) || '') }];
+    for (const b of bl){
+      const clave = datosDe(b.texto).sort().join('|') || normal(b.texto);
+      const g = gana[clave], con = b.monto !== null;
+      if (!g || (con && !g.con) || (con === g.con && b.texto.length >= g.largo)) gana[clave] = { i, con, largo: b.texto.length, monto: b.monto };
+    }
+  });
+  const cuentas = Object.keys(gana).map(k => gana[k]);
+  return { mensajes: msgs.filter((m, i) => cuentas.some(c => c.i === i)).map(m => ({ id: m.id || '', texto: m.texto })), cuentas };
 }
 const capturasOp = capturasGuardadas.concat(nuevas);
-const cuentasOp = unirCuentas(cuentaGuardada, cuentasAhora);
+const depuradas = depurarCuentas(cuentaGuardada.concat(cuentasAhora));
+const cuentasOp = depuradas.mensajes;
+
+// ---------- ¿las cuentas traen el monto? (pedido de Kelvin, 21/11) ----------
+// Con VARIAS cuentas, cada una tiene que decir cuanto va: si a alguna le falta, NO se pasa a transferir y
+// se le pide al cliente que se lo coloque y las vuelva a mandar. Con UNA sola cuenta sin monto se usa el
+// del deposito (va en la cabecera); solo si tampoco se pudo leer el de la captura, se le pide.
+const montosCap = capturasOp.map(c => c.monto);
+const montoDeposito = (capturasOp.length && montosCap.every(m => typeof m === 'number' && !isNaN(m))) ? montosCap.reduce((a, b) => a + b, 0) : null;
+const cuentasDep = depuradas.cuentas;
+const sinMonto = cuentasDep.filter(c => c.monto === null).length;
+const faltaMonto = cuentasDep.length > 1 ? sinMonto > 0 : (cuentasDep.length === 1 && sinMonto === 1 && montoDeposito === null);
 
 let estado = 'nada';
 if (todasRepetidas) estado = 'repetido';
-else if (capturasOp.length && cuentasOp.length) estado = 'completo';
+else if (capturasOp.length && cuentasOp.length) estado = faltaMonto ? 'falta_monto' : 'completo';
 else if (capturasOp.length && propuestaNueva) estado = 'confirmar_cuenta';
 else if (capturasOp.length) estado = 'falta_cuenta';
 else if (cuentasAhora.length) estado = 'falta_captura';
@@ -1997,6 +2084,16 @@ const NOTA = {
   repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
 };
 if (propuestaNueva) NOTA.confirmar_cuenta = 'el cliente quiere usar la misma cuenta destino de la vez pasada. Responde SOLO esto, con la cuenta copiada tal cual: "¿Te lo envío a esta cuenta? 👇\n\n' + propuestaNueva.mensajes[0].texto + '\n\nResponde *sí* para confirmar"';
+if (estado === 'falta_monto'){
+  const varias = cuentasDep.length > 1;
+  NOTA.falta_monto = cuentasAhora.length
+    ? ('ya tengo la captura y ' + (varias ? ('las cuentas, pero ' + (sinMonto === 1 ? 'a una de las cuentas le falta el monto' : 'a ' + sinMonto + ' cuentas les falta el monto') + ' (cuanto va a cada una)')
+                                          : 'la cuenta, pero no trae el monto y no pude leer el monto de la captura')
+       + '. NO se procesa todavia. Responde SOLO: "' + (varias ? 'Disculpa, veo que tus datos no traen el monto de cada cuenta 🙏 Colócale a cada una cuánto va y envíamelas de nuevo, por favor'
+                                                            : 'Disculpa, veo que tus datos no traen el monto 🙏 Colócale el monto y envíamelos de nuevo, por favor') + '"')
+    : ('todavia falta el monto de ' + (varias ? 'cada cuenta' : 'la cuenta') + ' para procesar su remesa. Si pregunto otra cosa, respondelo; y recuerdale corto que le coloque el monto '
+       + (varias ? 'a cada cuenta' : 'a la cuenta') + ' y la vuelva a mandar.');
+}
 // Fuera de horario la operacion completa NO se pasa a transferir: queda 'en_espera' (ver "Armar
 // Filas Noche") y se publica al abrir. Al cliente solo se le dice que se recibio y cuando se procesa.
 const enEspera = (estado === 'completo') && !hor.abierto;
@@ -2022,11 +2119,13 @@ if (estado === 'completo'){
   // reconocerlas si las vuelve a mandar.
   const recordar = capturasGuardadas.concat(capturas.filter(c => c.clase !== 'repetida'));
   nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
-} else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta'){
+} else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta' || estado === 'falta_monto'){
   nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
                                          banco: c.banco || '', destino: c.destino || '',
                                          hasta: (typeof c.hasta === 'number') ? c.hasta : venceEn(c.ts || ahora) }));
   if (propuestaNueva) nueva.cuentaPropuesta = propuestaNueva;
+  // Falta el monto: las cuentas quedan guardadas; cuando las mande con monto, reemplazan a estas.
+  if (estado === 'falta_monto') nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
 } else if (estado === 'falta_captura'){
   nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
 } else {
@@ -2144,6 +2243,7 @@ $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_STICKER_GRACIAS
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [string]$HORAS_ENTRE_NOMBRES)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__DIAS_ULTIMA_OPERACION__', [string]$DIAS_ULTIMA_OPERACION)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORARIO_JK__', $horarioJs)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__BLOQUES_CUENTAS__', $bloquesCuentasJs)
 
 # ===================== PROMPT: LEER COMPROBANTE DE LA OPERADORA (Fase B) =====================
 $leerComprobanteOperadoraPrompt = 'Esta imagen es el comprobante de una transferencia que hizo una casa de cambio HACIA un beneficiario (transferencia bancaria, pago movil, Zelle, Binance, Nequi, etc.). Lee SOLO los datos del DESTINO (quien RECIBE el dinero), nunca los de quien envia. Responde SOLO JSON valido, sin texto extra: {"es_comprobante": true|false, "cuenta_destino": "numero de cuenta o telefono del destino tal como aparece (con asteriscos si esta oculto)", "cedula_destino": "", "titular_destino": "nombre de quien recibe", "banco_destino": "", "correo_destino": "", "billetera_destino": "", "monto": "", "moneda": "", "referencia": ""}. Si un dato no aparece, dejalo vacio. No inventes nada. es_comprobante = false si no es un comprobante de pago (por ejemplo, una foto de dinero en efectivo o de una persona).'

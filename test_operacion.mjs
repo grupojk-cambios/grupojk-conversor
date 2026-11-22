@@ -325,6 +325,116 @@ console.log('=== 5) HUELLA DE LA FOTO (Texto de Imagen) ===');
 }
 
 console.log('');
+console.log('=== 5b) MONTO Y REFERENCIA AUNQUE LA IA NO ESCRIBA "Monto:" (caso del 21/11) ===');
+{
+  // 21/11: la IA leyo la captura como "$30,00 Transferencia a ..., N. de comprobante ..." (sin la palabra
+  // "Monto:"). El bot no encontro el monto, la clienta mando la cuenta sin monto, y en transferir la
+  // cuenta salio sin precio.
+  reloj = Date.parse('2026-11-21T15:00:00Z');   // 10:00 am en Ecuador (abierto)
+  const CAP = (ref, huella) => '[El cliente envio un COMPROBANTE de pago. Datos leidos: $30,00 Transferencia a Persona Ejemplo el 21 de noviembre de 2026, Banco Pichincha, N. de comprobante ' + ref + '. Huella: ' + huella + ']';
+  const CTA = '0102 1234567 04120000000';
+  const r = revisar([{ id: 'F1', texto: CAP('12345678', '0011223344556677') }, { id: 'C1', texto: CTA }], null);
+  chk(r.estadoOperacion === 'completo', 'captura + cuenta: COMPLETO', '-> ' + r.estadoOperacion);
+  chk(r.registro.capturas[0].monto === 30, 'lee el monto "$30,00" aunque no diga "Monto:"', '-> ' + r.registro.capturas[0].monto);
+  chk(r.registro.capturas[0].ref === '12345678', 'y la referencia "N. de comprobante 12345678"', '-> ' + r.registro.capturas[0].ref);
+  const ap = detectar(r);
+  chk(ap.length === 1 && ap[0].json.montoComprobante === 30, 'Detectar Aprobacion tambien lee el monto', '-> ' + (ap[0] || { json: {} }).json.montoComprobante);
+  const sep = separar(r, ap[0].json);
+  chk(sep.length === 1 && sep[0].cuenta.split(SALTO)[0] === 'Ana Prueba - $30' && sep[0].monto === 30,
+      'UNA sola cuenta sin monto: la cabecera lleva el monto del deposito', '-> ' + JSON.stringify(sep.map(x => x.cuenta.split(SALTO)[0])));
+
+  const r3 = revisar([{ id: 'F3', texto: CAP('12345670', '1111222233334444') }, { id: 'C4', texto: CTA + SALTO + '$25' }], null);
+  const sep3 = separar(r3, detectar(r3)[0].json);
+  chk(sep3.length === 1 && sep3[0].monto === 25, 'si la cuenta trae su monto, manda el de la cuenta', '-> ' + (sep3[0] || {}).monto);
+
+  const prompt = String(nodo('Leer Imagen').parameters.text);
+  chk(/Monto: </.test(prompt) && /Referencia: </.test(prompt), 'la IA lee las capturas siempre con el mismo formato (Monto, Banco, Fecha, Referencia)');
+}
+
+console.log('');
+console.log('=== 5c) CUENTAS SIN MONTO: SE LE PIDE AL CLIENTE (pedido de Kelvin, 21/11) ===');
+{
+  // Con VARIAS cuentas, cada una tiene que decir cuanto va. Si a alguna le falta, no se pasa a
+  // transferir: se le pide al cliente que le coloque el monto y las vuelva a mandar.
+  reloj = Date.parse('2026-11-21T16:00:00Z');   // 11:00 am en Ecuador (abierto)
+  const CAP = (monto, ref) => '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: ' + monto + ', Banco: Pichincha, Fecha: 21/11/2026, Referencia: ' + ref + ']';
+  const CTA1 = '0102 1234567 04120000000';
+  const CTA2 = '0134 7654321 04140000000';
+
+  const r1 = revisar([{ id: 'F1', texto: CAP('$30,00', '55660001') }, { id: 'C1', texto: CTA1 }, { id: 'C2', texto: CTA2 }], null);
+  chk(r1.estadoOperacion === 'falta_monto', 'DOS cuentas sin monto: FALTA EL MONTO', '-> ' + r1.estadoOperacion);
+  chk(/no traen el monto/.test(r1.notaIA) && /cada una/.test(r1.notaIA), 'le pide que le coloque el monto a cada cuenta', '-> ' + r1.notaIA.slice(-120));
+  chk(r1.textoAprobar === '' && detectar(r1).length === 0, 'y NO se pasa a transferir');
+  chk(r1.op.capturas.length === 1 && r1.op.cuenta && r1.op.cuenta.mensajes.length === 2, 'la captura y las cuentas quedan guardadas esperando');
+
+  pasan(3);
+  const r2 = revisar([{ id: 'C3', texto: CTA1 + SALTO + '$20' + SALTO + SALTO + CTA2 + SALTO + '$10' }], r1.op);
+  chk(r2.estadoOperacion === 'completo', 'las vuelve a mandar con monto: COMPLETO', '-> ' + r2.estadoOperacion);
+  const sep2 = separar(r2, detectar(r2)[0].json);
+  chk(sep2.length === 2 && sep2.map(x => x.monto).join() === '20,10', 'al grupo van las dos, cada una con su monto (sin las viejas sin monto)',
+      '-> ' + JSON.stringify(sep2.map(x => x.cuenta.split(SALTO)[0])));
+
+  const r3 = revisar([{ id: 'C4', texto: CTA1 + SALTO + '$20' }], r1.op);
+  chk(r3.estadoOperacion === 'falta_monto', 'si corrige solo una de las dos: sigue faltando el monto de la otra', '-> ' + r3.estadoOperacion);
+  chk(r3.op.cuenta.mensajes.length === 2 && r3.op.cuenta.mensajes.some(m => /\$20/.test(m.texto)), 'y se guarda la corregida en lugar de la vieja');
+
+  const r4 = revisar([{ id: 'X1', texto: 'ok' }], r1.op);
+  chk(r4.estadoOperacion === 'falta_monto' && /si pregunto otra cosa/i.test(r4.notaIA), 'si escribe otra cosa: se lo recuerda, sin dejar de contestarle', '-> ' + r4.notaIA.slice(-90));
+
+  const r5 = revisar([{ id: 'F5', texto: CAP('no visible', '55660005') }, { id: 'C5', texto: CTA1 }], null);
+  chk(r5.estadoOperacion === 'falta_monto' && /envíamelos de nuevo/.test(r5.notaIA), 'UNA cuenta sin monto y la captura sin monto legible: se lo pide', '-> ' + r5.estadoOperacion);
+  const r6 = revisar([{ id: 'F6', texto: CAP('$30,00', '55660006') }, { id: 'C6', texto: CTA1 }], null);
+  chk(r6.estadoOperacion === 'completo', 'UNA cuenta sin monto pero se leyo el deposito: COMPLETO (va con el del deposito)', '-> ' + r6.estadoOperacion);
+
+  const r7 = revisar([{ id: 'F7', texto: CAP('$30,00', '55660007') }, { id: 'C7', texto: CTA1 + SALTO + '$20' + SALTO + SALTO + CTA2 }], null);
+  chk(r7.estadoOperacion === 'falta_monto', 'dos cuentas en UN mensaje, una sin monto: tambien se pide', '-> ' + r7.estadoOperacion);
+  const r8 = revisar([{ id: 'F8', texto: CAP('$30,00', '55660008') }, { id: 'C8', texto: CTA1 + SALTO + '$20' }, { id: 'C9', texto: CTA2 + SALTO + '10$' }], null);
+  chk(r8.estadoOperacion === 'completo', 'dos cuentas con su monto cada una: COMPLETO', '-> ' + r8.estadoOperacion);
+
+  reloj = Date.parse('2026-11-22T03:00:00Z');   // 10:00 pm en Ecuador (cerrado)
+  const r9 = revisar([{ id: 'F9', texto: CAP('$30,00', '55660009') }, { id: 'C10', texto: CTA1 }, { id: 'C11', texto: CTA2 }], null);
+  chk(r9.estadoOperacion === 'falta_monto' && r9.enEspera === false, 'de noche tambien se pide (no queda en espera sin monto)', '-> ' + r9.estadoOperacion);
+}
+
+console.log('');
+console.log('=== 5d) UNA CUENTA ESCRITA CON RENGLONES VACIOS SIGUE SIENDO UNA SOLA ===');
+{
+  // Revision de los chats reales (21/11): muchos clientes escriben UNA cuenta con renglones vacios en el
+  // medio ("Banco / (vacio) / numero / (vacio) / titular y cedula / (vacio) / $60"). El bot partia cada
+  // pedazo como una cuenta distinta: al grupo iban 2 o 3 mensajes sin monto.
+  reloj = Date.parse('2026-11-21T16:00:00Z');   // 11:00 am en Ecuador
+  const CAP = (monto, ref) => '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: ' + monto + ', Banco: Pichincha, Fecha: 21/11/2026, Referencia: ' + ref + ']';
+  const V = '';   // renglon vacio
+  const una = ['Banco Nacional de Credito', V, '0191-0000-00-0000012345 (Corriente)', V, 'Ana Prueba', ' Ci 11111111', V, V, '$60'].join(SALTO);
+  const r1 = revisar([{ id: 'F1', texto: CAP('$60,00', '77880001') }, { id: 'C1', texto: una }], null);
+  chk(r1.estadoOperacion === 'completo', 'una cuenta con renglones vacios: COMPLETO (no le pide el monto)', '-> ' + r1.estadoOperacion);
+  const s1 = separar(r1, detectar(r1)[0].json);
+  chk(s1.length === 1 && s1[0].monto === 60, 'al grupo va UNA sola publicacion, con su monto', '-> ' + s1.length + ' publicaciones, monto ' + (s1[0] || {}).monto);
+  chk(s1.length === 1 && /Banco Nacional/.test(s1[0].cuenta) && /0191-0000/.test(s1[0].cuenta) && /Ana Prueba/.test(s1[0].cuenta), 'con el banco, el numero y el titular juntos');
+
+  const saludo = ['Buenos dias amigo', V, 'Banco Ejemplo', '01020000000000099999', 'Pedro Prueba', V, '$25'].join(SALTO);
+  const r2 = revisar([{ id: 'F2', texto: CAP('$25,00', '77880002') }, { id: 'C2', texto: saludo }], null);
+  const s2 = separar(r2, detectar(r2)[0].json);
+  chk(r2.estadoOperacion === 'completo' && s2.length === 1 && !/Buenos dias/.test(s2[0].cuenta) && s2[0].monto === 25, 'el saludo de antes no va en la cuenta', '-> ' + JSON.stringify(s2.map(x => x.cuenta)));
+
+  const dos = ['Banco Uno', '01020000000000011111', 'Luisa Prueba', '$40', V, 'Banco Dos', '01340000000000022222', 'Mario Prueba', '$20'].join(SALTO);
+  const r3 = revisar([{ id: 'F3', texto: CAP('$60,00', '77880003') }, { id: 'C3', texto: dos }], null);
+  const s3 = separar(r3, detectar(r3)[0].json);
+  chk(r3.estadoOperacion === 'completo' && s3.length === 2 && s3.map(x => x.monto).join() === '40,20', 'dos cuentas separadas por un renglon vacio: dos publicaciones', '-> ' + s3.length);
+
+  const dosLargas = ['Banco Uno', V, '01020000000000011111', V, 'Luisa Prueba', V, '$40', V, 'Banco Dos', V, '01340000000000022222', V, 'Mario Prueba', V, '$20'].join(SALTO);
+  const r4 = revisar([{ id: 'F4', texto: CAP('$60,00', '77880004') }, { id: 'C4', texto: dosLargas }], null);
+  const s4 = separar(r4, detectar(r4)[0].json);
+  chk(r4.estadoOperacion === 'completo' && s4.length === 2 && s4.map(x => x.monto).join() === '40,20' && /Luisa/.test(s4[0].cuenta) && /Mario/.test(s4[1].cuenta),
+      'dos cuentas, cada una con renglones vacios: se arman bien', '-> ' + JSON.stringify(s4.map(x => x.cuenta.split(SALTO)[0])));
+
+  const ecu = ['Pichincha ahorro', '2200000002', V, 'C.I: 0900000002', V, 'Rosa Prueba'].join(SALTO);
+  const r5 = revisar([{ id: 'F5', texto: CAP('$15,00', '77880005') }, { id: 'C5', texto: ecu }], null);
+  const s5 = separar(r5, detectar(r5)[0].json);
+  chk(r5.estadoOperacion === 'completo' && s5.length === 1 && s5[0].monto === 15 && /Rosa Prueba/.test(s5[0].cuenta), 'la cedula de 10 digitos no se toma como otra cuenta', '-> ' + s5.length);
+}
+
+console.log('');
 console.log('=== 6) COMO QUEDA CABLEADO ===');
 {
   const c = wf.connections;
