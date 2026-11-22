@@ -138,6 +138,11 @@ $HORAS_ENTRE_NOMBRES = 24
 $OPERACIONES_A_LEER = 20
 $DIAS_ULTIMA_OPERACION = 7
 
+# MAYOR, Fase 1: el workflow "Mayor: escuchar y registrar" (scripts\desplegar_mayor.ps1). El bot le pasa
+# cada mensaje de los grupos de clientes que estan en la tabla grupos_mayor y NADA MAS: el bot no
+# responde ni publica nada en esos grupos.
+$MAYOR_WORKFLOW_ID = 'HIERZLV4lwtuBRbZ'
+
 # Horario de atencion (hora de Ecuador). Igual que el workflow de apertura y cierre: lunes a sabado
 # de 9:00 a 18:00 y domingo de 10:00 a 14:00. Fuera de horario el bot atiende igual, pero una
 # operacion completa (captura + cuenta) NO se pasa a transferir: queda 'en_espera' en Supabase y la
@@ -1369,6 +1374,21 @@ const cmd = texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(
 // escribiendo "bot on" en ese chat.
 const loEscribioElBot = String(llave.id || '').indexOf('3EB0') === 0;
 
+// ===== MAYOR (FASE 1): GRUPOS DE CLIENTES QUE EL BOT SOLO ESCUCHA =====
+// Si el chat es un grupo de la tabla grupos_mayor, el mensaje (de quien sea: el cliente, su operador,
+// Kelvin o la operadora) se le pasa al workflow "Mayor: escuchar y registrar" y ahi termina: NO se
+// contesta, NO se pausa, NO se publica nada. Va ANTES del bloque de fromMe y de la entrega del
+// comprobante, que tratan los grupos del detal (esos siguen exactamente igual). Si la tabla no se pudo
+// leer, el grupo se ignora como siempre.
+// El grupo donde se publican los pedidos del DETAL (transferir) y el de avisos NUNCA se enrutan al mayor,
+// aunque alguien los cargue por error en grupos_mayor: la entrega del comprobante del detal depende de ellos.
+const GRUPOS_DEL_DETAL = __GRUPOS_DEL_DETAL__;
+if (esGrupo && GRUPOS_DEL_DETAL.indexOf(jid) === -1){
+  let grupoMayor = null;
+  try { grupoMayor = $('Grupos Mayor').all().map(i => i.json).find(g => g && g.grupo_jid === jid && g.activo !== false) || null; } catch(e){}
+  if (grupoMayor) return [{ json: { accionPausa: 'mayor', grupo: grupoMayor, data: dat } }];
+}
+
 // ===== LA OPERADORA DEVUELVE EL COMPROBANTE DEL ENVIO =====
 // En el grupo de operaciones, cuando alguien RESPONDE (cita) una publicacion del bot con una
 // foto, esa foto es el comprobante de la transferencia y hay que hacersela llegar al cliente.
@@ -1581,6 +1601,8 @@ $soloEstosCode = $soloEstosCode.Replace('__MINUTOS_PAUSA__', [string]$MINUTOS_PA
 $soloEstosCode = $soloEstosCode.Replace('__HORAS_PAUSA_MANUAL__', [string]$HORAS_PAUSA_MANUAL)
 $soloEstosCode = $soloEstosCode.Replace('__MINUTOS_ENTRE_AVISOS__', [string]$MINUTOS_ENTRE_AVISOS)
 $soloEstosCode = $soloEstosCode.Replace('__PALABRAS_AVISO__', $PALABRAS_AVISO_JS)
+$GRUPOS_DEL_DETAL_JS = '[' + ((@($GRUPO_OPERACIONES, $GRUPO_AVISOS) | ForEach-Object { "'" + $_ + "'" }) -join ',') + ']'
+$soloEstosCode = $soloEstosCode.Replace('__GRUPOS_DEL_DETAL__', $GRUPOS_DEL_DETAL_JS)
 # .Replace() literal, NO -replace: el codigo de arriba trae $ y llaves que -replace
 # interpretaria como grupos con nombre.
 $soloEstosCode = $soloEstosCode.Replace('__MODO_SOLO_CLIENTES__', $MODO_SOLO_CLIENTES_JS)
@@ -2606,9 +2628,29 @@ $nodes = @(
       @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-reanudar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'reanudar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'reanudar' },
       @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-avisar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'avisar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'avisar' },
       @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-entregar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'entregar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'entregar' },
-      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-recfoto'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'recordarFoto'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'recordarFoto' }
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-recfoto'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'recordarFoto'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'recordarFoto' },
+      # SIEMPRE la ultima: los indices de las salidas de arriba no pueden cambiar.
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-mayor'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'mayor'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'mayor' }
     ) } }
     id = 'd0e1f2a3-0000-4b00-9000-routerpausa01'; name = 'Router Pausa'; type = 'n8n-nodes-base.switch'; typeVersion = 3.2; position = @(-150,-20)
+  },
+  [ordered]@{
+    # MAYOR, Fase 1: los grupos de clientes mayoristas que el bot escucha. Un grupo que no este aqui
+    # se ignora como siempre. Si Supabase falla o la tabla no existe, el nodo sigue sin filas.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'grupos_mayor'; returnAll = $true }
+    executeOnce = $true
+    id = 'e1f2a3b4-0000-4c00-9c00-gruposmayor01'; name = 'Grupos Mayor'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-816,-880)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # MAYOR, Fase 1: le pasa el mensaje al workflow "Mayor: escuchar y registrar" y TERMINA ahi (no sigue
+    # a ningun nodo). No espera su respuesta: el bot del detal no se frena por el mayor.
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $MAYOR_WORKFLOW_ID; mode = 'id' }
+                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
+                    mode = 'once'; options = @{ waitForSubWorkflow = $false } }
+    id = 'e1f2a3b4-0001-4c00-9c00-mayorescucha01'; name = 'Mayor Escuchar'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(-1280,-352)
+    onError = 'continueRegularOutput'
   },
   [ordered]@{
     # Pone la pausa. El TTL se renueva con CADA mensaje de Kelvin, asi que la hora cuenta
@@ -3002,7 +3044,8 @@ $connections = [ordered]@{
   'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Clientes Mayor Permitidos'; type='main'; index=0 } ) ) }
   'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
   'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Perfiles Mayor App'; type='main'; index=0 } ) ) }
-  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Redis Leer Pausa'; type='main'; index=0 } ) ) }
+  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Grupos Mayor'; type='main'; index=0 } ) ) }
+  'Grupos Mayor'           = @{ main = @( ,@( @{ node='Redis Leer Pausa'; type='main'; index=0 } ) ) }
   'Redis Leer Pausa'       = @{ main = @( ,@( @{ node='Redis Leer Aviso'; type='main'; index=0 } ) ) }
   'Redis Leer Aviso'       = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }
   'Avisar Pausa'           = @{ main = @( ,@( @{ node='Redis Marcar Aviso'; type='main'; index=0 } ) ) }
@@ -3013,7 +3056,8 @@ $connections = [ordered]@{
       @( ,@( @{ node='Redis Borrar Pausa';    type='main'; index=0 } ) ) +
       @( ,@( @{ node='Avisar Pausa';          type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Leer Publicacion';     type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Redis Guardar Ultima Foto';  type='main'; index=0 } ) )
+      @( ,@( @{ node='Redis Guardar Ultima Foto';  type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Mayor Escuchar';             type='main'; index=0 } ) )
     ) }
   'Redis Leer Publicacion' = @{ main = @( ,@( @{ node='Redis Leer Entregado';   type='main'; index=0 } ) ) }
   'Redis Leer Entregado'   = @{ main = @( ,@( @{ node='Redis Leer Ultima Foto'; type='main'; index=0 } ) ) }

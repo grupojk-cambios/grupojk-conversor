@@ -34,3 +34,6 @@ execution_*.json
 *_body.json
 workflow_*_actual.json
 JSON para N8N/
+
+# Datos privados del bot (grupos y telefonos de clientes): NUNCA se suben (el repositorio es publico)
+sql/privado/
