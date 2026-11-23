@@ -1,0 +1,389 @@
+{
+    "name":  "Avisar deposito que no cuadra",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "color":  4,
+                                         "content":  "## Avisar depósito que no cuadra\n\nCuando el depósito del cliente **no cuadra** con la suma de sus cuentas, el bot **no** pasa la operación a transferir y le pide al cliente que confirme los montos. Si el cliente lo arregla, el bot la procesa solo.\n\n**Vigilar** (la primera vez): a los **5 min** le recuerda al cliente; a los **10 min**, si sigue igual, avisa al **grupo de avisos**.\n\n**Escalar** (el cliente dice que está bien así): deja un aviso en el grupo de **transferir** para que lo revise un asesor.\n\nLo llama el bot (nodo *Vigilar Monto*).",
+                                         "width":  520,
+                                         "height":  340
+                                     },
+                      "id":  "b7c8d9e0-1000-4f00-9b00-vigilarnota00",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -160
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "id":  "b7c8d9e0-1001-4f00-9b00-vigilartrig01",
+                      "name":  "Cuando lo Llama el Bot",
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value2":  "={{true}}",
+                                                                                "value1":  "={{ $json.modo === \u0027escalar\u0027 }}"
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "b7c8d9e0-1006-4f00-9b00-vigilarmodo01",
+                      "name":  "Es Escalar?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       176,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// El cliente dice que esta bien asi, aunque el deposito no cuadra con sus cuentas: lo revisa un asesor.\n// Se deja un aviso en el grupo de TRANSFERIR para que nadie la transfiera sin revisarla.\nconst ent = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {};\n// La marca \"no cuadra\" de la operacion del cliente, solo si es la MISMA que se vigila (mismo token).\nfunction marcaVigente(nodoRedis){\n  let op = {};\n  try {\n    const raw = $(nodoRedis).first().json.operacion;\n    if (raw) op = (typeof raw === \u0027string\u0027) ? JSON.parse(raw) : raw;\n  } catch(e){ op = {}; }\n  const nc = (op \u0026\u0026 typeof op === \u0027object\u0027) ? op.noCuadra : null;\n  if (!nc || !ent.token || Number(nc.ts) !== Number(ent.token)) return null;\n  return nc;\n}\n// Como se escribe un monto: \"$10\", \"$10.50\", \"12.000 Bs\", \"100.000 COP\".\nfunction montoTexto(n, moneda){\n  if (typeof n !== \u0027number\u0027 || isNaN(n)) return \u0027?\u0027;\n  const dec = Math.round(n * 100) % 100 !== 0;\n  if (!moneda || moneda === \u0027USD\u0027) return \u0027$\u0027 + (dec ? n.toFixed(2) : String(Math.round(n)));\n  const partes = (dec ? n.toFixed(2) : String(Math.round(n))).split(\u0027.\u0027);\n  const miles = partes[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, \u0027.\u0027);\n  return miles + (partes[1] ? \u0027,\u0027 + partes[1] : \u0027\u0027) + \u0027 \u0027 + (moneda === \u0027VES\u0027 ? \u0027Bs\u0027 : moneda);\n}\nfunction resumen(nc){\n  const mon = nc.moneda || ent.moneda || \u0027USD\u0027;\n  const montos = (Array.isArray(nc.montos) ? nc.montos : []).filter(m =\u003e typeof m === \u0027number\u0027);\n  const numero = String(ent.numero || String(ent.jid || \u0027\u0027).split(\u0027@\u0027)[0]);\n  return \u0027Cliente: \u0027 + (ent.nombre || \u0027Cliente\u0027) + (/^[0-9]{8,}$/.test(numero) ? \u0027 (+\u0027 + numero + \u0027)\u0027 : \u0027\u0027) + \u0027\\n\u0027\n    + \u0027Depósito: \u0027 + montoTexto(nc.deposito, mon) + \u0027\\n\u0027\n    + (montos.length \u003e 1 ? (\u0027Cuentas: \u0027 + montos.map(m =\u003e montoTexto(m, mon)).join(\u0027 + \u0027) + \u0027 = \u0027 + montoTexto(nc.suma, mon))\n                         : (\u0027Cuenta: \u0027 + montoTexto(nc.suma, mon)));\n}\nconst nc = { deposito: ent.deposito, suma: ent.suma, montos: ent.montos, moneda: ent.moneda };\nconst aviso = \u0027⚠️ PARA REVISAR, NO TRANSFERIR TODAVÍA\\n\\n\u0027 + resumen(nc) + \u0027\\n\\n\u0027\n  + \u0027El depósito no cuadra con las cuentas y el cliente dice que está bien así. Lo revisa un asesor.\u0027;\nreturn [{ json: { aviso } }];"
+                                     },
+                      "id":  "b7c8d9e0-1007-4f00-9b00-vigilarescal1",
+                      "name":  "Armar Aviso Transferir",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       352,
+                                       140
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "BOT JK Kelvin",
+                                         "messageText":  "={{ $json.aviso }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "593961230380-1601657528@g.us"
+                                     },
+                      "id":  "b7c8d9e0-1008-4f00-9b00-vigilarescal2",
+                      "name":  "Avisar en Transferir",
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       528,
+                                       140
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "amount":  5,
+                                         "resume":  "timeInterval",
+                                         "unit":  "minutes"
+                                     },
+                      "id":  "b7c8d9e0-1002-4f00-9b00-vigilarwait01",
+                      "name":  "Esperar 5 min",
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       352,
+                                       460
+                                   ],
+                      "webhookId":  "b7c8d9e0-1102-4f00-9b00-vigilarhook01"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ \u0027op:\u0027 + $(\u0027Cuando lo Llama el Bot\u0027).first().json.jid }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "operacion",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b7c8d9e0-1003-4f00-9b00-vigilarredis1",
+                      "name":  "Redis Leer Operacion",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       528,
+                                       460
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// A los 5 minutos: si todavia no lo arreglo (y no paso a un asesor), se le recuerda al cliente.\n// Si ya se le pidio la captura del otro deposito, se le recuerda eso.\nconst ent = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {};\n// La marca \"no cuadra\" de la operacion del cliente, solo si es la MISMA que se vigila (mismo token).\nfunction marcaVigente(nodoRedis){\n  let op = {};\n  try {\n    const raw = $(nodoRedis).first().json.operacion;\n    if (raw) op = (typeof raw === \u0027string\u0027) ? JSON.parse(raw) : raw;\n  } catch(e){ op = {}; }\n  const nc = (op \u0026\u0026 typeof op === \u0027object\u0027) ? op.noCuadra : null;\n  if (!nc || !ent.token || Number(nc.ts) !== Number(ent.token)) return null;\n  return nc;\n}\n// Como se escribe un monto: \"$10\", \"$10.50\", \"12.000 Bs\", \"100.000 COP\".\nfunction montoTexto(n, moneda){\n  if (typeof n !== \u0027number\u0027 || isNaN(n)) return \u0027?\u0027;\n  const dec = Math.round(n * 100) % 100 !== 0;\n  if (!moneda || moneda === \u0027USD\u0027) return \u0027$\u0027 + (dec ? n.toFixed(2) : String(Math.round(n)));\n  const partes = (dec ? n.toFixed(2) : String(Math.round(n))).split(\u0027.\u0027);\n  const miles = partes[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, \u0027.\u0027);\n  return miles + (partes[1] ? \u0027,\u0027 + partes[1] : \u0027\u0027) + \u0027 \u0027 + (moneda === \u0027VES\u0027 ? \u0027Bs\u0027 : moneda);\n}\nfunction resumen(nc){\n  const mon = nc.moneda || ent.moneda || \u0027USD\u0027;\n  const montos = (Array.isArray(nc.montos) ? nc.montos : []).filter(m =\u003e typeof m === \u0027number\u0027);\n  const numero = String(ent.numero || String(ent.jid || \u0027\u0027).split(\u0027@\u0027)[0]);\n  return \u0027Cliente: \u0027 + (ent.nombre || \u0027Cliente\u0027) + (/^[0-9]{8,}$/.test(numero) ? \u0027 (+\u0027 + numero + \u0027)\u0027 : \u0027\u0027) + \u0027\\n\u0027\n    + \u0027Depósito: \u0027 + montoTexto(nc.deposito, mon) + \u0027\\n\u0027\n    + (montos.length \u003e 1 ? (\u0027Cuentas: \u0027 + montos.map(m =\u003e montoTexto(m, mon)).join(\u0027 + \u0027) + \u0027 = \u0027 + montoTexto(nc.suma, mon))\n                         : (\u0027Cuenta: \u0027 + montoTexto(nc.suma, mon)));\n}\nconst nc = marcaVigente(\u0027Redis Leer Operacion\u0027);\nif (!nc || nc.paso === \u0027escalado\u0027 || !ent.jid) return [];\nconst texto = (nc.paso === \u0027pidio_captura\u0027)\n  ? \u0027Por favor envíame la captura del otro depósito para poder procesar tu operación 🙏\u0027\n  : \u0027Por favor confírmame los montos de las cuentas para poder procesar tu operación 🙏\u0027;\nreturn [{ json: { jid: String(ent.jid), texto } }];"
+                                     },
+                      "id":  "b7c8d9e0-1009-4f00-9b00-vigilarrecor1",
+                      "name":  "Decidir Recordatorio",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       704,
+                                       460
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "BOT JK Kelvin",
+                                         "messageText":  "={{ $json.texto }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "={{ $json.jid }}"
+                                     },
+                      "id":  "b7c8d9e0-1010-4f00-9b00-vigilarrecor2",
+                      "name":  "Recordar al Cliente",
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       460
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "amount":  5,
+                                         "resume":  "timeInterval",
+                                         "unit":  "minutes"
+                                     },
+                      "id":  "b7c8d9e0-1011-4f00-9b00-vigilarwait02",
+                      "name":  "Esperar 5 min mas",
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       1056,
+                                       460
+                                   ],
+                      "webhookId":  "b7c8d9e0-1111-4f00-9b00-vigilarhook02"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ \u0027op:\u0027 + $(\u0027Cuando lo Llama el Bot\u0027).first().json.jid }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "operacion",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "id":  "b7c8d9e0-1012-4f00-9b00-vigilarredis2",
+                      "name":  "Redis Leer Operacion 2",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1232,
+                                       460
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// 5 minutos despues del recordatorio: si SIGUE sin arreglarlo (y no paso a un asesor), se avisa al\n// grupo de avisos. Si lo arreglo, no se avisa nada.\nconst ent = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {};\n// La marca \"no cuadra\" de la operacion del cliente, solo si es la MISMA que se vigila (mismo token).\nfunction marcaVigente(nodoRedis){\n  let op = {};\n  try {\n    const raw = $(nodoRedis).first().json.operacion;\n    if (raw) op = (typeof raw === \u0027string\u0027) ? JSON.parse(raw) : raw;\n  } catch(e){ op = {}; }\n  const nc = (op \u0026\u0026 typeof op === \u0027object\u0027) ? op.noCuadra : null;\n  if (!nc || !ent.token || Number(nc.ts) !== Number(ent.token)) return null;\n  return nc;\n}\n// Como se escribe un monto: \"$10\", \"$10.50\", \"12.000 Bs\", \"100.000 COP\".\nfunction montoTexto(n, moneda){\n  if (typeof n !== \u0027number\u0027 || isNaN(n)) return \u0027?\u0027;\n  const dec = Math.round(n * 100) % 100 !== 0;\n  if (!moneda || moneda === \u0027USD\u0027) return \u0027$\u0027 + (dec ? n.toFixed(2) : String(Math.round(n)));\n  const partes = (dec ? n.toFixed(2) : String(Math.round(n))).split(\u0027.\u0027);\n  const miles = partes[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, \u0027.\u0027);\n  return miles + (partes[1] ? \u0027,\u0027 + partes[1] : \u0027\u0027) + \u0027 \u0027 + (moneda === \u0027VES\u0027 ? \u0027Bs\u0027 : moneda);\n}\nfunction resumen(nc){\n  const mon = nc.moneda || ent.moneda || \u0027USD\u0027;\n  const montos = (Array.isArray(nc.montos) ? nc.montos : []).filter(m =\u003e typeof m === \u0027number\u0027);\n  const numero = String(ent.numero || String(ent.jid || \u0027\u0027).split(\u0027@\u0027)[0]);\n  return \u0027Cliente: \u0027 + (ent.nombre || \u0027Cliente\u0027) + (/^[0-9]{8,}$/.test(numero) ? \u0027 (+\u0027 + numero + \u0027)\u0027 : \u0027\u0027) + \u0027\\n\u0027\n    + \u0027Depósito: \u0027 + montoTexto(nc.deposito, mon) + \u0027\\n\u0027\n    + (montos.length \u003e 1 ? (\u0027Cuentas: \u0027 + montos.map(m =\u003e montoTexto(m, mon)).join(\u0027 + \u0027) + \u0027 = \u0027 + montoTexto(nc.suma, mon))\n                         : (\u0027Cuenta: \u0027 + montoTexto(nc.suma, mon)));\n}\nconst MINUTOS = 10;\nconst nc = marcaVigente(\u0027Redis Leer Operacion 2\u0027);\nif (!nc || nc.paso === \u0027escalado\u0027) return [];\nconst aviso = \u0027⚠️ DEPÓSITO QUE NO CUADRA (\u0027 + MINUTOS + \u0027 min sin corregir)\\n\\n\u0027 + resumen(nc) + \u0027\\n\\n\u0027\n  + \u0027Ya se le recordó al cliente. NO se pasó a transferir. Revisa su chat.\u0027;\nreturn [{ json: { aviso } }];"
+                                     },
+                      "id":  "b7c8d9e0-1004-4f00-9b00-vigilardecid1",
+                      "name":  "Decidir Aviso",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1408,
+                                       460
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "instanceName":  "BOT JK Kelvin",
+                                         "messageText":  "={{ $json.aviso }}",
+                                         "options_message":  {
+
+                                                             },
+                                         "resource":  "messages-api",
+                                         "remoteJid":  "120363413942097019@g.us"
+                                     },
+                      "id":  "b7c8d9e0-1005-4f00-9b00-vigilaraviso1",
+                      "name":  "Avisar al Grupo",
+                      "type":  "n8n-nodes-evolution-api.evolutionApi",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1584,
+                                       460
+                                   ],
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "evolutionApi":  {
+                                                               "id":  "iUIvc9Sd8diFJaGU",
+                                                               "name":  "Evolution PARA n8n cambios JK"
+                                                           }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cuando lo Llama el Bot":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Es Escalar?",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Es Escalar?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Armar Aviso Transferir",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "node":  "Esperar 5 min",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Armar Aviso Transferir":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Avisar en Transferir",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Esperar 5 min":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Redis Leer Operacion",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Redis Leer Operacion":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Decidir Recordatorio",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Decidir Recordatorio":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Recordar al Cliente",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Recordar al Cliente":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Esperar 5 min mas",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Esperar 5 min mas":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Redis Leer Operacion 2",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Redis Leer Operacion 2":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Decidir Aviso",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Decidir Aviso":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Avisar al Grupo",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil"
+                 }
+}

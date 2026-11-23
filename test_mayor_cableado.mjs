@@ -101,9 +101,10 @@ console.log('');
 console.log('=== 3) Router Pausa y el nodo que llama al workflow ===');
 {
   const sw = nodo(bot, 'Router Pausa').parameters.rules.values.map(v => v.outputKey);
-  chk(sw.join() === 'seguir,pausar,reanudar,avisar,entregar,recordarFoto,mayor', 'la salida "mayor" es la ULTIMA (las otras no cambian de numero)', '-> ' + sw.join());
+  // Despues de "mayor" se agrego "verificar" (23/11), tambien al final: las de antes no cambian de numero.
+  chk(sw.join() === 'seguir,pausar,reanudar,avisar,entregar,recordarFoto,mayor,verificar', 'la salida "mayor" sigue siendo la 7 (las nuevas van despues)', '-> ' + sw.join());
   const salidas = (bot.connections['Router Pausa'] || {}).main || [];
-  chk(salidas.length === 7 && salidas[6].map(c => c.node).join() === 'Mayor Escuchar', 'la salida 7 va solo a "Mayor Escuchar"', '-> ' + (salidas[6] || []).map(c => c.node));
+  chk(salidas.length === 8 && salidas[6].map(c => c.node).join() === 'Mayor Escuchar', 'la salida 7 va solo a "Mayor Escuchar"', '-> ' + (salidas[6] || []).map(c => c.node));
   chk(salidas.slice(0, 6).map(s => s.map(c => c.node).join()).join('|') === 'Es mensaje de cliente?|Redis Guardar Pausa|Redis Borrar Pausa|Avisar Pausa|Redis Leer Publicacion|Redis Guardar Ultima Foto',
       'las 6 salidas de antes siguen yendo donde iban');
   const cond = nodo(bot, 'Router Pausa').parameters.rules.values[6].conditions.conditions[0];

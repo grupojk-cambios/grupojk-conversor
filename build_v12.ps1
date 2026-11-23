@@ -143,6 +143,18 @@ $DIAS_ULTIMA_OPERACION = 7
 # responde ni publica nada en esos grupos.
 $MAYOR_WORKFLOW_ID = 'HIERZLV4lwtuBRbZ'
 
+# ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
+# EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
+# se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
+# (scripts\desplegar_vigilar_monto.ps1) le recuerda a los 5 minutos y avisa al grupo de avisos a los 10.
+$MARGEN_CUADRE_USD = 0
+
+# VERIFICAR DATOS (pedido de Kelvin, 23/11): cuando la operadora cita una cuenta con "Verificar datos",
+# el bot le pide al cliente que la corrija; lo que el cliente mande con datos de cuenta en estas horas
+# se toma como la correccion y se vuelve a pasar a transferir.
+$HORAS_CORREGIR_DATOS = 12
+$VIGILAR_MONTO_WORKFLOW_ID = '5GUqzdpeeJBttqgd'
+
 # Horario de atencion (hora de Ecuador). Igual que el workflow de apertura y cierre: lunes a sabado
 # de 9:00 a 18:00 y domingo de 10:00 a 14:00. Fuera de horario el bot atiende igual, pero una
 # operacion completa (captura + cuenta) NO se pasa a transferir: queda 'en_espera' en Supabase y la
@@ -814,7 +826,7 @@ return [{ json: { mimetype: $json.mimetype || 'image/jpeg' }, binary: { data: { 
 # sacan el monto y la referencia "Revisar Operacion" (repetidas), "Detectar Aprobación" y la cabecera de la
 # cuenta en transferir. El 21/11 la IA escribio "$30,00 Transferencia a ..." sin "Monto:" y la cuenta salio
 # sin precio.
-$leerImagenPrompt = 'Esta imagen la envio un cliente de una casa de cambio de remesas por WhatsApp. Clasificala y responde SOLO en JSON valido sin texto extra: {"tipo": "comprobante|cuenta|otra", "resumen": "..."}. comprobante = recibo o captura de un pago/transferencia que el cliente hizo; el resumen DEBE ir asi, en una sola linea: "Monto: <monto con su moneda, ej. $30,00>, Banco: <banco desde donde pago>, Fecha: <fecha>, Referencia: <numero de referencia, de comprobante o de transaccion>". cuenta = datos de una cuenta bancaria; el resumen asi: "Banco: <banco>, Cuenta: <numero>, Titular: <nombre>, Cedula: <cedula>". Si un dato no se ve, escribe "no visible". otra = cualquier otra cosa (resumen corto).'
+$leerImagenPrompt = 'Esta imagen la envio un cliente de una casa de cambio de remesas por WhatsApp. Clasificala y responde SOLO en JSON valido sin texto extra: {"tipo": "comprobante|cuenta|otra", "resumen": "..."}. comprobante = recibo o captura de un pago/transferencia que el cliente hizo; el resumen DEBE ir asi, en una sola linea: "Monto: <monto con su moneda, ej. $30,00>, Moneda: <codigo de la moneda del monto: USD, VES, COP, PEN, BRL, MXN, CLP, ARS, UYU, PYG, BOB, CRC, DOP, CUP, GTQ, HNL, NIO, EUR o USDT; ojo que Colombia, Mexico, Chile, Argentina, Uruguay, Republica Dominicana y Cuba tambien usan el simbolo $>, Banco: <banco desde donde pago>, Fecha: <fecha>, Referencia: <numero de referencia, de comprobante o de transaccion>". cuenta = datos de una cuenta bancaria; el resumen asi: "Banco: <banco>, Cuenta: <numero>, Titular: <nombre>, Cedula: <cedula>". Si un dato no se ve, escribe "no visible". otra = cualquier otra cosa (resumen corto).'
 
 # ===================== CODIGO: TEXTO DE IMAGEN =====================
 $textoImagenCode = @'
@@ -1433,6 +1445,27 @@ if (esGrupo && img && !citado){
   return [{ json: { accionPausa: 'recordarFoto', claveFoto: claveFoto,
                     idFoto: String(llave.id || ''), jidGrupo: jid } }];
 }
+// ===== LA OPERADORA PIDE VERIFICAR LOS DATOS DE UNA CUENTA (pedido de Kelvin, 23/11) =====
+// Citando la publicacion de una cuenta con "Verificar datos", "corregir dato", "datos malos"... el bot le
+// pide al cliente que revise y corrija esos datos, y cuando los manda corregidos se los vuelve a pasar a
+// transferir. Va ANTES de la entrega con texto corto: un "Verificar" (9 letras) se tomaba como "entregar
+// la foto". Solo cuenta si lo citado es TEXTO (la publicacion de una cuenta, no la foto de la captura);
+// que sea una publicacion del bot lo autoriza Redis, igual que la entrega.
+const RX_VERIFICAR = /verific|correg|corrig|dato.{0,12}(mal|errad|incorrect)|(mal|errad|incorrect).{0,12}dato|no coincide|rebot/i;
+if (esGrupo && !img && citado && RX_VERIFICAR.test(texto)){
+  let citadoTexto = '';
+  try {
+    const ctx = dat.contextInfo || (msg.extendedTextMessage && msg.extendedTextMessage.contextInfo) || {};
+    const q = ctx.quotedMessage || {};
+    citadoTexto = String(q.conversation || (q.extendedTextMessage || {}).text || '');
+  } catch(e){}
+  if (citadoTexto.trim()){
+    return [{ json: { accionPausa: 'verificar', stanzaId: citado, claveGrupoMsg: 'grupoMsg:' + citado,
+                      nota: texto.slice(0, 200), citadoTexto: citadoTexto.slice(0, 2000),
+                      idNota: String(llave.id || ''), jidGrupo: jid } }];
+  }
+  return [];      // "verificar" citando la foto de la captura: NUNCA es "entregar la foto" (eso lo ve Kelvin)
+}
 if (esGrupo && !img && citado){
   // Cito con texto. Solo cuenta si es algo CORTO ("." , "ok", "listo"): asi, discutir sobre
   // un pedido citandolo no dispara una entrega por accidente. La foto sale de la recordada.
@@ -1717,6 +1750,8 @@ const HORAS_RECORDAR = __HORAS_RECORDAR__;
 const MINUTOS_ENTRE_STICKERS = __MINUTOS_STICKER_GRACIAS__;
 const HORAS_ENTRE_NOMBRES = __HORAS_NOMBRE__;
 const DIAS_ULTIMA_OPERACION = __DIAS_ULTIMA_OPERACION__;
+const MARGEN_CUADRE = __MARGEN_CUADRE__;
+const HORAS_CORREGIR = __HORAS_CORREGIR__;
 const ahora = Date.now();
 __HORARIO_JK__
 const hor = horarioDe(ahora);
@@ -1860,6 +1895,94 @@ function parecidos(x, y){
   if (x === y || x.indexOf(y) !== -1 || y.indexOf(x) !== -1) return true;
   const ys = y.split(' ');
   return x.split(' ').some(w => w.length >= 4 && PALABRAS_COMUNES.indexOf(w) === -1 && ys.indexOf(w) !== -1);
+}
+// La MONEDA del deposito: 'USD', 'VES', 'COP', 'PEN', 'BRL', 'MXN', 'CLP', 'ARS', 'UYU', 'PYG', 'BOB', 'CRC', 'DOP',
+// 'CUP', 'GTQ', 'HNL', 'NIO', 'EUR', 'USDT' (las de la hoja de tasas), o '' si no se sabe. La IA la escribe en
+// "Moneda: USD" (desde el 23/11); en las capturas leidas antes se deduce del monto. El "$" solo no basta:
+// Colombia, Mexico, Chile, Argentina, Uruguay, Dominicana y Cuba tambien lo usan, asi que un banco de esos
+// paises manda sobre el "$". Ante la duda, '' (y entonces no se compara con las cuentas).
+const MONEDA_DEL_BANCO = [
+  ['COP', /bancolombia|nequi|daviplata|davivienda|bogota/i],
+  ['BOB', /mercantil santa cruz|banco uni[oó]n|bancosol/i],
+  ['VES', /banesco|mercantil|provincial|venezuela|\bbdv\b|bicentenario|bancamiga|\bbnc\b|tesoro|banplus|bancaribe|exterior/i],
+  ['PEN', /\bbcp\b|interbank|yape|plin/i],
+  ['BRL', /nubank|itau|bradesco|\bpix\b/i],
+  ['CLP', /bancoestado|banco estado/i],
+  ['ARS', /mercado ?pago/i],
+  ['MXN', /banorte|azteca/i],
+  ['UYU', /\bbrou\b/i],
+  ['PYG', /\bueno\b|banco continental|visi[oó]n banco/i],
+  ['CRC', /\bbcr\b|banco nacional de costa rica|credomatic/i],
+  ['DOP', /banreservas|\bbhd\b|popular dominicano/i],
+  ['CUP', /bandec|metropolitano|\bbpa\b/i],
+  ['GTQ', /banrural|banco industrial/i],
+  ['HNL', /atl[aá]ntida|ficohsa/i],
+  ['NIO', /lafise|banpro/i]];
+const MONEDA_DE_PALABRA = [
+  ['USDT', /usdt|tether/], ['BRL', /r\$|\bbrl\b|reais|reales/], ['DOP', /\bdop\b|rd\$|dominican/], ['NIO', /\bnio\b|c[oó]rdoba|c\$/],
+  ['UYU', /\buyu\b|uruguay|\$u\b/], ['BOB', /\bbob\b|bolivian/], ['VES', /\bves\b|\bbs\b|bol[ií]var/], ['COP', /\bcop\b|colombian/],
+  ['PEN', /\bpen\b|s\/|\bsoles?\b/], ['MXN', /\bmxn\b|mexican/], ['CLP', /\bclp\b|chilen/], ['ARS', /\bars\b|argentin/],
+  ['PYG', /\bpyg\b|guaran|₲|\bgs\b/], ['CRC', /\bcrc\b|col[oó]n|₡/], ['CUP', /\bcup\b|cuban/], ['GTQ', /\bgtq\b|quetzal/],
+  ['HNL', /\bhnl\b|lempira/], ['EUR', /\beur\b|€|euros?\b/], ['USD', /\busd\b|\bus\b|d[oó]lar/]];
+function monedaDeCaptura(t){
+  const x = sinHuella(t);
+  const banco = campoDe(x, 'banco|entidad');
+  const delBanco = (MONEDA_DEL_BANCO.find(([m, rx]) => rx.test(banco)) || [''])[0];
+  const dicha = String(campoDe(x, 'moneda') || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (dicha && dicha !== 'no visible'){
+    const m = (MONEDA_DE_PALABRA.find(([c, rx]) => rx.test(dicha)) || [''])[0];
+    if (m === 'USD' && delBanco) return delBanco;          // "$" de un banco colombiano son pesos
+    return m;
+  }
+  const seg = String((x.match(/monto\s*:?\s*([^,\]]*(?:,[0-9]{1,2})?)/i) || [])[1] || '').toLowerCase();
+  const m = (MONEDA_DE_PALABRA.find(([c, rx]) => c !== 'USD' && rx.test(seg)) || [''])[0];
+  if (m) return m;
+  if (/\$|\busd\b|d[oó]lar/.test(seg)) return delBanco || 'USD';
+  return '';
+}
+// El monto de una cuenta EN UNA MONEDA: "$10" / "10$" / "10 usd" (dolares), "Bs 12.000" / "12.000 bs",
+// "100.000 COP" / "$100.000" (pesos), "S/ 50", "R$ 50", "50 €"... Solo un numero pegado a su moneda, en
+// la misma linea (una cedula o un telefono no tienen moneda). null si no hay.
+// (Se escriben como /.../.source para no tener que duplicar las barras invertidas.)
+const NUM = /([0-9][0-9.,]*[0-9]|[0-9])/.source, ESP = /[ \t]*/.source;
+const MARCAS_MONEDA = {
+  USD:  [/(?:us\$|(?<![a-z])\$|\busd\b)/.source,  /(?:(?<![a-z])\$|\busd\b|d[oó]lares?\b)/.source],
+  USDT: [/(?:\busdt\b)/.source,                   /(?:\busdt\b)/.source],
+  VES:  [/(?:\bbs\b\.?|\bves\b)/.source,           /(?:\bbs\b\.?|bol[ií]vares?\b|\bves\b)/.source],
+  COP:  [/(?:\bcop\b|(?<![a-z])\$)/.source,        /(?:\bcop\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  MXN:  [/(?:\bmxn\b|(?<![a-z])\$)/.source,        /(?:\bmxn\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  CLP:  [/(?:\bclp\b|(?<![a-z])\$)/.source,        /(?:\bclp\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  ARS:  [/(?:\bars\b|(?<![a-z])\$)/.source,        /(?:\bars\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  PEN:  [/(?:s\/\.?|\bpen\b)/.source,              /(?:\bsoles?\b|\bpen\b)/.source],
+  BRL:  [/(?:r\$|\bbrl\b)/.source,                 /(?:\breais\b|\breales\b|\bbrl\b)/.source],
+  EUR:  [/(?:€|\beur\b)/.source,                   /(?:€|\beur\b|\beuros?\b)/.source],
+  BOB:  [/(?:\bbob\b|\bbs\b\.?)/.source,           /(?:\bbob\b|\bbs\b\.?|bolivianos?\b)/.source],
+  UYU:  [/(?:\buyu\b|\$u\b|(?<![a-z])\$)/.source,  /(?:\buyu\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  PYG:  [/(?:\bpyg\b|\bgs\b\.?|₲)/.source,         /(?:\bpyg\b|\bgs\b\.?|guaran[ií]es\b|₲)/.source],
+  CRC:  [/(?:\bcrc\b|₡)/.source,                   /(?:\bcrc\b|colones\b|₡)/.source],
+  DOP:  [/(?:\bdop\b|rd\$|(?<![a-z])\$)/.source,   /(?:\bdop\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  CUP:  [/(?:\bcup\b|(?<![a-z])\$)/.source,        /(?:\bcup\b|\bpesos?\b|(?<![a-z])\$)/.source],
+  GTQ:  [/(?:\bgtq\b|\bq\b\.?)/.source,            /(?:\bgtq\b|quetzales?\b)/.source],
+  HNL:  [/(?:\bhnl\b|\bl\b\.?)/.source,            /(?:\bhnl\b|lempiras?\b)/.source],
+  NIO:  [/(?:\bnio\b|c\$)/.source,                 /(?:\bnio\b|c[oó]rdobas?\b)/.source]};
+function montoEn(t, moneda){
+  const mk = MARCAS_MONEDA[moneda];
+  if (!mk) return null;
+  const antes = new RegExp(mk[0] + ESP + NUM, 'i'), despues = new RegExp(NUM + ESP + mk[1], 'i');
+  for (const linea of String(t || '').split('\n')){
+    const m = linea.match(antes) || linea.match(despues);
+    if (m){ const v = numero(m[1]); if (!isNaN(v)) return v; }
+  }
+  return null;
+}
+// Como se escribe un monto en esa moneda: "$10", "$10.50", "12.000 Bs", "100.000 COP".
+function montoTexto(n, moneda){
+  if (typeof n !== 'number' || isNaN(n)) return '?';
+  const dec = Math.round(n * 100) % 100 !== 0;
+  if (!moneda || moneda === 'USD') return '$' + (dec ? n.toFixed(2) : String(Math.round(n)));
+  const partes = (dec ? n.toFixed(2) : String(Math.round(n))).split('.');
+  const miles = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return miles + (partes[1] ? ',' + partes[1] : '') + ' ' + (moneda === 'VES' ? 'Bs' : moneda);
 }
 // Todo lo que se puede comparar de una captura: monto, referencia, banco, destinatario y huella.
 function datosDeCaptura(texto, id){
@@ -2018,13 +2141,16 @@ for (const m of mensajes){
 
 // Una cuenta: SIN captura de por medio, solo con datos firmes. CON una captura (en este envio o
 // esperando guardada), tambien un texto con palabras de cuenta o banco, pero nunca una pregunta.
+// La operadora pidio VERIFICAR los datos de una cuenta de este cliente (nodo "Marcar Corregir Datos"):
+// lo que mande ahora con datos de cuenta es la correccion, aunque no traiga captura (ver 'correccion').
+const corregir = (op.corregir && typeof op.corregir.ts === 'number' && (ahora - op.corregir.ts) <= HORAS_CORREGIR * 3600000) ? op.corregir : null;
 const hayCaptura = capturas.length > 0 || capturasGuardadas.length > 0;
 const cuentasAhora = [];
 for (const m of mensajes){
   const resto = textoDelCliente(String((m && m.texto) || ''));
   if (!resto || esCuentaNuestra(resto)) continue;
   if (pideLaMisma(resto) && !datosFirmes(resto)) continue;      // "a la misma cuenta de siempre" no ES una cuenta
-  const esCuenta = datosFirmes(resto) || (hayCaptura && resto.indexOf('?') === -1 && pareceCuenta(resto));
+  const esCuenta = datosFirmes(resto) || ((hayCaptura || corregir) && resto.indexOf('?') === -1 && pareceCuenta(resto));
   if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
 }
 
@@ -2072,37 +2198,72 @@ const todasRepetidas = capturas.length > 0 && capturas.every(c => c.clase === 'r
 // Por cada cuenta se queda la version CON monto (21/11: si la mando sin monto, se le pide y la vuelve a
 // mandar con monto); si las dos tienen o no tienen monto, la mas completa (ej. ahora con el banco y el
 // titular). Los mensajes viejos que ya no aportan ninguna cuenta se descartan: asi al grupo no van repetidas.
+// Si las dos traen monto y es DISTINTO, gana la mas nueva: es una correccion (23/11: "tu deposito es de
+// $10 pero la cuenta dice $15" -> la manda de nuevo con $10).
+// Cada cuenta lleva dos montos: 'monto' (el que tenga: "$10", o en la moneda del deposito) para saber
+// si trae monto, y 'enMoneda' (solo en la moneda del deposito) para sumarla y compararla con el deposito.
 function depurarCuentas(msgs){
   const gana = {};
   msgs.forEach((m, i) => {
-    let bl = bloquesDeCuentas([m], '', '', '', null).map(b => ({ texto: b.texto, monto: b.monto }));
-    if (!bl.length) bl = [{ texto: String((m && m.texto) || ''), monto: montoDelBloque((m && m.texto) || '') }];
-    for (const b of bl){
-      const clave = datosDe(b.texto).sort().join('|') || normal(b.texto);
-      const g = gana[clave], con = b.monto !== null;
-      if (!g || (con && !g.con) || (con === g.con && b.texto.length >= g.largo)) gana[clave] = { i, con, largo: b.texto.length, monto: b.monto };
+    let bl = bloquesDeCuentas([m], '', '', '', null).map(b => b.texto);
+    if (!bl.length) bl = [String((m && m.texto) || '')];
+    for (const texto of bl){
+      const enMoneda = monedaDep ? montoEn(texto, monedaDep) : null;
+      const monto = (monedaDep && monedaDep !== 'USD' && enMoneda !== null) ? enMoneda : (montoDelBloque(texto) !== null ? montoDelBloque(texto) : enMoneda);
+      const clave = datosDe(texto).sort().join('|') || normal(texto);
+      const g = gana[clave], con = monto !== null;
+      const corrige = g && con && g.con && Math.abs(monto - g.monto) >= 0.01;
+      if (!g || (con && !g.con) || corrige || (con === g.con && texto.length >= g.largo)) gana[clave] = { i, con, largo: texto.length, monto, enMoneda };
     }
   });
   const cuentas = Object.keys(gana).map(k => gana[k]);
   return { mensajes: msgs.filter((m, i) => cuentas.some(c => c.i === i)).map(m => ({ id: m.id || '', texto: m.texto })), cuentas };
 }
 const capturasOp = capturasGuardadas.concat(nuevas);
-const depuradas = depurarCuentas(cuentaGuardada.concat(cuentasAhora));
+const montosCap = capturasOp.map(c => c.monto);
+const montoDeposito = (capturasOp.length && montosCap.every(m => typeof m === 'number' && !isNaN(m))) ? montosCap.reduce((a, b) => a + b, 0) : null;
+// La moneda del deposito: la de TODAS sus capturas (si son de monedas distintas o no se sabe, '').
+const monedasCap = capturasOp.map(c => monedaDeCaptura(c.texto));
+const monedaDep = (monedasCap.length && monedasCap.every(m => m && m === monedasCap[0])) ? monedasCap[0] : '';
+
+// ---------- ¿el deposito cuadra con las cuentas? (pedido de Kelvin, 23/11) ----------
+// En la MISMA moneda: si deposito en dolares, las cuentas en dolares ("$10"); si deposito en pesos,
+// bolivares o soles, las cuentas en esa moneda ("100.000 COP", "Bs 12.000"). La suma tiene que dar
+// EXACTO lo que dice la captura. Solo se compara cuando se sabe la moneda del deposito, se leyo su
+// monto y TODAS las cuentas traen su monto en esa moneda. Si difieren en mas de 20 veces, es otra
+// moneda leida mal: no se compara. null = no se puede comparar (y la operacion sigue como siempre).
+function cuadreDe(cuentas){
+  if (!monedaDep || montoDeposito === null || !cuentas.length || cuentas.some(c => c.enMoneda === null)) return null;
+  const suma = Math.round(cuentas.reduce((a, c) => a + c.enMoneda, 0) * 100) / 100;
+  const deposito = Math.round(montoDeposito * 100) / 100;
+  if (suma <= 0 || deposito <= 0 || Math.max(suma, deposito) / Math.min(suma, deposito) > 20) return null;
+  return { suma, deposito, moneda: monedaDep, cuadra: Math.abs(suma - deposito) <= MARGEN_CUADRE + 0.001, montos: cuentas.map(c => c.enMoneda) };
+}
+let depuradas = depurarCuentas(cuentaGuardada.concat(cuentasAhora));
+let cuadre = cuadreDe(depuradas.cuentas);
+// Ya se le dijo que no cuadraba y ahora manda las cuentas de nuevo: si las que manda AHORA, solas,
+// dan lo mismo que el deposito, son las buenas y reemplazan a las de antes (ej. tenia dos cuentas
+// de $10 y $5 con un deposito de $10, y ahora manda solo la de $10).
+if (cuadre && !cuadre.cuadra && op.noCuadra && cuentasAhora.length){
+  const soloNuevas = depurarCuentas(cuentasAhora);
+  const c2 = cuadreDe(soloNuevas.cuentas);
+  if (c2 && c2.cuadra){ depuradas = soloNuevas; cuadre = c2; }
+}
 const cuentasOp = depuradas.mensajes;
 
 // ---------- ¿las cuentas traen el monto? (pedido de Kelvin, 21/11) ----------
 // Con VARIAS cuentas, cada una tiene que decir cuanto va: si a alguna le falta, NO se pasa a transferir y
 // se le pide al cliente que se lo coloque y las vuelva a mandar. Con UNA sola cuenta sin monto se usa el
 // del deposito (va en la cabecera); solo si tampoco se pudo leer el de la captura, se le pide.
-const montosCap = capturasOp.map(c => c.monto);
-const montoDeposito = (capturasOp.length && montosCap.every(m => typeof m === 'number' && !isNaN(m))) ? montosCap.reduce((a, b) => a + b, 0) : null;
 const cuentasDep = depuradas.cuentas;
 const sinMonto = cuentasDep.filter(c => c.monto === null).length;
 const faltaMonto = cuentasDep.length > 1 ? sinMonto > 0 : (cuentasDep.length === 1 && sinMonto === 1 && montoDeposito === null);
 
 let estado = 'nada';
 if (todasRepetidas) estado = 'repetido';
-else if (capturasOp.length && cuentasOp.length) estado = faltaMonto ? 'falta_monto' : 'completo';
+// Los datos corregidos que pidio la operadora: sin captura de por medio (si manda otra captura, es otra operacion).
+else if (corregir && cuentasAhora.length && !capturasOp.length) estado = 'correccion';
+else if (capturasOp.length && cuentasOp.length) estado = faltaMonto ? 'falta_monto' : ((cuadre && !cuadre.cuadra) ? 'no_cuadra' : 'completo');
 else if (capturasOp.length && propuestaNueva) estado = 'confirmar_cuenta';
 else if (capturasOp.length) estado = 'falta_cuenta';
 else if (cuentasAhora.length) estado = 'falta_captura';
@@ -2113,6 +2274,13 @@ const NOTA = {
   falta_captura: 'el cliente ya paso la cuenta destino pero todavia NO mando la captura del deposito. Si pregunto algo, respondelo; y pidele corto: "Recibi los datos de la cuenta 👍 Cuando hagas el deposito, enviame la captura"',
   repetido:      'esa captura es de un deposito que YA se habia recibido y pasado a operaciones: esta repetida. NO la proceses de nuevo. Responde SOLO: "Ese deposito ya lo recibi, esta repetido 👍 Si es un deposito distinto, avisame"'
 };
+// Los datos corregidos de la cuenta que la operadora pidio verificar: van a transferir (ver "Preparar Correccion").
+NOTA.correccion = 'el cliente mando los datos corregidos de la cuenta que la operadora pidio verificar; ya se le pasaron a la operadora. '
+  + 'Responde SOLO: "Listo, recibido ✅ Ya se lo pasé a la operadora con los datos corregidos."';
+// Todavia no los corrige: si pregunta, que sepa que hay que revisar.
+if (corregir) NOTA.nada = 'la operadora pidio verificar los datos de una cuenta de este cliente (indico: "' + String(corregir.nota || 'verificar datos') + '") '
+  + 'y todavia no los manda corregidos. Si pregunta que esta mal o que tiene que hacer, dile corto que revise bien los datos de esa cuenta '
+  + '(banco, numero de cuenta o telefono, titular y cedula) y te los mande corregidos. Si escribe otra cosa, respondele normal.';
 if (propuestaNueva) NOTA.confirmar_cuenta = 'el cliente quiere usar la misma cuenta destino de la vez pasada. Responde SOLO esto, con la cuenta copiada tal cual: "¿Te lo envío a esta cuenta? 👇\n\n' + propuestaNueva.mensajes[0].texto + '\n\nResponde *sí* para confirmar"';
 if (estado === 'falta_monto'){
   const varias = cuentasDep.length > 1;
@@ -2123,6 +2291,62 @@ if (estado === 'falta_monto'){
                                                             : 'Disculpa, veo que tus datos no traen el monto 🙏 Colócale el monto y envíamelos de nuevo, por favor') + '"')
     : ('todavia falta el monto de ' + (varias ? 'cada cuenta' : 'la cuenta') + ' para procesar su remesa. Si pregunto otra cosa, respondelo; y recuerdale corto que le coloque el monto '
        + (varias ? 'a cada cuenta' : 'a la cuenta') + ' y la vuelva a mandar.');
+}
+// ===== EL DEPOSITO NO CUADRA CON LAS CUENTAS (pedido de Kelvin, 23/11) =====
+// No se procesa: se le dice cuanto deposito y cuanto suman las cuentas, y se le pide que confirme.
+//   - corrige (las cuentas con el monto bueno, solo las que van, o la otra captura) -> se procesa sola
+//   - dice "si" y deposito de MENOS -> se le pide la captura del otro deposito
+//   - dice "si" y deposito de MAS (o ya se le pidio la otra captura) -> un asesor lo revisa, y se deja
+//     un aviso en el grupo de transferir (NO se transfiere)
+// Por su cuenta, el workflow "Avisar deposito que no cuadra" le recuerda al cliente a los 5 minutos y
+// avisa al grupo de avisos a los 10 (si no lo arreglo ni se paso a un asesor). La marca 'paso' dice en
+// que va: preguntado | pidio_captura | escalado.
+const noCuadraViejo = (op.noCuadra && typeof op.noCuadra.ts === 'number') ? op.noCuadra : null;
+function confirmaMontos(t){
+  t = String(t || '');
+  if (!t.trim() || /[?¿]/.test(t)) return false;
+  const w = palabrasDe(t);
+  if (!w.length || w.indexOf('no') !== -1) return false;
+  if (esAfirmacion(t)) return true;
+  if (['si','sip','correcto','correcta','exacto','exacta','confirmo','confirmado','confirmada','afirmativo','claro'].indexOf(w[0]) !== -1) return true;
+  return /(^| )(esta bien|estan bien|asi esta bien|asi es|es asi|son correctos|es correcto|esta correcto|estan correctos|todo bien|son esos|ese es|esos son)( |$)/.test(w.join(' '));
+}
+let pasoNoCuadra = '', escalarAhora = false;
+if (estado === 'no_cuadra'){
+  const mon = cuadre.moneda;
+  const dep = montoTexto(cuadre.deposito, mon), suma = montoTexto(cuadre.suma, mon);
+  const varias = cuentasDep.length > 1;
+  const dicen = varias ? ('las cuentas suman ' + suma) : ('la cuenta dice ' + suma);
+  const lasCuentas = varias ? 'las cuentas' : 'la cuenta';
+  const faltaPlata = cuadre.deposito < cuadre.suma;
+  const antes = noCuadraViejo ? (noCuadraViejo.paso || 'preguntado') : '';
+  if (nuevas.length || cuentasAhora.length){
+    pasoNoCuadra = (antes === 'escalado') ? 'escalado' : 'preguntado';
+    NOTA.no_cuadra = 'el deposito es de ' + dep + ' pero ' + dicen + ': NO cuadra y NO se procesa todavia. Responde SOLO: "Disculpa, tu depósito es de '
+      + dep + ' pero ' + dicen + ' 🙏 ¿Me confirmas los montos? Si alguno está mal, envíame ' + lasCuentas + ' con el monto correcto."';
+  } else if (antes !== 'escalado' && confirmaMontos(textoAhora)){
+    if (faltaPlata && antes !== 'pidio_captura'){
+      pasoNoCuadra = 'pidio_captura';
+      NOTA.no_cuadra = 'el cliente confirmo que ' + lasCuentas + ' estan bien (' + suma + '), pero el deposito es de ' + dep + ': falta otro deposito. NO se procesa todavia. '
+        + 'Responde SOLO: "Perfecto 👍 Entonces envíame la captura del otro depósito para poder procesar tu operación."';
+    } else {
+      pasoNoCuadra = 'escalado'; escalarAhora = true;
+      NOTA.no_cuadra = 'el cliente dice que esta bien asi aunque el deposito (' + dep + ') no cuadra con ' + lasCuentas + ' (' + suma + '). NO se procesa: lo revisa un asesor. '
+        + 'Responde SOLO: "Listo 👍 Un asesor lo revisa y te escribe en unos minutos."';
+    }
+  } else if (antes === 'escalado'){
+    pasoNoCuadra = 'escalado';
+    NOTA.no_cuadra = 'esta operacion la esta revisando un asesor: el deposito (' + dep + ') no cuadra con ' + lasCuentas + ' (' + suma + ') y NO se procesa. '
+      + 'Si pregunto otra cosa, respondelo; si pregunta por su operacion, dile corto que un asesor la esta revisando y le escribe pronto.';
+  } else if (antes === 'pidio_captura'){
+    pasoNoCuadra = 'pidio_captura';
+    NOTA.no_cuadra = 'todavia falta la captura del otro deposito (el deposito es de ' + dep + ' y ' + dicen + '); NO se procesa todavia. '
+      + 'Si pregunto otra cosa, respondelo; y recuerdale corto que envie la captura del otro deposito para poder procesar.';
+  } else {
+    pasoNoCuadra = 'preguntado';
+    NOTA.no_cuadra = 'todavia NO cuadra: el deposito es de ' + dep + ' y ' + dicen + ', y NO se procesa hasta que cuadre. Si pregunto otra cosa, respondelo; '
+      + 'y recuerdale corto que confirme los montos de ' + lasCuentas + ' o le mande ' + lasCuentas + ' con el monto correcto.';
+  }
 }
 // Fuera de horario la operacion completa NO se pasa a transferir: queda 'en_espera' (ver "Armar
 // Filas Noche") y se publica al abrir. Al cliente solo se le dice que se recibio y cuando se procesa.
@@ -2149,19 +2373,45 @@ if (estado === 'completo'){
   // reconocerlas si las vuelve a mandar.
   const recordar = capturasGuardadas.concat(capturas.filter(c => c.clase !== 'repetida'));
   nueva.hechos = hechos.concat(recordar.map(huellaDeposito));
-} else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta' || estado === 'falta_monto'){
+} else if (estado === 'falta_cuenta' || estado === 'confirmar_cuenta' || estado === 'falta_monto' || estado === 'no_cuadra'){
   nueva.capturas = capturasOp.map(c => ({ id: c.id, texto: c.texto, ts: c.ts, ref: c.ref, monto: c.monto, huella: c.huella,
                                          banco: c.banco || '', destino: c.destino || '',
                                          hasta: (typeof c.hasta === 'number') ? c.hasta : venceEn(c.ts || ahora) }));
   if (propuestaNueva) nueva.cuentaPropuesta = propuestaNueva;
-  // Falta el monto: las cuentas quedan guardadas; cuando las mande con monto, reemplazan a estas.
-  if (estado === 'falta_monto') nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
+  // Falta el monto, o no cuadra: las cuentas quedan guardadas; cuando las corrija, reemplazan a estas.
+  if (estado === 'falta_monto' || estado === 'no_cuadra') nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
 } else if (estado === 'falta_captura'){
   nueva.cuenta = { mensajes: cuentasOp, ts: ahora, hasta: venceEn(ahora) };
+} else if (estado === 'correccion'){
+  // nada queda pendiente: la correccion ya se pasa a transferir
 } else {
   // repetido o nada: lo que estaba pendiente sigue pendiente
   nueva.cuenta = cuentaGuardada.length ? { mensajes: cuentaGuardada, ts: op.cuenta.ts, hasta: op.cuenta.hasta } : null;
   nueva.capturas = capturasGuardadas;
+}
+// "No cuadra": la marca dice DESDE CUANDO (ts) y en que paso va. Sigue siendo la misma mientras no lo
+// arregle, aunque escriba otra cosa o corrija solo una parte; se borra sola cuando la operacion se
+// procesa. El workflow "Avisar deposito que no cuadra" solo actua si la marca sigue con el mismo ts.
+// La PRIMERA vez se le pide vigilarla ('vigilar'); cuando pasa a un asesor, el aviso a transferir ('escalar').
+let vigilarMonto = null;
+if (estado === 'no_cuadra'){
+  nueva.noCuadra = { ts: noCuadraViejo ? noCuadraViejo.ts : ahora, deposito: cuadre.deposito, suma: cuadre.suma, montos: cuadre.montos,
+                     moneda: cuadre.moneda, paso: pasoNoCuadra };
+  const datos = { token: nueva.noCuadra.ts, deposito: cuadre.deposito, suma: cuadre.suma, montos: cuadre.montos, moneda: cuadre.moneda };
+  if (!noCuadraViejo) vigilarMonto = Object.assign({ modo: 'vigilar' }, datos);
+  else if (escalarAhora) vigilarMonto = Object.assign({ modo: 'escalar' }, datos);
+} else if (noCuadraViejo && estado !== 'completo' && nueva.capturas.length && nueva.cuenta){
+  nueva.noCuadra = noCuadraViejo;      // todavia no lo arreglo (ej. le falta el monto a una, o mando una captura repetida)
+}
+// "Verificar datos": cuando llegan los datos corregidos se arma la correccion ("Preparar Correccion" la
+// publica en transferir) y la marca se borra. Mientras no lleguen, la marca sigue (hasta HORAS_CORREGIR);
+// si en el medio se procesa otra operacion completa, tambien se borra.
+let correccion = null;
+if (estado === 'correccion'){
+  correccion = { publicacion: corregir.publicacion || '', nombre: corregir.nombre || '', cabecera: corregir.cabecera || '', idCaptura: corregir.idCaptura || '',
+                 nota: corregir.nota || '', idCuenta: (cuentasAhora[0] && cuentasAhora[0].id) || '', texto: cuentasAhora.map(m => m.texto).join('\n\n') };
+} else if (corregir && estado !== 'completo'){
+  nueva.corregir = corregir;
 }
 
 // ===== CIERRES: "GRACIAS", "OK" SUELTOS Y MENSAJES SIN TEXTO =====
@@ -2263,6 +2513,8 @@ return [{ json: Object.assign({}, base, {
   mensajesAprobar,
   idImagen,
   operacionNueva: JSON.stringify(nueva),
+  vigilarMonto,
+  correccion,
   capturasLeidas: capturas.map(c => ({ ref: c.ref, monto: c.monto, clase: c.clase }))
 }), pairedItem: { item: 0 } }];
 '@
@@ -2272,8 +2524,105 @@ $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_RECORDAR__', [str
 $revisarOperacionCode = $revisarOperacionCode.Replace('__MINUTOS_STICKER_GRACIAS__', [string]$MINUTOS_ENTRE_STICKERS_GRACIAS)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_NOMBRE__', [string]$HORAS_ENTRE_NOMBRES)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__DIAS_ULTIMA_OPERACION__', [string]$DIAS_ULTIMA_OPERACION)
+$revisarOperacionCode = $revisarOperacionCode.Replace('__MARGEN_CUADRE__', ([string]$MARGEN_CUADRE_USD).Replace(',', '.'))
+$revisarOperacionCode = $revisarOperacionCode.Replace('__HORAS_CORREGIR__', [string]$HORAS_CORREGIR_DATOS)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__HORARIO_JK__', $horarioJs)
 $revisarOperacionCode = $revisarOperacionCode.Replace('__BLOQUES_CUENTAS__', $bloquesCuentasJs)
+
+# ===================== CODIGO: PREPARAR VIGILANCIA MONTO (deposito que no cuadra) =====================
+$prepararVigilanciaCode = @'
+// Lo que "Revisar Operacion" pide hacer con un deposito que NO cuadra con las cuentas, en el workflow
+// "Avisar deposito que no cuadra":
+//   modo 'vigilar' (la PRIMERA vez): a los 5 minutos le recuerda al cliente y a los 10 avisa al grupo de
+//                                     avisos, si no lo arreglo;
+//   modo 'escalar' (el cliente dice que esta bien asi): deja un aviso en el grupo de transferir.
+// Si no hay nada que hacer, aqui termina (y no se llama a nadie).
+let ro = {};
+try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
+const v = ro.vigilarMonto;
+if (!v || !v.token) return [];
+let jid = '', pushName = '', nombreCargado = '';
+try { jid = String($('Prep Debounce').first().json.jid || ''); } catch(e){}
+try { pushName = String($('Webhook Evolution API').first().json.body.data.pushName || '').trim(); } catch(e){}
+try { nombreCargado = String($('Solo Estos Numeros').first().json.nombreCargado || '').trim(); } catch(e){}
+if (!jid) return [];
+return [{ json: { modo: v.modo === 'escalar' ? 'escalar' : 'vigilar', jid, token: v.token, nombre: nombreCargado || pushName || 'Cliente',
+                  numero: jid.split('@')[0], deposito: v.deposito, suma: v.suma, montos: v.montos || [], moneda: v.moneda || 'USD' } }];
+'@
+
+# ===================== CODIGO: VERIFICAR DATOS (la operadora pide corregir una cuenta, 23/11) =====================
+$prepararCorregirCode = @'
+// La operadora cito la publicacion de una cuenta con "Verificar datos" (o "corregir dato"...). Si lo citado
+// es una publicacion del bot (esta en Redis: esa es la autorizacion), se arma el mensaje para el cliente
+// con los datos que hay que revisar. Si no, no pasa nada.
+const base = $('Solo Estos Numeros').first().json;
+let p = null;
+try {
+  const crudo = $('Redis Leer Publicacion Verificar').first().json.pedido;
+  if (crudo) p = (typeof crudo === 'string') ? JSON.parse(crudo) : crudo;
+} catch(e){ p = null; }
+if (!p || !p.jid) return [];
+// Si citaron una correccion, la publicacion "de verdad" es la original (ahi esta la fila de Supabase).
+const publicacion = String(p.publicacion || base.stanzaId || '');
+// Lo publicado es "Nombre - $10" + renglon vacio + los datos (o "✏️ DATOS CORREGIDOS" + eso mismo).
+const t = String(base.citadoTexto || '').replace(/^✏️ DATOS CORREGIDOS[^\n]*\n/, '');
+const corte = t.indexOf('\n\n');
+const cabecera = (corte === -1 ? '' : t.slice(0, corte)).trim();
+const datos = (corte === -1 ? t : t.slice(corte + 2)).trim();
+if (!datos) return [];
+const nombre = String(p.nombre || 'el cliente');
+const nota = String(base.nota || '').replace(/\s+/g, ' ').trim();
+const mensaje = 'Disculpa 🙏 Nos indican: *' + nota + '*\n\n' + datos + '\n\nPor favor revisa estos datos, corrígelos y envíamelos de nuevo.';
+return [{ json: { jid: String(p.jid), nombre, publicacion, idCaptura: String(p.idCaptura || ''), cabecera: cabecera || nombre,
+                  datos, nota, mensaje, idNota: String(base.idNota || ''), jidGrupo: String(base.jidGrupo || ''),
+                  confirmacion: 'Listo, le pedí a ' + nombre + ' que verifique y corrija los datos ✅' } }];
+'@
+
+$marcarCorregirCode = @'
+// Se anota en la operacion del cliente (op:<chat>) que la operadora pidio corregir esa cuenta. Cuando el
+// cliente mande los datos corregidos, "Revisar Operacion" los vuelve a pasar a transferir (ver "corregir").
+const v = $('Preparar Corregir Datos').first().json;
+let op = {};
+try {
+  const raw = $('Redis Leer Op Corregir').first().json.operacion;
+  if (raw) op = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+} catch(e){ op = {}; }
+if (!op || typeof op !== 'object' || Array.isArray(op)) op = {};
+op.corregir = { ts: Date.now(), publicacion: v.publicacion, nombre: v.nombre, cabecera: v.cabecera, idCaptura: v.idCaptura,
+                nota: v.nota, datos: String(v.datos || '').slice(0, 1500) };
+return [{ json: Object.assign({}, v, { operacionNueva: JSON.stringify(op) }) }];
+'@
+
+$prepararCorreccionCode = @'
+// El cliente mando los datos corregidos de la cuenta que la operadora pidio verificar ("Revisar Operacion"
+// lo decide). Se arma la publicacion para transferir: marcada como CORREGIDA, con el nombre y el monto.
+let ro = {};
+try { ro = $('Revisar Operacion').first().json || {}; } catch(e){ ro = {}; }
+const c = ro.correccion;
+if (!c || !c.texto || !c.publicacion) return [];
+let jid = '';
+try { jid = String($('Prep Debounce').first().json.jid || ''); } catch(e){}
+if (!jid) return [];
+// La cabecera: la de la publicacion original ("Nombre - $10"); si los datos nuevos traen otro monto, ese.
+const montoNuevo = (String(c.texto).match(/\$[ \t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || String(c.texto).match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \t]*(?:\$|usd)/i) || [])[1] || '';
+const montoViejo = (String(c.cabecera || '').match(/ - \$([0-9]+(?:[.,][0-9]{1,2})?)/) || [])[1] || '';
+const monto = montoNuevo || montoViejo;
+const nombre = String(c.nombre || 'Cliente');
+const cabecera = montoNuevo ? (nombre + ' - $' + montoNuevo) : (c.cabecera || nombre);
+const texto = '✏️ DATOS CORREGIDOS (la operadora pidió: ' + String(c.nota || 'verificar') + ')\n' + cabecera + '\n\n' + String(c.texto).trim();
+return [{ json: { jid, nombre, publicacion: c.publicacion, idCaptura: c.idCaptura || '', idCuenta: c.idCuenta || '', nota: c.nota || '',
+                  datos: String(c.texto).trim(), monto: monto ? parseFloat(monto.replace(',', '.')) : null, texto } }];
+'@
+
+$datosCorreccionCode = @'
+// La fila de esa cuenta en Supabase queda con los datos corregidos: asi, cuando la operadora devuelva la
+// foto, la Fase B la compara con los datos BUENOS. Solo van las columnas que se cambian.
+const v = $('Preparar Correccion').first().json;
+return [{ json: {
+  cuentas: [{ id: v.idCuenta || '', texto: v.datos, monto: v.monto }],
+  notas: 'Datos corregidos por el cliente (la operadora pidio: ' + (v.nota || 'verificar') + ')'
+} }];
+'@
 
 # ===================== PROMPT: LEER COMPROBANTE DE LA OPERADORA (Fase B) =====================
 $leerComprobanteOperadoraPrompt = 'Esta imagen es el comprobante de una transferencia que hizo una casa de cambio HACIA un beneficiario (transferencia bancaria, pago movil, Zelle, Binance, Nequi, etc.). Lee SOLO los datos del DESTINO (quien RECIBE el dinero), nunca los de quien envia. Responde SOLO JSON valido, sin texto extra: {"es_comprobante": true|false, "cuenta_destino": "numero de cuenta o telefono del destino tal como aparece (con asteriscos si esta oculto)", "cedula_destino": "", "titular_destino": "nombre de quien recibe", "banco_destino": "", "correo_destino": "", "billetera_destino": "", "monto": "", "moneda": "", "referencia": ""}. Si un dato no aparece, dejalo vacio. No inventes nada. es_comprobante = false si no es un comprobante de pago (por ejemplo, una foto de dinero en efectivo o de una persona).'
@@ -2638,7 +2987,9 @@ $nodes = @(
       @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-entregar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'entregar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'entregar' },
       @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-recfoto'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'recordarFoto'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'recordarFoto' },
       # SIEMPRE la ultima: los indices de las salidas de arriba no pueden cambiar.
-      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-mayor'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'mayor'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'mayor' }
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-mayor'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'mayor'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'mayor' },
+      # La operadora pidio verificar los datos de una cuenta (23/11). Despues de 'mayor', por lo mismo.
+      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'p-verificar'; leftValue = '={{ $json.accionPausa }}'; rightValue = 'verificar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'verificar' }
     ) } }
     id = 'd0e1f2a3-0000-4b00-9000-routerpausa01'; name = 'Router Pausa'; type = 'n8n-nodes-base.switch'; typeVersion = 3.2; position = @(-150,-20)
   },
@@ -2900,6 +3251,92 @@ $nodes = @(
     onError = 'continueRegularOutput'
   },
   [ordered]@{
+    # Deposito que no cuadra con las cuentas: arma lo que necesita el workflow "Avisar deposito que no
+    # cuadra" (vigilar la primera vez, o escalar). Si no hay nada que hacer devuelve vacio y "Vigilar Monto" ni corre.
+    parameters = @{ jsCode = $prepararVigilanciaCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,416); id = 'b7c8d9e0-0001-4f00-9b00-vigilarmonto1'; name = 'Preparar Vigilancia Monto'
+  },
+  [ordered]@{
+    # Le pasa el caso al workflow "Avisar deposito que no cuadra" y NO lo espera: ese workflow espera por
+    # su cuenta (recordatorio al cliente y aviso al grupo de avisos), o deja el aviso en transferir.
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $VIGILAR_MONTO_WORKFLOW_ID; mode = 'id' }
+                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
+                    mode = 'once'; options = @{ waitForSubWorkflow = $false } }
+    id = 'b7c8d9e0-0002-4f00-9b00-vigilarmonto2'; name = 'Vigilar Monto'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2336,416)
+    onError = 'continueRegularOutput'
+  },
+  # ----- CORRECCION: el cliente mando los datos corregidos que pidio la operadora (23/11) -----
+  [ordered]@{
+    # Si "Revisar Operacion" decidio que llegaron los datos corregidos, arma la publicacion. Si no, vacio.
+    parameters = @{ jsCode = $prepararCorreccionCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,736); id = 'c9d0e1f2-0001-4a00-9c00-correccion01'; name = 'Preparar Correccion'
+  },
+  [ordered]@{
+    # Los datos corregidos van a transferir, marcados como CORREGIDOS.
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "' + $GRUPO_OPERACIONES + '", text: $json.texto }) }}'; options = @{} }
+    id = 'c9d0e1f2-0002-4a00-9c00-correccion02'; name = 'Publicar Correccion'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2336,736)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
+  },
+  [ordered]@{
+    # La publicacion corregida apunta al mismo cliente y a la publicacion ORIGINAL: asi la foto de la
+    # operadora le llega al cliente, y se marca la fila de Supabase de siempre.
+    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = '={{ JSON.stringify({ jid: $("Preparar Correccion").first().json.jid, nombre: $("Preparar Correccion").first().json.nombre, idCuenta: $("Preparar Correccion").first().json.idCuenta, idCaptura: $("Preparar Correccion").first().json.idCaptura, publicacion: $("Preparar Correccion").first().json.publicacion }) }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    id = 'c9d0e1f2-0003-4a00-9c00-correccion03'; name = 'Redis Guardar Publicacion Correccion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2512,736)
+    onError = 'continueRegularOutput'; credentials = $redisCred
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $datosCorreccionCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2688,736); id = 'c9d0e1f2-0004-4a00-9c00-correccion04'; name = 'Datos Correccion Supabase'
+  },
+  [ordered]@{
+    # La fila de esa cuenta (la buscada por la publicacion original) queda con los datos corregidos.
+    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_detal_por_whatsapp'; filterType = 'string'; filterString = '={{ "id_msgs_grupo=cs." + JSON.stringify([ $("Preparar Correccion").first().json.publicacion || "sin-dato" ]) + "&estado=in.(en_proceso,en_espera)" }}'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
+    id = 'c9d0e1f2-0005-4a00-9c00-correccion05'; name = 'Corregir Cuenta en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2864,736)
+    onError = 'continueRegularOutput'
+    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  # ----- VERIFICAR: la operadora cita una cuenta con "Verificar datos" (23/11) -----
+  [ordered]@{
+    # Era una publicacion del bot la cuenta que cito la operadora?
+    parameters = @{ operation = 'get'; key = '={{ $json.claveGrupoMsg }}'; keyType = 'string'; propertyName = 'pedido'; options = @{} }
+    id = 'c9d0e1f2-0011-4a00-9c00-verificar011'; name = 'Redis Leer Publicacion Verificar'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-1104,-1408)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $prepararCorregirCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-928,-1408); id = 'c9d0e1f2-0012-4a00-9c00-verificar012'; name = 'Preparar Corregir Datos'
+  },
+  [ordered]@{
+    parameters = @{ operation = 'get'; key = '={{ "op:" + $json.jid }}'; keyType = 'string'; propertyName = 'operacion'; options = @{} }
+    id = 'c9d0e1f2-0013-4a00-9c00-verificar013'; name = 'Redis Leer Op Corregir'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-752,-1408)
+    onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $marcarCorregirCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-576,-1408); id = 'c9d0e1f2-0014-4a00-9c00-verificar014'; name = 'Marcar Corregir Datos'
+  },
+  [ordered]@{
+    parameters = @{ operation = 'set'; key = '={{ "op:" + $json.jid }}'; value = '={{ $json.operacionNueva }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
+    id = 'c9d0e1f2-0015-4a00-9c00-verificar015'; name = 'Redis Guardar Op Corregir'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-400,-1408)
+    onError = 'continueRegularOutput'; credentials = $redisCred
+  },
+  [ordered]@{
+    # Al cliente: que revise esos datos, los corrija y los mande de nuevo.
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = '={{ $("Preparar Corregir Datos").first().json.jid }}'; messageText = '={{ $("Preparar Corregir Datos").first().json.mensaje }}'; options_message = @{} }
+    id = 'c9d0e1f2-0016-4a00-9c00-verificar016'; name = 'Pedir Corregir al Cliente'; type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(-224,-1408)
+    retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
+    onError = 'continueRegularOutput'
+    credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
+  },
+  [ordered]@{
+    # En el grupo, citando lo que escribio la operadora: que ya se le pidio al cliente.
+    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: $("Preparar Corregir Datos").first().json.jidGrupo, text: $("Preparar Corregir Datos").first().json.confirmacion, quoted: { key: { id: $("Preparar Corregir Datos").first().json.idNota } } }) }}'; options = @{} }
+    id = 'c9d0e1f2-0017-4a00-9c00-verificar017'; name = 'Confirmar Verificar en Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(-48,-1408)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000
+    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
+  },
+  [ordered]@{
     # Que se le contesta (lo decide "Revisar Operacion"):
     #   gracias -> sticker A SU ORDEN | callar -> nada | todo lo demas -> la IA
     # Lo que no calce en ninguna regla sale por la salida de respaldo, hacia la IA: si algo
@@ -3065,7 +3502,8 @@ $connections = [ordered]@{
       @( ,@( @{ node='Avisar Pausa';          type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Leer Publicacion';     type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Guardar Ultima Foto';  type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Mayor Escuchar';             type='main'; index=0 } ) )
+      @( ,@( @{ node='Mayor Escuchar';             type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Redis Leer Publicacion Verificar'; type='main'; index=0 } ) )
     ) }
   'Redis Leer Publicacion' = @{ main = @( ,@( @{ node='Redis Leer Entregado';   type='main'; index=0 } ) ) }
   'Redis Leer Entregado'   = @{ main = @( ,@( @{ node='Redis Leer Ultima Foto'; type='main'; index=0 } ) ) }
@@ -3138,7 +3576,18 @@ $connections = [ordered]@{
   'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Consultar Operaciones WhatsApp'; type='main'; index=0 } ) ) }
   'Consultar Operaciones WhatsApp' = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
   'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
-  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 }, @{ node='Armar Filas Noche'; type='main'; index=0 } ) ) }
+  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 }, @{ node='Armar Filas Noche'; type='main'; index=0 }, @{ node='Preparar Vigilancia Monto'; type='main'; index=0 }, @{ node='Preparar Correccion'; type='main'; index=0 } ) ) }
+  'Preparar Vigilancia Monto' = @{ main = @( ,@( @{ node='Vigilar Monto'; type='main'; index=0 } ) ) }
+  'Preparar Correccion'    = @{ main = @( ,@( @{ node='Publicar Correccion'; type='main'; index=0 } ) ) }
+  'Publicar Correccion'    = @{ main = @( ,@( @{ node='Redis Guardar Publicacion Correccion'; type='main'; index=0 } ) ) }
+  'Redis Guardar Publicacion Correccion' = @{ main = @( ,@( @{ node='Datos Correccion Supabase'; type='main'; index=0 } ) ) }
+  'Datos Correccion Supabase' = @{ main = @( ,@( @{ node='Corregir Cuenta en Supabase'; type='main'; index=0 } ) ) }
+  'Redis Leer Publicacion Verificar' = @{ main = @( ,@( @{ node='Preparar Corregir Datos'; type='main'; index=0 } ) ) }
+  'Preparar Corregir Datos' = @{ main = @( ,@( @{ node='Redis Leer Op Corregir'; type='main'; index=0 } ) ) }
+  'Redis Leer Op Corregir' = @{ main = @( ,@( @{ node='Marcar Corregir Datos'; type='main'; index=0 } ) ) }
+  'Marcar Corregir Datos'  = @{ main = @( ,@( @{ node='Redis Guardar Op Corregir'; type='main'; index=0 } ) ) }
+  'Redis Guardar Op Corregir' = @{ main = @( ,@( @{ node='Pedir Corregir al Cliente'; type='main'; index=0 } ) ) }
+  'Pedir Corregir al Cliente' = @{ main = @( ,@( @{ node='Confirmar Verificar en Grupo'; type='main'; index=0 } ) ) }
   'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
   '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }

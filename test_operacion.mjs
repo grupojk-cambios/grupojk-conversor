@@ -435,6 +435,148 @@ console.log('=== 5d) UNA CUENTA ESCRITA CON RENGLONES VACIOS SIGUE SIENDO UNA SO
 }
 
 console.log('');
+console.log('=== 5e) EL DEPOSITO TIENE QUE CUADRAR CON LAS CUENTAS (pedido de Kelvin, 23/11) ===');
+{
+  // Con la captura en dolares y las cuentas con su monto, la suma de las cuentas tiene que dar lo
+  // mismo que el deposito. Si no, NO se pasa a transferir: se le pide que confirme los montos, y
+  // cuando lo corrige se procesa solo.
+  reloj = Date.parse('2026-11-23T16:00:00Z');   // 11:00 am en Ecuador (abierto)
+  const CAP = (monto, ref, extra) => '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: ' + monto + (extra || '')
+    + ', Banco: Pichincha, Fecha: 23/11/2026, Referencia: ' + ref + ']';
+  const CTA1 = '0102 1234567 04120000000';
+  const CTA2 = '0134 7654321 04140000000';
+
+  // UNA cuenta
+  const a1 = revisar([{ id: 'F1', texto: CAP('$10,00', '77001') }, { id: 'C1', texto: CTA1 + SALTO + '$15' }], null);
+  chk(a1.estadoOperacion === 'no_cuadra', 'deposito $10 y la cuenta dice $15: NO CUADRA', '-> ' + a1.estadoOperacion);
+  chk(/tu depósito es de \$10 pero la cuenta dice \$15/.test(a1.notaIA) && /¿Me confirmas los montos\?/.test(a1.notaIA), 'le dice cuanto deposito y cuanto dice la cuenta, y pide confirmar', '-> ' + a1.notaIA.slice(-170));
+  chk(!/otro depósito/.test(a1.notaIA), 'la primera vez NO le habla de otro deposito (lo mismo deposite de mas o de menos)');
+  chk(a1.textoAprobar === '' && detectar(a1).length === 0, 'y NO se pasa a transferir');
+  chk(a1.op.capturas.length === 1 && a1.op.cuenta && a1.op.cuenta.mensajes.length === 1, 'la captura y la cuenta quedan guardadas esperando');
+  chk(a1.op.noCuadra && a1.op.noCuadra.ts === reloj && a1.op.noCuadra.deposito === 10 && a1.op.noCuadra.suma === 15 && a1.op.noCuadra.paso === 'preguntado',
+      'queda la marca "no cuadra" con desde cuando y en que paso va', '-> ' + JSON.stringify(a1.op.noCuadra));
+  chk(a1.vigilarMonto && a1.vigilarMonto.modo === 'vigilar' && a1.vigilarMonto.token === reloj, 'y se pide vigilarla (recordatorio a los 5 min, aviso a los 10)');
+
+  pasan(2);
+  const a2 = revisar([{ id: 'X1', texto: 'a que hora cierran hoy?' }], a1.op);
+  chk(a2.estadoOperacion === 'no_cuadra' && /si pregunto otra cosa/i.test(a2.notaIA) && /confirme los montos/.test(a2.notaIA), 'si escribe otra cosa: le contesta y le recuerda confirmar', '-> ' + a2.notaIA.slice(-120));
+  chk(a2.op.noCuadra.ts === a1.op.noCuadra.ts && a2.vigilarMonto === null, 'es el MISMO caso: no se vuelve a pedir vigilancia');
+
+  // Dice que SI (los montos de las cuentas estan bien) y deposito de MENOS: se le pide la otra captura
+  pasan(1);
+  const s1 = revisar([{ id: 'X2', texto: 'Si, asi esta bien' }], a1.op);
+  chk(s1.estadoOperacion === 'no_cuadra' && /envíame la captura del otro depósito/.test(s1.notaIA) && s1.op.noCuadra.paso === 'pidio_captura',
+      'dice "si" y deposito de MENOS: le pide la captura del otro deposito', '-> ' + s1.notaIA.slice(-90));
+  chk(s1.vigilarMonto === null && detectar(s1).length === 0, 'sigue sin pasar a transferir y sin escalar');
+  const s2 = revisar([{ id: 'F1b', texto: CAP('$5,00', '77001b') }], s1.op);
+  chk(s2.estadoOperacion === 'completo' && !s2.op.noCuadra, 'manda la otra captura ($10 + $5 = $15): COMPLETO', '-> ' + s2.estadoOperacion);
+  const s3 = revisar([{ id: 'X3', texto: 'si' }], s1.op);
+  chk(s3.estadoOperacion === 'no_cuadra' && /Un asesor lo revisa/.test(s3.notaIA) && s3.op.noCuadra.paso === 'escalado', 'si vuelve a decir "si" sin mandar la captura: pasa a un asesor', '-> ' + s3.notaIA.slice(-70));
+  chk(s3.vigilarMonto && s3.vigilarMonto.modo === 'escalar' && s3.vigilarMonto.token === a1.op.noCuadra.ts, 'y se deja el aviso en transferir (modo escalar)');
+  chk(detectar(s3).length === 0, 'pero NO se transfiere');
+  const s4 = revisar([{ id: 'X4', texto: 'ya?' }], s3.op);
+  chk(s4.estadoOperacion === 'no_cuadra' && /un asesor la esta revisando/.test(s4.notaIA) && s4.vigilarMonto === null, 'despues: "un asesor lo esta revisando", sin volver a escalar', '-> ' + s4.notaIA.slice(-90));
+  const s5 = revisar([{ id: 'C1c', texto: CTA1 + SALTO + '$10' }], s3.op);
+  chk(s5.estadoOperacion === 'completo', 'y si igual corrige la cuenta a $10: se procesa', '-> ' + s5.estadoOperacion);
+
+  // Dice que SI y deposito de MAS: un asesor, y aviso en transferir
+  const m1 = revisar([{ id: 'F1m', texto: CAP('$20,00', '77001m') }, { id: 'C1m', texto: CTA1 + SALTO + '$15' }], null);
+  pasan(1);
+  const m2 = revisar([{ id: 'X5', texto: 'correcto' }], m1.op);
+  chk(m2.estadoOperacion === 'no_cuadra' && /Un asesor lo revisa/.test(m2.notaIA) && m2.vigilarMonto && m2.vigilarMonto.modo === 'escalar',
+      'deposito de MAS ($20 / $15) y dice "correcto": pasa a un asesor y avisa en transferir', '-> ' + m2.notaIA.slice(-70));
+  const m3 = revisar([{ id: 'X6', texto: 'no, espera' }], m1.op);
+  chk(m3.estadoOperacion === 'no_cuadra' && m3.vigilarMonto === null && m3.op.noCuadra.paso === 'preguntado', '"no, espera" no es un si: sigue esperando');
+
+  pasan(3);
+  const a3 = revisar([{ id: 'C2', texto: CTA1 + SALTO + '$10' }], a2.op);
+  chk(a3.estadoOperacion === 'completo', 'manda la cuenta corregida con $10: COMPLETO', '-> ' + a3.estadoOperacion);
+  chk(/\$10/.test(a3.textoAprobar) && !/\$15/.test(a3.textoAprobar), 'al grupo va la cuenta CORREGIDA (no la de $15)', '-> ' + JSON.stringify(a3.textoAprobar.slice(-40)));
+  chk(!a3.op.noCuadra && a3.vigilarMonto === null, 'y la marca "no cuadra" se borra');
+  chk(detectar(a3).length === 1, 'y se pasa a transferir');
+
+  // VARIAS cuentas: se suman
+  const b1 = revisar([{ id: 'F2', texto: CAP('$15,00', '77002') }, { id: 'C3', texto: CTA1 + SALTO + '$10' }, { id: 'C4', texto: CTA2 + SALTO + '$5' }], null);
+  chk(b1.estadoOperacion === 'completo', 'deposito $15 y dos cuentas de $10 + $5: COMPLETO', '-> ' + b1.estadoOperacion);
+  const b2 = revisar([{ id: 'F3', texto: CAP('$10,00', '77003') }, { id: 'C5', texto: CTA1 + SALTO + '$10' + SALTO + SALTO + CTA2 + SALTO + '$5' }], null);
+  chk(b2.estadoOperacion === 'no_cuadra' && /las cuentas suman \$15/.test(b2.notaIA), 'deposito $10 y las cuentas suman $15: NO CUADRA', '-> ' + b2.estadoOperacion);
+  pasan(2);
+  const b3 = revisar([{ id: 'C6', texto: CTA1 + SALTO + '$10' }], b2.op);
+  chk(b3.estadoOperacion === 'completo' && b3.op.cuenta === null, 'manda solo la de $10: esas son las buenas, COMPLETO', '-> ' + b3.estadoOperacion);
+  const sep3 = separar(b3, detectar(b3)[0].json);
+  chk(sep3.length === 1 && sep3[0].monto === 10, 'al grupo va UNA cuenta, la de $10 (la de $5 se descarta)', '-> ' + JSON.stringify(sep3.map(x => x.monto)));
+  pasan(1);
+  const b4 = revisar([{ id: 'F4', texto: CAP('$5,00', '77004') }], b2.op);
+  chk(b4.estadoOperacion === 'completo', 'o manda la captura del otro deposito de $5 ($10 + $5 = $15): COMPLETO', '-> ' + b4.estadoOperacion);
+  const b5 = revisar([{ id: 'F5', texto: CAP('$20,00', '77005') }, { id: 'C7', texto: CTA1 + SALTO + '$10' }, { id: 'C8', texto: CTA2 + SALTO + '$5' }], null);
+  chk(b5.estadoOperacion === 'no_cuadra' && !/otro depósito/.test(b5.notaIA), 'deposito MAYOR ($20) que las cuentas ($15): tambien pregunta (sin lo del otro deposito)', '-> ' + b5.estadoOperacion);
+  const b6 = revisar([{ id: 'F6', texto: CAP('$10,00', '77006') }, { id: 'C9', texto: CTA1 + SALTO + '$10' + SALTO + SALTO + CTA2 }], null);
+  chk(b6.estadoOperacion === 'falta_monto', 'si a una cuenta le falta el monto, primero se pide el monto', '-> ' + b6.estadoOperacion);
+
+  // EXACTO: ni un centavo de diferencia
+  const c1 = revisar([{ id: 'F7', texto: CAP('$10,30', '77007') }, { id: 'C10', texto: CTA1 + SALTO + '$10' }], null);
+  chk(c1.estadoOperacion === 'no_cuadra' && /\$10\.30/.test(c1.notaIA), 'tiene que ser EXACTO: $10,30 contra $10 NO cuadra', '-> ' + c1.estadoOperacion);
+  const c1b = revisar([{ id: 'F7b', texto: CAP('$10,50', '77007b') }, { id: 'C10b', texto: CTA1 + SALTO + '$10,50' }], null);
+  chk(c1b.estadoOperacion === 'completo', '$10,50 contra $10,50: cuadra', '-> ' + c1b.estadoOperacion);
+  const c2 = revisar([{ id: 'F8', texto: CAP('$30,00', '77008') }, { id: 'C11', texto: CTA1 }], null);
+  chk(c2.estadoOperacion === 'completo', 'UNA cuenta sin monto: va con el del deposito, como siempre', '-> ' + c2.estadoOperacion);
+
+  // OTRAS MONEDAS: las cuentas en la misma moneda del deposito
+  const CAPM = (monto, banco, ref, moneda) => '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: ' + monto + (moneda ? ', Moneda: ' + moneda : '')
+    + ', Banco: ' + banco + ', Fecha: 23/11/2026, Referencia: ' + ref + ']';
+  const v1 = revisar([{ id: 'F20', texto: CAPM('Bs 12.000,00', 'Banesco', '77020', 'VES') }, { id: 'C20', texto: CTA1 + SALTO + '12.000 Bs' }], null);
+  chk(v1.estadoOperacion === 'completo', 'deposito Bs 12.000 y la cuenta "12.000 Bs": cuadra', '-> ' + v1.estadoOperacion);
+  const v2 = revisar([{ id: 'F21', texto: CAPM('Bs 12.000,00', 'Banesco', '77021', 'VES') }, { id: 'C21', texto: CTA1 + SALTO + 'Bs 8.000' + SALTO + SALTO + CTA2 + SALTO + 'Bs 5.000' }], null);
+  chk(v2.estadoOperacion === 'no_cuadra' && /12\.000 Bs/.test(v2.notaIA) && /13\.000 Bs/.test(v2.notaIA), 'deposito 12.000 Bs y las cuentas suman 13.000 Bs: NO cuadra', '-> ' + v2.notaIA.slice(60, 160));
+  const v3 = revisar([{ id: 'F22', texto: CAPM('$100.000', 'Bancolombia', '77022', 'COP') }, { id: 'C22', texto: CTA1 + SALTO + '60.000 pesos' + SALTO + SALTO + CTA2 + SALTO + '$40.000' }], null);
+  chk(v3.estadoOperacion === 'completo', 'deposito 100.000 COP = 60.000 pesos + $40.000 (pesos): cuadra', '-> ' + v3.estadoOperacion);
+  const v4 = revisar([{ id: 'F23', texto: CAPM('$100.000', 'Bancolombia', '77023', 'COP') }, { id: 'C23', texto: CTA1 + SALTO + '90.000 COP' }], null);
+  chk(v4.estadoOperacion === 'no_cuadra' && /100\.000 COP/.test(v4.notaIA), 'deposito 100.000 COP y la cuenta 90.000 COP: NO cuadra', '-> ' + v4.estadoOperacion);
+  const v5 = revisar([{ id: 'F24', texto: CAPM('$100.000', 'Bancolombia', '77024') }, { id: 'C24', texto: CTA1 + SALTO + '100.000 cop' }], null);
+  chk(v5.estadoOperacion === 'completo', 'sin "Moneda:" pero de Bancolombia: son pesos, y cuadra', '-> ' + v5.estadoOperacion);
+  const v6 = revisar([{ id: 'F25', texto: CAPM('S/ 50,00', 'BCP', '77025', 'PEN') }, { id: 'C25', texto: CTA1 + SALTO + 'S/ 50' }], null);
+  chk(v6.estadoOperacion === 'completo', 'deposito S/ 50 y la cuenta S/ 50: cuadra', '-> ' + v6.estadoOperacion);
+  // Las demas monedas de la hoja (pedido de Kelvin: "que compare y las sume en las mismas monedas")
+  const OTRAS = [
+    ['ARS', '$50.000', 'Mercado Pago', '30.000 pesos', '$20.000', '$60.000'],
+    ['PYG', 'Gs 500.000', 'Ueno', '300.000 gs', 'Gs 200.000', 'Gs 600.000'],
+    ['DOP', 'RD$ 5.000', 'Banreservas', 'RD$ 3.000', '2.000 pesos', 'RD$ 6.000'],
+    ['UYU', '$U 2.000', 'BROU', '$U 1.500', '500 pesos', '$U 2.500'],
+    ['CLP', '$90.000', 'BancoEstado', '50.000 pesos', '$40.000', '$100.000'],
+    ['MXN', '$1.500', 'Banorte', '1.000 pesos', '$500', '$2.000'],
+    ['GTQ', 'Q 800', 'Banrural', 'Q 500', '300 quetzales', 'Q 900'],
+    ['CRC', '₡ 50.000', 'BCR', '30.000 colones', '₡ 20.000', '₡ 60.000'],
+    ['EUR', '100 €', 'Santander', '60 €', '40 euros', '120 €']];
+  OTRAS.forEach(([mon, dep, banco, c1, c2, malo], i) => {
+    const ok = revisar([{ id: 'FO' + i, texto: CAPM(dep, banco, '7710' + i, mon) }, { id: 'CO' + i, texto: CTA1 + SALTO + c1 + SALTO + SALTO + CTA2 + SALTO + c2 }], null);
+    const no = revisar([{ id: 'FN' + i, texto: CAPM(dep, banco, '7720' + i, mon) }, { id: 'CN' + i, texto: CTA1 + SALTO + malo }], null);
+    chk(ok.estadoOperacion === 'completo' && no.estadoOperacion === 'no_cuadra', mon + ': ' + dep + ' = ' + c1 + ' + ' + c2 + ' cuadra; contra ' + malo + ' NO',
+        '-> ' + ok.estadoOperacion + ' / ' + no.estadoOperacion + (no.estadoOperacion === 'no_cuadra' ? '' : ' ' + JSON.stringify(no.notaIA.slice(0, 80))));
+  });
+  const sinCampo = revisar([{ id: 'FS1', texto: CAPM('RD$ 5.000', 'Banreservas', '77301') }, { id: 'CS1', texto: CTA1 + SALTO + 'RD$ 4.000' }], null);
+  chk(sinCampo.estadoOperacion === 'no_cuadra', 'sin "Moneda:" el "RD$" dice que son pesos dominicanos (y se compara)', '-> ' + sinCampo.estadoOperacion);
+
+  // Lo que NO se compara (no hay con que)
+  const c3 = revisar([{ id: 'F9', texto: '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: Bs 12.000,00, Banco: Banesco, Fecha: 23/11/2026, Referencia: 77009]' },
+                      { id: 'C12', texto: CTA1 + SALTO + '$10' }], null);
+  chk(c3.estadoOperacion === 'completo', 'deposito en Bs y la cuenta en $: no se compara (no hay monto en Bs)', '-> ' + c3.estadoOperacion);
+  const c4 = revisar([{ id: 'F10', texto: '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: $100.000, Banco: Bancolombia, Fecha: 23/11/2026, Referencia: 77010]' },
+                      { id: 'C13', texto: CTA1 + SALTO + '$25' }], null);
+  chk(c4.estadoOperacion === 'completo', '"$100.000" de Bancolombia y la cuenta "$25": otra moneda, no se compara', '-> ' + c4.estadoOperacion);
+  const c5 = revisar([{ id: 'F11', texto: CAP('$100.000', '77011', ', Moneda: COP') }, { id: 'C14', texto: CTA1 + SALTO + '25 usd' }], null);
+  chk(c5.estadoOperacion === 'completo', '"Moneda: COP" y la cuenta en "usd": no se compara', '-> ' + c5.estadoOperacion);
+  const c6 = revisar([{ id: 'F12', texto: CAP('$10,00', '77012', ', Moneda: USD') }, { id: 'C15', texto: CTA1 + SALTO + '$15' }], null);
+  chk(c6.estadoOperacion === 'no_cuadra', 'con "Moneda: USD" si se compara', '-> ' + c6.estadoOperacion);
+  const c7 = revisar([{ id: 'F13', texto: CAP('no visible', '77013') }, { id: 'C16', texto: CTA1 + SALTO + '$15' }], null);
+  chk(c7.estadoOperacion === 'completo', 'si no se leyo el monto de la captura: no se compara', '-> ' + c7.estadoOperacion);
+
+  // De noche tambien se pregunta (no queda en espera algo que no cuadra)
+  reloj = Date.parse('2026-11-24T03:00:00Z');   // 10:00 pm en Ecuador (cerrado)
+  const d1 = revisar([{ id: 'F14', texto: CAP('$10,00', '77014') }, { id: 'C17', texto: CTA1 + SALTO + '$15' }], null);
+  chk(d1.estadoOperacion === 'no_cuadra' && d1.enEspera === false, 'de noche tambien se pregunta (no queda en espera)', '-> ' + d1.estadoOperacion);
+}
+
+console.log('');
 console.log('=== 6) COMO QUEDA CABLEADO ===');
 {
   const c = wf.connections;
