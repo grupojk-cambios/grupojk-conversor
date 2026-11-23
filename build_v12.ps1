@@ -2758,7 +2758,7 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(660,460); id = 'c6d7e8f9-a0b1-4114-9c44-txtimg000001'; name = 'Texto de Imagen'
   },
   [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ 'lastimg:' + `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; value = "={{ `$json.imgKeyId }}"; keyType = 'string'; expire = $true; ttl = 86400 }
+    parameters = @{ operation = 'set'; key = "={{ 'lastimg:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; value = "={{ `$json.imgKeyId }}"; keyType = 'string'; expire = $true; ttl = 86400 }
     type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(840,460); id = 'd7e8f9a0-b1c2-4125-9d55-rsetimg00001'; name = 'Redis Guardar Imagen'; credentials = $redisCred
   },
   [ordered]@{
@@ -2927,7 +2927,7 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2180,128); id = 'cc99dd00-ee11-4727-9ccc-separarresp1'; name = 'Separar Respuesta'
   },
   [ordered]@{
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
+    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = "={{ `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2320,128); id = '02d01e05-a9f8-4caa-a02e-37a660aa662c'; name = 'Enviar texto a WhatsApp'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
@@ -2953,7 +2953,7 @@ $nodes = @(
     credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
   },
   [ordered]@{
-    parameters = @{ sessionIdType = 'customKey'; sessionKey = "={{ `$('Webhook Evolution API').item.json.body.data.key.remoteJid }}"; contextWindowLength = 15; sessionTTL = 259200 }
+    parameters = @{ sessionIdType = 'customKey'; sessionKey = "={{ `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; contextWindowLength = 15; sessionTTL = 259200 }
     id = 'bff6d1ec-1a12-45f2-a96a-327e1edd3f0e'; name = 'Memoria de Chat'; type = '@n8n/n8n-nodes-langchain.memoryRedisChat'; typeVersion = 1.6; position = @(2040,400)
     credentials = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
   },

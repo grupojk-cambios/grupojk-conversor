@@ -1684,7 +1684,7 @@
                                          "expire":  true,
                                          "ttl":  86400,
                                          "keyType":  "string",
-                                         "key":  "={{ \u0027lastimg:\u0027 + $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}",
+                                         "key":  "={{ \u0027lastimg:\u0027 + $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid }}",
                                          "operation":  "set"
                                      },
                       "type":  "n8n-nodes-base.redis",
@@ -2425,7 +2425,7 @@
 
                                                              },
                                          "resource":  "messages-api",
-                                         "remoteJid":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}"
+                                         "remoteJid":  "={{ $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid }}"
                                      },
                       "type":  "n8n-nodes-evolution-api.evolutionApi",
                       "typeVersion":  1,
@@ -2510,7 +2510,7 @@
                   },
                   {
                       "parameters":  {
-                                         "sessionKey":  "={{ $(\u0027Webhook Evolution API\u0027).item.json.body.data.key.remoteJid }}",
+                                         "sessionKey":  "={{ $(\u0027Webhook Evolution API\u0027).first().json.body.data.key.remoteJid }}",
                                          "sessionIdType":  "customKey",
                                          "contextWindowLength":  15,
                                          "sessionTTL":  259200

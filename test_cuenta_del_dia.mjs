@@ -65,6 +65,14 @@ console.log('--- red de seguridad de la memoria del chat ---');
 // le llega al agente. Si ese campo no existe, el bot falla con "No session ID found" con TODOS
 // los clientes. Por eso el nodo que alimenta al agente debe traerlo siempre.
 ok(r.sessionId === '584121112233@s.whatsapp.net', 'el agente recibe sessionId (el chat del cliente)', '-> ' + r.sessionId);
+
+// 23/11: con la llave bien puesta, "Memoria de Chat" fallo igual 3 veces con "Key parameter is empty":
+// $('Webhook Evolution API').item a veces no encuentra su pareja y sale vacio, y el cliente se queda
+// sin respuesta. Cada ejecucion trae UN solo mensaje, asi que .first() da lo mismo y nunca se pierde.
+const conItem = wf.nodes.filter(n => JSON.stringify(n.parameters || {}).includes("Webhook Evolution API').item")).map(n => n.name);
+ok(conItem.length === 0, 'ningun nodo lee el webhook con .item (se usa .first())', '-> ' + conItem.join(', '));
+const mem = wf.nodes.find(n => n.name === 'Memoria de Chat');
+ok(/Webhook Evolution API'\)\.first\(\)\.json\.body\.data\.key\.remoteJid/.test(mem.parameters.sessionKey || ''), 'la llave de la memoria usa .first()', '-> ' + mem.parameters.sessionKey);
 console.log('');
 console.log(f ? ('FALLARON '+f) : 'TODO OK');
 
