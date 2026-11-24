@@ -16,7 +16,7 @@ Este documento recopila las reglas operativas, flujos de atención, formatos de 
 
 ### Paso 1: Recepción del Código del Cliente
 - Cuando el cliente envía los datos del retiro / código:
-  1. El bot le envía el sticker de confirmación: **"RST Recibido"**.
+  1. El bot le envía el sticker de confirmación: **"RST Recibido"** (alojado en `https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-rst-recibido.webp`).
   2. Inmediatamente el bot procede a redirigir los datos al **grupo del banco correspondiente** (Pichincha, Guayaquil, Produbanco, Pacífico, etc.).
 
 ### Paso 2: Formato de Envío al Grupo del Banco
