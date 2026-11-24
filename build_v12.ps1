@@ -153,6 +153,15 @@ $MARGEN_CUADRE_USD = 0
 # el bot le pide al cliente que la corrija; lo que el cliente mande con datos de cuenta en estas horas
 # se toma como la correccion y se vuelve a pasar a transferir.
 $HORAS_CORREGIR_DATOS = 12
+
+# GOOGLE SHEETS LENTO (23/11): el bot lee las tasas y las cuentas del dia de la hoja de Google, y ese dia
+# Google tardo 4 minutos en contestar: una clienta recibio su respuesta 5 minutos tarde. Ahora cada
+# lectura espera como mucho $SEGUNDOS_MAX_GOOGLE segundos (2 intentos = unos 20 s en total) y, si Google no
+# contesta, se usa la ULTIMA COPIA BUENA que el bot guardo en su memoria. La copia solo vale unas horas:
+# una tasa vieja no se usa (mejor avisar que no se pudo cargar), una cuenta si aguanta mas.
+$SEGUNDOS_MAX_GOOGLE = 10
+$HORAS_RESPALDO_TASAS = 3
+$HORAS_RESPALDO_CUENTAS = 24
 $VIGILAR_MONTO_WORKFLOW_ID = '5GUqzdpeeJBttqgd'
 
 # Horario de atencion (hora de Ecuador). Igual que el workflow de apertura y cierre: lunes a sabado
@@ -228,7 +237,26 @@ function num(s){ if(s===undefined||s===null||s==='') return 0; let v=String(s).r
 function numN(s){ if(s===undefined||s===null||String(s).trim()==='') return null; const n=parseFloat(String(s).replace(/\s/g,'').replace(',', '.')); return isNaN(n)?null:n; }
 
 const httpItem = $('Consultar Tasas').first();
-const csv = (httpItem && httpItem.json && httpItem.json.data) ? String(httpItem.json.data) : '';
+let csv = (httpItem && httpItem.json && httpItem.json.data) ? String(httpItem.json.data) : '';
+
+// ===== GOOGLE SHEETS LENTO O CAIDO: SE USA LA ULTIMA COPIA BUENA =====
+// El 23/11 Google tardo 4 minutos en dar las cuentas y una clienta recibio su respuesta 5 minutos tarde.
+// Las dos consultas a la hoja ahora tienen tope de tiempo; si no contestan (o devuelven algo que no es la
+// hoja), se usa la copia de la ultima lectura buena, que el bot guarda en su memoria. Una tasa vieja puede
+// estar mal, asi que esa copia solo vale HORAS_RESPALDO_TASAS; la de las cuentas, mas.
+const HORAS_RESPALDO_TASAS = __HORAS_RESPALDO_TASAS__;
+const HORAS_RESPALDO_CUENTAS = __HORAS_RESPALDO_CUENTAS__;
+let memoria = {};
+try { if (typeof $getWorkflowStaticData === 'function') memoria = $getWorkflowStaticData('global') || {}; } catch(e){ memoria = {}; }
+const respaldo = { tasas: false, cuentas: false };
+const copiaVigente = (texto, ts, horas) => !!texto && typeof ts === 'number' && (Date.now() - ts) <= horas * 3600000;
+const tasasBuenas = t => { try { return parseCSV(String(t || '')).slice(1).some(r => (r[0]||'').trim() && (num(r[1]) > 0 || num(r[3]) > 0)); } catch(e){ return false; } };
+if (tasasBuenas(csv)){
+  if (memoria.csvTasas !== csv) memoria.csvTasas = csv;
+  if (!memoria.csvTasasTs || Date.now() - memoria.csvTasasTs > 60000) memoria.csvTasasTs = Date.now();   // como mucho 1 escritura por minuto
+} else if (copiaVigente(memoria.csvTasas, memoria.csvTasasTs, HORAS_RESPALDO_TASAS) && tasasBuenas(memoria.csvTasas)){
+  csv = String(memoria.csvTasas); respaldo.tasas = true;
+}
 
 const APP_URL = 'https://grupojk-cambios.github.io/grupojk-conversor/';
 
@@ -269,7 +297,7 @@ const modo = esAdminSender
   : (esMayorista ? 'mayor' : 'detal');
 
 if(!csv){
-  return [{ json: { lista:[], modo, esMayorista, appUrl:APP_URL, hayEfectivoVe:false, totalPaises:0, error:'No se recibieron datos de tasas' } }];
+  return [{ json: { lista:[], modo, esMayorista, appUrl:APP_URL, hayEfectivoVe:false, totalPaises:0, respaldo, error:'No se recibieron datos de tasas' } }];
 }
 
 const filas = parseCSV(csv);
@@ -328,6 +356,16 @@ const hayEfectivoVe = evEntries.length>0;
 // ===== CUENTAS con ROTACION DIARIA (1 cuenta por pais por dia) =====
 let cuentasCsv = '';
 try { cuentasCsv = String($('Consultar Cuentas').first().json.data || ''); } catch(e){}
+// Una hoja de cuentas buena tiene filas con pais y datos. Si Google no contesto (o devolvio una pagina de
+// error), se usa la ultima copia buena: la fecha de hoy y la rotacion se calculan aqui con el dia de hoy,
+// asi que una copia guardada nunca le da al cliente el dia equivocado.
+const cuentasBuenas = t => { try { return parseCSV(String(t || '')).slice(1).some(r => (r[0]||'').trim() && (r[3]||'').trim()); } catch(e){ return false; } };
+if (cuentasBuenas(cuentasCsv)){
+  if (memoria.csvCuentas !== cuentasCsv) memoria.csvCuentas = cuentasCsv;
+  if (!memoria.csvCuentasTs || Date.now() - memoria.csvCuentasTs > 60000) memoria.csvCuentasTs = Date.now();
+} else if (copiaVigente(memoria.csvCuentas, memoria.csvCuentasTs, HORAS_RESPALDO_CUENTAS) && cuentasBuenas(memoria.csvCuentas)){
+  cuentasCsv = String(memoria.csvCuentas); respaldo.cuentas = true;
+}
 const cuentasTodas = [];
 if (cuentasCsv) {
   const filasC = parseCSV(cuentasCsv);
@@ -494,7 +532,7 @@ if (paisPorPrefijo) {
 let sessionId = '';
 try { sessionId = String($('Webhook Evolution API').first().json.body.data.key.remoteJid || ''); } catch(e){}
 
-return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, nombreCliente, paisPorPrefijo, sessionId, error: paises.length? null : 'Lista vacia' } }];
+return [{ json: { lista, modo, esMayorista, appUrl:APP_URL, hayEfectivoVe, evUbicaciones, totalPaises: paises.length, cuentas, hayCuentas: cuentas.length>0, diaIndex, diaSemanaEc, avisosCuentas, clienteContexto, nombreCliente, paisPorPrefijo, sessionId, respaldo, error: paises.length? null : 'Lista vacia' } }];
 '@
 
 # ===================== CODIGO DE LA CALCULADORA (Code Tool) =====================
@@ -596,7 +634,9 @@ if(_data && _data.length) return compute(_data);
 // 2) Respaldo: descargar el CSV (asincrono) solo si no hubo datos en memoria
 if(typeof fetch !== 'function') return JSON.stringify({ ok:false, error:'No pude acceder a las tasas. Pide disculpas y di que un asesor ayudara.' });
 const _url='https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
-return (async () => { try { const res = await fetch(_url + '&nocache=' + Date.now()); const text = await res.text(); return compute(construirPaises(text)); } catch(e){ return JSON.stringify({ ok:false, error:'No pude descargar las tasas: '+e.message }); } })();
+// Con tope de tiempo: si Google no contesta, la calculadora responde que no pudo cargar las tasas en vez de quedarse esperando.
+const _tope = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? { signal: AbortSignal.timeout(15000) } : {};
+return (async () => { try { const res = await fetch(_url + '&nocache=' + Date.now(), _tope); const text = await res.text(); return compute(construirPaises(text)); } catch(e){ return JSON.stringify({ ok:false, error:'No pude descargar las tasas: '+e.message }); } })();
 '@
 
 # ===================== INYECCION DEL MOTOR DE CALCULO =====================
@@ -629,6 +669,7 @@ foreach($obligatoria in @('calcularTasaEnvio','calcularTasaRecibo','isCajaDolar'
 # `factor${origen.codigo}` y en el reemplazo de -replace (regex de .NET) ${...}
 # se interpreta como referencia a un grupo con nombre y corrompe el codigo.
 $mainCode = $mainCode.Replace('__MOTOR_JK__', $motorJs)
+$mainCode = $mainCode.Replace('__HORAS_RESPALDO_TASAS__', [string]$HORAS_RESPALDO_TASAS).Replace('__HORAS_RESPALDO_CUENTAS__', [string]$HORAS_RESPALDO_CUENTAS)
 $toolCode = $toolCode.Replace('__MOTOR_JK__', $motorJs)
 if($mainCode.Contains('__MOTOR_JK__') -or $toolCode.Contains('__MOTOR_JK__')){ throw 'Quedo un __MOTOR_JK__ sin reemplazar.' }
 
@@ -3185,14 +3226,15 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1700,220); id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'; name = 'Confirmar Modo Admin'
   },
   [ordered]@{
-    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'; options = @{} }
+    # Con tope de tiempo: si Google no contesta, "Code in JavaScript" usa la ultima copia buena.
+    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'; options = @{ timeout = $SEGUNDOS_MAX_GOOGLE * 1000 } }
     id = 'd117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a'; name = 'Consultar Tasas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1600,128)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
   },
   [ordered]@{
-    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?gid=908170655&single=true&output=csv'; options = @{} }
+    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?gid=908170655&single=true&output=csv'; options = @{ timeout = $SEGUNDOS_MAX_GOOGLE * 1000 } }
     id = 'e2f3a4b5-c6d7-4e88-9f00-cuentas00001'; name = 'Consultar Cuentas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1690,300)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
   },
   [ordered]@{
     # Busca el numero del cliente en la tabla perfiles_mayor de Supabase (registro de la app).
