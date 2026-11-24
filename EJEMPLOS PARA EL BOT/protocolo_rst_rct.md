@@ -255,7 +255,7 @@ Para validar que los datos del retiro vengan completos y sin errores de tipeo, e
 | **Banco Guayaquil** | Dos códigos de 4 dígitos cada uno | `C1: 3467` / `C2: 4598` | Siempre deben venir ambos (C1 y C2) |
 | **Banco del Pacífico** | 6 dígitos | `474927` | — |
 | **Banco Solidario** | 6 dígitos + Clave Temporal en vivo | `874454` + `919180` | Ver flujo especial de cajero abajo |
-| **Banco Bolivariano** | 6 a 8 dígitos (6, 7 u 8 dígitos) | `068521` / `57913864` | Variable según tipo de QuickPay/retiro |
+| **Banco Bolivariano** | **6 dígitos** u **8 dígitos** (2 formas exactas) | `068521` / `57913864` | Solo 6 u 8 dígitos (no de 7) |
 | **Cooperativa JEP** | Código: 6 dígitos + Clave: 4 dígitos | `OTP: 332625` / `Clave: 1964` | Ambos campos son obligatorios |
 
 ### Flujo Especial: Segundo Código / Clave Temporal en Vivo (Banco Solidario)
