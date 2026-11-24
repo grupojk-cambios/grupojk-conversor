@@ -216,3 +216,55 @@ Cada código de retiro (RST) tiene una vigencia establecida por la entidad banca
    > *"⚠️ ¡Pendiente! Este código está por vencerse, le queda poco tiempo. Favor proceder con el retiro en cajero."*
    - De esta manera el cobrador sabe que debe acudir de inmediato al cajero antes de que el código quede inútil.
 
+
+---
+
+## 8. Fuera de horario: grupo COBRAR MAÑANA (regla de Kelvin, 24/11/2026)
+
+El horario de atención es de **lunes a sábado de 9:00 a 18:00** y el **domingo de 10:00 a 14:00** (hora de Ecuador). Las duraciones de cada código están en la tabla de la sección 7; aquí se explica qué hace el bot con un RST que llega **fuera de horario**.
+
+### En horario
+El bot publica el RST/RCT **directo en el grupo del banco** correspondiente.
+
+### Fuera de horario
+El bot lo publica en el grupo **COBRAR MAÑANA**, con el mismo formato de siempre. Qué pasa después depende de cuánto dura el código del banco:
+
+| Banco | Duración del código | Qué hace el bot de noche |
+|---|---|---|
+| **Pichincha, Pacífico** (4 h), **Bolivariano** (hasta las 9 pm) | Se vence **el mismo día** | Publica en COBRAR MAÑANA con el aviso **"⚠️ COBRAR HOY para que no se venza"**, para que el cobrador lo lea y lo cobre ese mismo día. **Se queda ahí** (no se pasa al banco al otro día). |
+| **JEP** (15 min), **Solidario, Austro, Internacional** (y cualquier banco nuevo) | JEP se vence en minutos; los otros se tratan como **el mismo día** por seguridad | Igual que los anteriores. |
+| **Guayaquil, Produbanco** | Duran **24 horas** | Publica en COBRAR MAÑANA **sin** el aviso. Al abrir (lunes a sábado 9:05, domingo 10:05) el bot lo **pasa a su grupo del banco**. |
+
+- Un RST de Guayaquil o Produbanco que lleve **más de 36 horas** esperando ya está vencido: el bot **no lo pasa** y avisa en el grupo de avisos para pedirle uno nuevo al cliente.
+- Los **RCT** (retiro con tarjeta) siguen la misma regla por banco.
+- Un banco que **no tiene grupo** (por ahora, 23 de Julio): el bot no publica nada y avisa en el grupo de avisos.
+
+### Cómo arranca (modo ensayo)
+Al principio el bot **no escribe a ningún banco ni cliente**: cada RST que entiende lo muestra como vista previa en el grupo de avisos ("🧪 ENSAYO — iría a PICHINCHA: …", con los códigos tapados). Cuando Kelvin revise las vistas previas y dé su OK, se enciende de verdad en un grupo de cliente primero.
+
+---
+
+## 9. Longitud Exacta de Códigos por Banco y Clave Temporal en Vivo (Solidario)
+
+Para validar que los datos del retiro vengan completos y sin errores de tipeo, el bot debe verificar la cantidad exacta de dígitos según la entidad bancaria:
+
+| Banco | Cantidad de Dígitos | Ejemplo | Notas Adicionales |
+| :--- | :--- | :--- | :--- |
+| **Banco Pichincha** | 4 dígitos | `2938` | — |
+| **Produbanco** | 6 dígitos | `159753` | — |
+| **Banco Guayaquil** | Dos códigos de 4 dígitos cada uno | `C1: 3467` / `C2: 4598` | Siempre deben venir ambos (C1 y C2) |
+| **Banco del Pacífico** | 6 dígitos | `474927` | — |
+| **Banco Solidario** | 6 dígitos + Clave Temporal en vivo | `874454` + `919180` | Ver flujo especial de cajero abajo |
+| **Banco Bolivariano** | 6 a 8 dígitos (6, 7 u 8 dígitos) | `068521` / `57913864` | Variable según tipo de QuickPay/retiro |
+| **Cooperativa JEP** | Código: 6 dígitos + Clave: 4 dígitos | `OTP: 332625` / `Clave: 1964` | Ambos campos son obligatorios |
+
+### Flujo Especial: Segundo Código / Clave Temporal en Vivo (Banco Solidario)
+Cuando el cobrador está frente al cajero retirando un RST de **Banco Solidario**, al ingresar los datos iniciales el banco envía en ese instante una clave temporal por SMS al cliente:
+
+1. **Aviso del Cobrador en Grupo Solidario:** El cobrador cita el RST en el grupo Solidario y escribe palabras clave como: `"temporal"`, `"código temporal"`, `"segundo código"` o similar.
+2. **Solicitud Inmediata al Cliente:** El bot acude al grupo/chat del cliente, **cita el RST original** y le pide que envíe de inmediato el código temporal que le acaba de llegar en ese momento.
+3. **Respuesta del Cliente:** El cliente reenvía el texto del banco o los dígitos (ejemplo real: *"B. Solidario te informa tu clave temporal para retiro de efectivo es 919180, recuerda que esta clave podra ser utilizada hasta 17:12"*).
+4. **Confirmación y Entrega al Cajero:**
+   - El bot le responde al cliente: **"Ok, recibido"**.
+   - Acto seguido, el bot reenvía ese mismo texto/clave al **Grupo Solidario**, **citando el RST en cuestión**, para que el cobrador pueda ingresarlo de inmediato en el cajero antes de que expire.
+
