@@ -577,6 +577,60 @@ console.log('=== 5e) EL DEPOSITO TIENE QUE CUADRAR CON LAS CUENTAS (pedido de Ke
 }
 
 console.log('');
+console.log('=== 5f) LA CUENTA VIENE EN EL PIE DE LA FOTO (caso real del 24/11) ===');
+{
+  // El cliente manda la captura y escribe la cuenta destino en el pie de la MISMA foto. Antes el pie se
+  // descartaba: el bot contestaba "Pasame la cuenta destino" teniendola ahi.
+  reloj = Date.parse('2026-11-24T15:00:00Z');   // 10:00 am en Ecuador (abierto)
+  const PIE = 'Tipo de cuenta: VES' + SALTO + '01020000000000012345' + SALTO + 'V11111111' + SALTO + '200$';
+  const imagen = (resumen, caption, id) => {
+    const $ = (n) => {
+      if (n === 'Leer Imagen') return { item: { json: { content: JSON.stringify({ tipo: 'comprobante', resumen }) } } };
+      if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id }, message: { imageMessage: { caption } } } } } }) };
+      return { item: { json: {} }, first: () => ({ json: {} }) };
+    };
+    return new Function('$', code('Texto de Imagen'))($)[0].json.texto;
+  };
+  const RES = 'Monto: $200,00, Moneda: USD, Banco: Banco Guayaquil, Fecha: 24/11/2026, Referencia: 55001122';
+  const t = imagen(RES, PIE, 'IMGPIE1');
+  chk(t.indexOf('[El cliente envio un COMPROBANTE') === 0 && t.endsWith(SALTO + PIE), 'el pie de foto va a continuacion de la nota de la captura', '-> ' + JSON.stringify(t.slice(-70)));
+  chk(imagen(RES, '', 'IMGPIE2').endsWith(']') && imagen(RES, undefined, 'IMGPIE3').endsWith(']'), 'una foto SIN pie queda igual que siempre');
+  const cuenta = new Function('$', code('Texto de Imagen'))(n => n === 'Leer Imagen' ? { item: { json: { content: '{"tipo":"cuenta","resumen":"Banco: X"}' } } } : { first: () => ({ json: { body: { data: { key: { id: 'I4' }, message: { imageMessage: { caption: 'para mi pana' } } } } } }) })[0].json.texto;
+  chk(/CUENTA bancaria/.test(cuenta) && cuenta.endsWith(SALTO + 'para mi pana'), 'una foto de cuenta con pie: tambien se conserva el pie');
+
+  // Y el bot lo entiende: captura + cuenta en el MISMO mensaje, sin que pida la cuenta
+  const r = revisar([{ id: 'IMG1', texto: t }], null);
+  chk(r.estadoOperacion === 'completo', 'captura con la cuenta en el pie: COMPLETO (no pide la cuenta)', '-> ' + r.estadoOperacion + ' ' + r.notaIA.slice(-60));
+  chk(/Listo, recibido/.test(r.notaIA) && detectar(r).length === 1, 'le dice "recibido" y se pasa a transferir');
+  const sep = separar(r, detectar(r)[0].json);
+  chk(sep.length === 1 && sep[0].monto === 200 && /01020000000000012345/.test(sep[0].cuenta), 'a transferir va UNA cuenta con su monto ($200)', '-> ' + JSON.stringify(sep.map(x => x.monto)));
+  // el pie tambien cuenta para el cuadre del deposito
+  const mal = revisar([{ id: 'IMG2', texto: imagen(RES.replace('$200,00', '$150,00').replace('55001122', '55001133'), PIE, 'IMGPIE5') }], null);
+  chk(mal.estadoOperacion === 'no_cuadra' && /\$150 pero la cuenta dice \$200/.test(mal.notaIA), 'y cuadra contra el deposito: $150 vs $200 NO cuadra', '-> ' + mal.estadoOperacion);
+  // el comentario del cliente que viene despues, aparte
+  const r2 = revisar([{ id: 'IMG3', texto: imagen(RES.replace('55001122', '55001144'), PIE, 'IMGPIE6') }, { id: 'TX1', texto: 'Buenos días amigo. Ayúdame con ese envío por favor.' }], null);
+  chk(r2.estadoOperacion === 'completo', 'si despues escribe "ayudame con ese envio": sigue COMPLETO', '-> ' + r2.estadoOperacion);
+  // sin pie: sigue pidiendo la cuenta
+  const s = revisar([{ id: 'IMG4', texto: imagen(RES.replace('55001122', '55001155'), '', 'IMGPIE7') }], null);
+  chk(s.estadoOperacion === 'falta_cuenta', 'sin pie ni cuenta: sigue pidiendo la cuenta', '-> ' + s.estadoOperacion);
+
+  // El pie tiene que SER una cuenta: "buenos dias" u otra charla no lo es (pedido de Kelvin, 24/11)
+  let n = 60;
+  const conPie = pie => revisar([{ id: 'IMGX' + (++n), texto: imagen(RES.replace('55001122', '5500' + n), pie, 'IMGPIE' + n) }], null);
+  for (const charla of ['Buenos días', 'buens dias amigo', 'Hola, aquí mi pago', 'Para la cuenta de mi mamá', 'Ayúdame con ese envío por favor', 'gracias 🙏', 'Ya hice el depósito, ¿me confirmas?', 'Banco de Venezuela']) {
+    const r = conPie(charla);
+    chk(r.estadoOperacion === 'falta_cuenta' && r.op.cuenta === null, 'el pie "' + charla + '" NO es una cuenta: sigue pidiendo la cuenta', '-> ' + r.estadoOperacion);
+  }
+  for (const cuentaPie of ['Pago móvil 04141234567 V12345678 Ana Prueba 200$', 'Banesco 0134 123456 Juan V123 $200', 'ana.prueba@example.com Zelle $200', 'Binance ID 82349723 $200', 'Tipo de cuenta: VES' + SALTO + '01020000000000099999' + SALTO + 'V22222222' + SALTO + '200$']) {
+    const r = conPie(cuentaPie);
+    chk(r.estadoOperacion === 'completo', 'el pie "' + cuentaPie.replace(/\n/g, ' / ').slice(0, 44) + '" SI es una cuenta: COMPLETO', '-> ' + r.estadoOperacion);
+  }
+  // charla en el pie + la cuenta en un mensaje aparte: sigue funcionando como siempre
+  const sep2 = revisar([{ id: 'IMGY1', texto: imagen(RES.replace('55001122', '55009001'), 'Buenos días', 'IMGPIEY') }, { id: 'TXY1', texto: '01020000000000099999' + SALTO + 'V22222222' + SALTO + '$200' }], null);
+  chk(sep2.estadoOperacion === 'completo', 'saludo en el pie y la cuenta en otro mensaje: COMPLETO', '-> ' + sep2.estadoOperacion);
+}
+
+console.log('');
 console.log('=== 6) COMO QUEDA CABLEADO ===');
 {
   const c = wf.connections;

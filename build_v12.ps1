@@ -697,6 +697,7 @@ El cliente puede enviarte VARIOS mensajes juntos (separados por saltos de linea)
 Tarifa de este cliente: {{ $node["Code in JavaScript"].json.modo }} (detal=publico, mayor=mayorista). Nunca menciones lo mayorista a un cliente detal.
 {{ $node["Code in JavaScript"].json.clienteContexto ? ('CONTEXTO DEL CLIENTE (usalo con naturalidad para atender mejor): ' + $node["Code in JavaScript"].json.clienteContexto) : '' }}
 {{ $('Revisar Operacion').first().json.reglaNombre || '' }}
+{{ $('Revisar Operacion').first().json.reglaSaludo || '' }}
 {{ $('Revisar Operacion').first().json.contextoOperaciones || '' }}
 {{ $('Revisar Operacion').first().json.horarioTexto || '' }}
 
@@ -735,6 +736,12 @@ REGLAS:
 TONO (asi contesta Kelvin a sus clientes): corto, directo y cercano. Nunca uses 😊. PROHIBIDO usar frases de relleno como "aqui estoy", "estoy aqui", "disponible", "con gusto", "quedo atento", "para ayudarte", "cualquier consulta", "no dudes en". Responde lo justo y para. Suena como una persona, no como un bot.
 Ejemplos (cliente -> tu):
 - "Hola buen dia" -> "Hola, buen día 👋 Dime, ¿qué necesitas?"
+- "Buenas tardes" -> "Buenas tardes 👋 Dime, ¿qué necesitas?"
+- "Buenos dias, como estas?" -> "Buenos días, bien gracias 🙏 Dime, ¿qué necesitas?"
+- "Hola, que tal" -> "Hola, todo bien 🙏 Dime, ¿qué necesitas?"
+- "Buenos dias amigo, ayudame con ese envio" (con captura o cuenta, la nota del estado manda) -> "Buenos días 🙌 " + la frase de la nota
+- "Buen provecho" -> "Igualmente 🙌"
+- "Bendiciones" / "feliz dia" -> "Igualmente, bendiciones 🙏"
 - "Buenas noches, disculpe la hora" -> "Buenas noches, tranquilo. Dime."
 - "Hola, estan abiertos?" -> "Hola, sí 👋 Dime qué necesitas."
 - "Que tasa hay hoy pa Colombia?" -> "¿Desde dónde envías y cuánto? Así te cotizo exacto."
@@ -898,6 +905,13 @@ let texto='';
 if(tipo.indexOf('comprobante')>=0){ texto = '[El cliente envio un COMPROBANTE de pago. Datos leidos: ' + resumen + (huella ? ' Huella: ' + huella : '') + ']'; }
 else if(tipo.indexOf('cuenta')>=0){ texto = '[El cliente envio una imagen con una CUENTA bancaria. Datos: ' + resumen + ']'; }
 else { texto = '[El cliente envio una imagen que no parece comprobante ni cuenta de banco]'; }
+// EL PIE DE FOTO es del cliente: muchos mandan la captura y escriben la cuenta destino en el pie de la
+// misma foto ("Tipo de cuenta: VES / 0102... / cedula / 200$", un cliente, 24/11). Antes se
+// descartaba y el bot contestaba "Pasame la cuenta destino" teniendo la cuenta ahi. Va DESPUES de la
+// nota de la imagen, como si lo hubiera escrito aparte: "Revisar Operacion" la toma como la cuenta.
+let pie = '';
+try { pie = String($('Webhook Evolution API').first().json.body.data.message.imageMessage.caption || '').trim(); } catch(e){ pie = ''; }
+if (pie) texto += '\n' + pie;
 return [{ json: { texto, tipoImagen: tipo, resumenImagen: resumen, imgKeyId: keyId } }];
 '@
 
@@ -2191,7 +2205,12 @@ for (const m of mensajes){
   const resto = textoDelCliente(String((m && m.texto) || ''));
   if (!resto || esCuentaNuestra(resto)) continue;
   if (pideLaMisma(resto) && !datosFirmes(resto)) continue;      // "a la misma cuenta de siempre" no ES una cuenta
-  const esCuenta = datosFirmes(resto) || ((hayCaptura || corregir) && resto.indexOf('?') === -1 && pareceCuenta(resto));
+  // El PIE DE FOTO de una captura solo cuenta como cuenta si TRAE datos de cuenta: un numero largo, un correo,
+  // una billetera, o palabras de cuenta con un numero de 6 digitos o mas. "Buenos dias", "aqui mi pago" o
+  // "para la cuenta de mi mama" son charla, no la cuenta (pedido de Kelvin, 24/11).
+  const esPie = RX_CAPTURA.test(String((m && m.texto) || ''));
+  const pieConDatos = datosFirmes(resto) || (pareceCuenta(resto) && /[0-9]{6,}/.test(resto.replace(/([0-9])[ .-](?=[0-9])/g, '$1')));
+  const esCuenta = esPie ? pieConDatos : (datosFirmes(resto) || ((hayCaptura || corregir) && resto.indexOf('?') === -1 && pareceCuenta(resto)));
   if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
 }
 
@@ -2492,6 +2511,37 @@ const reglaNombre = !nombreCliente ? '' : (tocaNombre
 if (typeof op.ultimoSaludo === 'number') nueva.ultimoSaludo = op.ultimoSaludo;
 if (accion === 'ia' && tocaNombre) nueva.ultimoSaludo = ahora;
 
+// ===== SALUDOS: BUENOS DIAS, BUENAS TARDES, BUENAS NOCHES (pedido de Kelvin, 24/11) =====
+// Si el cliente saluda, el bot saluda de vuelta, tambien cuando su respuesta es una de las fijas ("Recibi tu
+// comprobante...", "Listo, recibido!"): antes un "Buenos dias amigo, ayudame con ese envio" se contestaba
+// sin saludar. Si el cliente dijo "buenos dias"/"buenas tardes"/"buenas noches", se le responde igual (puede
+// escribir desde otro pais, con otra hora); si solo dijo "hola" o "buenas", el saludo es el de la hora de
+// Ecuador. Lo ve la IA en su prompt (reglaSaludo).
+function saludoDe(textos){
+  const w = palabrasDe(textos.join(' '));
+  for (let i = 0; i < w.length - 1; i++){
+    if (!/^buen/.test(w[i])) continue;
+    if (/^(dia|dias|dis|diad)$/.test(w[i + 1])) return 'dias';
+    if (/^(tarde|tardes)$/.test(w[i + 1])) return 'tardes';
+    if (/^(noche|noches)$/.test(w[i + 1])) return 'noches';
+  }
+  if (w.some(x => /^(hola|holi|ola|hey|buenas|saludos|epa|epale|bendiciones)$/.test(x))) return 'hola';
+  return '';
+}
+function saludoDeLaHora(ms){
+  const h = new Date(ms - 5 * 3600000).getUTCHours();          // hora de Ecuador
+  return h < 5 ? 'noches' : (h < 12 ? 'dias' : (h < 19 ? 'tardes' : 'noches'));      // de madrugada (0 a 5 am) todavia es "buenas noches"
+}
+const SALUDOS = { dias: 'Buenos días', tardes: 'Buenas tardes', noches: 'Buenas noches' };
+const clienteSaludo = saludoDe(mensajes.map(m => textoDelCliente(String((m && m.texto) || ''))).filter(Boolean));
+const saludoHoy = SALUDOS[clienteSaludo && clienteSaludo !== 'hola' ? clienteSaludo : saludoDeLaHora(ahora)];
+const reglaSaludo = (accion !== 'ia' || !clienteSaludo) ? '' :
+  'SALUDO: el cliente te saludo. Empieza tu respuesta con "' + saludoHoy + '"'
+  + (clienteSaludo === 'hola' ? ' (si solo dijo "hola", puedes empezar con "Hola" o con ese saludo)' : '') + ' y sigue con lo que toque. '
+  + 'Si tu respuesta es una de las notas del [ESTADO DE LA OPERACION] ("Responde SOLO..."), el saludo es la UNICA excepcion: ponlo antes, con un emoji de la nota si cabe, y luego la frase de la nota tal cual. '
+  + 'Si SOLO te saludo (sin pedir nada), contesta el saludo y preguntale que necesita: "' + saludoHoy + ' 👋 Dime, ¿qué necesitas?". '
+  + 'Si ademas pregunta como estas, contesta "Bien, gracias 🙏" y sigue.';
+
 // ===== "¿YA LLEGO?": EL ESTADO DE LA ULTIMA OPERACION, PARA EL AGENTE =====
 // Se le pasa siempre (si es de los ultimos DIAS_ULTIMA_OPERACION dias); el prompt le dice que la
 // use solo si el cliente pregunta como va su envio. Las horas, en hora de Ecuador.
@@ -2549,6 +2599,7 @@ return [{ json: Object.assign({}, base, {
   accion,
   motivoAccion,
   reglaNombre,
+  reglaSaludo,
   notaIA,
   textoAprobar,
   mensajesAprobar,
