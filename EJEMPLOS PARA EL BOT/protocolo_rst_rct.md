@@ -188,3 +188,31 @@ Monto 500$
 *Retira con tarjeta*
 Monto 500$
 ```
+
+---
+
+## 7. Monitoreo de Vigencia y Alertas Preventivas de Vencimiento (RST)
+
+Cada código de retiro (RST) tiene una vigencia establecida por la entidad bancaria. El bot debe registrar el momento exacto en que ingresa el código para supervisar su estado y avisar al cobrador antes de que expire.
+
+### Tabla de Duración por Banco y Horarios de Alerta
+| Banco | Duración del Código (RST) | Tiempo de Alerta Previa |
+| :--- | :--- | :--- |
+| **Banco Pichincha** | 4 horas | 1 hora antes de vencer (a las 3 hrs) |
+| **Banco del Pacífico** | 4 horas | 1 hora antes de vencer (a las 3 hrs) |
+| **Banco Guayaquil** | 24 horas | 1 hora antes de vencer (a las 23 hrs) |
+| **Produbanco** | 24 horas | 1 hora antes de vencer (a las 23 hrs) |
+| **Banco Bolivariano** | Hasta las 9:00 PM del mismo día | 1 hora antes (a las 8:00 PM) |
+| **Cooperativa JEP** | 15 minutos | A los 5 a 7 minutos de recibido |
+
+### Reglas de Detección de Cobro y Alerta
+1. **Guardar Timestamp:** El bot almacena la fecha y hora exacta en que el RST fue recibido en el chat/grupo del cliente.
+2. **Identificación de Estado por Reacción / Emojis:**
+   - **Cobrado:** El mensaje del código en el grupo del banco cuenta con un emoji de reacción (cualquiera, por ejemplo: ✅, 👍, 💵, etc., **excepto** la `❌`).
+   - **No cobrado / Pendiente / Dañado:** No tiene reacción, o tiene la `❌` (que indica que se dañó o requiere verificar).
+3. **Disparo de la Alerta al Grupo del Banco:**
+   - Cuando falta 1 hora para el vencimiento (o el tiempo proporcional en JEP) y el código **NO** tiene emoji de cobrado:
+   - El bot cita el mensaje del RST en el grupo correspondiente (ej: Grupo Pichincha) y publica:
+   > *"⚠️ ¡Pendiente! Este código está por vencerse, le queda poco tiempo. Favor proceder con el retiro en cajero."*
+   - De esta manera el cobrador sabe que debe acudir de inmediato al cajero antes de que el código quede inútil.
+
