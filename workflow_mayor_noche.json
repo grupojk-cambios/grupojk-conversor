@@ -1,0 +1,358 @@
+{
+    "name":  "Mayor: pasar RST al abrir",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "color":  4,
+                                         "content":  "## Mayor: pasar RST al abrir (FASE 2)\nLos RST que llegaron **fuera de horario** esperan en el grupo **COBRAR MAÑANA**.\n\n- Los de **Guayaquil y Produbanco** (el codigo dura 24 horas): este workflow los pasa a su grupo del banco cuando abre (lunes a sabado 9:05, domingo 10:05).\n- Los de **Pichincha, Pacifico, Bolivariano, Solidario, Austro...** se vencen el mismo dia: llevan \"cobrar hoy\" y se quedan en COBRAR MAÑANA (no pasan por aqui).\n- **JEP**: su codigo dura 15 minutos, asi que de noche solo se le avisa al cliente cuando abrimos; aqui se le **pide al cobrador** (en el grupo de JEP) que vaya a un cajero y avise. El RST lo manda el cliente despues.\n- Un RST de mas de 36 horas ya no se pasa: se avisa en el grupo de avisos.\n- Cada RST de 24 horas que llega a su banco se anota para las **alertas de vencimiento** (tabla `vigilancia_rst_mayor`).\n\nSolo trabaja en **modo real**. Se crea INACTIVO: se activa a mano cuando el mayor pase a modo real. Se genera con `build_mayor_noche.ps1`.",
+                                         "width":  520,
+                                         "height":  440
+                                     },
+                      "id":  "d2e3f4a5-0000-4c00-8c00-mayornoche00",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -120
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "expression":  "0 5 9 * * 1-6",
+                                                                           "field":  "cronExpression"
+                                                                       },
+                                                                       {
+                                                                           "expression":  "0 5 10 * * 0",
+                                                                           "field":  "cronExpression"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "d2e3f4a5-0001-4c00-8c00-mayornoche01",
+                      "name":  "Cada Mañana",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "transacciones_mayor_por_whatsapp",
+                                         "filterString":  "estado=eq.en_cobrar_manana\u0026order=creado.asc",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "getAll",
+                                         "returnAll":  true
+                                     },
+                      "id":  "d2e3f4a5-0002-4c00-8c00-mayornoche02",
+                      "name":  "Leer RST en Espera",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       176,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "grupos_mayor",
+                                         "filterString":  "tipo=eq.destino",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "getAll",
+                                         "returnAll":  true
+                                     },
+                      "id":  "d2e3f4a5-0003-4c00-8c00-mayornoche03",
+                      "name":  "Leer Grupos Destino",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       352,
+                                       300
+                                   ],
+                      "executeOnce":  true,
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== LOS RST QUE ESPERAN EN COBRAR MAÑANA Y SE PASAN A SU BANCO AL ABRIR =====\n// Lee las filas \u0027en_cobrar_manana\u0027 (los retiros de Guayaquil y Produbanco de la noche) y arma, por cada retiro,\n// el bloque para su grupo del banco. No manda nada: lo manda \"Enviar al Banco\".\nconst MODO = \u0027ensayo\u0027;\nconst GRUPO_AVISOS = \u0027120363413942097019@g.us\u0027;\nconst HORAS_MAX = 36;                       // un codigo de 24 h con mas de 36 h ya esta vencido\n// ===== COMUN: REGLAS DE LOS RST / RCT (protocolo_rst_rct.md) =====\nconst quitar = s =\u003e String(s || \u0027\u0027).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().replace(/\\s+/g, \u0027 \u0027).trim();\n\n// Que grupo recibe a cada banco (por el NOMBRE del grupo en la tabla grupos_mayor, nunca por su id).\nconst GRUPO_DEL_BANCO = { pichincha: \u0027pichincha\u0027, guayaquil: \u0027guayaquil\u0027, produbanco: \u0027produbanco\u0027, pacifico: \u0027pacifico\u0027,\n                          jep: \u0027coop jep\u0027, bolivariano: \u0027bolivariano\u0027, solidario: \u0027solidario\u0027, austro: \u0027austro\u0027, internacional: \u0027internacional\u0027 };\nconst GRUPO_COBRAR_MANANA = \u0027cobrar manana\u0027;\nconst NOMBRE_GRUPO = k =\u003e (k === GRUPO_COBRAR_MANANA ? \u0027COBRAR MAÑANA\u0027 : String(k).toUpperCase());\n// Los codigos de Guayaquil y Produbanco duran 24 horas; los de los demas bancos se vencen el MISMO dia\n// (24/11, Kelvin): de noche esos llevan el aviso de cobrar hoy y se quedan en COBRAR MAÑANA.\nconst DURA_24H = [\u0027guayaquil\u0027, \u0027produbanco\u0027];\nconst AVISO_COBRAR_HOY = \u0027⚠️ COBRAR HOY para que no se venza\u0027;\n\n// Campos que pide cada banco (protocolo, seccion 5). \u0027c1\u0027 y \u0027c2\u0027 son los dos codigos de Guayaquil.\nconst REQUISITOS = {\n  produbanco:  [\u0027cedula\u0027, \u0027codigo\u0027, \u0027monto\u0027],\n  pacifico:    [\u0027cedula\u0027, \u0027codigo\u0027, \u0027telefono\u0027, \u0027monto\u0027],\n  pichincha:   [\u0027telefono\u0027, \u0027codigo\u0027, \u0027monto\u0027],\n  guayaquil:   [\u0027telefono\u0027, \u0027c1\u0027, \u0027c2\u0027, \u0027monto\u0027],\n  jep:         [\u0027cedula\u0027, \u0027codigo\u0027, \u0027monto\u0027, \u0027clave\u0027],\n  solidario:   [\u0027cedula\u0027, \u0027telefono\u0027, \u0027codigo\u0027, \u0027monto\u0027],\n  bolivariano: [\u0027cedula\u0027, \u0027telefono\u0027, \u0027codigo\u0027, \u0027monto\u0027]\n};\nconst REQUISITOS_OTROS = [\u0027codigo\u0027, \u0027monto\u0027];      // un banco sin protocolo: lo minimo\n\nconst claveBanco = reg =\u003e quitar(reg \u0026\u0026 reg.banco);\n// Que le falta a un registro (lista de frases para decirle al cliente). RCT: solo banco y monto.\nfunction faltan(reg){\n  const d = (reg \u0026\u0026 reg.datos) || {};\n  const f = [];\n  if (reg.tipo === \u0027rct\u0027){ if (reg.monto_usd === null || reg.monto_usd === undefined) f.push(\u0027el monto\u0027); return f; }\n  const k = claveBanco(reg);\n  const req = REQUISITOS[k] || REQUISITOS_OTROS;\n  const cods = Array.isArray(d.codigos) ? d.codigos : [];\n  for (const r of req){\n    if (r === \u0027monto\u0027 \u0026\u0026 (reg.monto_usd === null || reg.monto_usd === undefined)) f.push(\u0027el monto\u0027);\n    else if (r === \u0027codigo\u0027 \u0026\u0026 cods.length \u003c 1) f.push(\u0027el código\u0027);\n    else if (r === \u0027c1\u0027 \u0026\u0026 cods.length \u003c 1) f.push(\u0027el código 1\u0027);\n    else if (r === \u0027c2\u0027 \u0026\u0026 cods.length \u003c 2) f.push(\u0027el código 2\u0027);\n    else if (r === \u0027cedula\u0027 \u0026\u0026 !d.cedula) f.push(\u0027la cédula\u0027);\n    else if (r === \u0027telefono\u0027 \u0026\u0026 !d.telefono) f.push(\u0027el teléfono\u0027);\n    else if (r === \u0027clave\u0027 \u0026\u0026 !d.clave) f.push(\u0027la clave de la tarjeta\u0027);\n  }\n  // Mas numeros de codigo que los que pide el banco: no se adivina cual es el bueno.\n  const maxCods = (k === \u0027guayaquil\u0027) ? 2 : 1;\n  if (cods.length \u003e maxCods) f.push(\u0027cuál es el código (me llegaron varios números)\u0027);\n  return f;\n}\nconst unir = l =\u003e (l.length \u003c= 1 ? (l[0] || \u0027\u0027) : l.slice(0, -1).join(\u0027, \u0027) + \u0027 y \u0027 + l[l.length - 1]);\n\n// Largo EXACTO de los codigos (protocolo, seccion 9). Solo se revisa lo que el cliente SI mando (lo que falta lo dice faltan()).\n// Pichincha 4 | Produbanco 6 | Guayaquil dos codigos de 4 | Pacifico 6 | Solidario 6 | Bolivariano 6 u 8 | JEP codigo 6 + clave de la tarjeta 4.\n// Un banco que no esta aqui (Austro, Internacional...) no se revisa: no hay regla.\nconst LARGOS = { pichincha: { codigo: [4] }, produbanco: { codigo: [6] }, guayaquil: { codigo: [4], codigo2: [4] }, pacifico: { codigo: [6] },\n                 solidario: { codigo: [6] }, bolivariano: { codigo: [6, 8] }, jep: { codigo: [6], clave: [4] } };\nfunction revisar(reg){\n  if (!reg || reg.tipo === \u0027rct\u0027) return [];\n  const k = claveBanco(reg), L = LARGOS[k];\n  if (!L) return [];\n  const d = reg.datos || {}, cods = Array.isArray(d.codigos) ? d.codigos : [];\n  const malo = (v, ok) =\u003e ok.indexOf(String(v).replace(/\\D/g, \u0027\u0027).length) === -1;\n  const dig = ok =\u003e ok.join(\u0027 u \u0027) + \u0027 dígitos\u0027;\n  const r = [];\n  if (k === \u0027guayaquil\u0027){\n    if (cods[0] \u0026\u0026 malo(cods[0], L.codigo)) r.push(\u0027el código 1 debe tener \u0027 + dig(L.codigo));\n    if (cods[1] \u0026\u0026 malo(cods[1], L.codigo2)) r.push(\u0027el código 2 debe tener \u0027 + dig(L.codigo2));\n  } else if (cods[0] \u0026\u0026 malo(cods[0], L.codigo)) r.push(\u0027el código debe tener \u0027 + dig(L.codigo));\n  if (L.clave \u0026\u0026 d.clave \u0026\u0026 malo(d.clave, L.clave)) r.push(\u0027la clave de la tarjeta debe tener \u0027 + dig(L.clave));\n  return r;\n}\n\n// ===== SOLIDARIO: la clave TEMPORAL en vivo (protocolo, seccion 9) =====\n// El cobrador, frente al cajero, cita nuestro RST en el grupo de Solidario y escribe \"temporal\" / \"segundo codigo\": el banco le acaba\n// de mandar una clave temporal al cliente por SMS. El bot se la pide al cliente, le dice \"Ok, recibido\" y se la entrega al grupo.\nconst RX_TEMPORAL = /temporal|segundo cod|2do cod|segunda clave|2da clave/;\nconst pideTemporal = t =\u003e RX_TEMPORAL.test(quitar(t));\nconst TEXTO_TEMP_CLIENTE = \u0027Por favor envíame de inmediato el código temporal que te acaba de llegar.\u0027;\nconst TEXTO_TEMP_GRUPO = \u0027ok, se lo pido al cliente\u0027;\nconst TEXTO_TEMP_RECIBIDO = \u0027Ok, recibido\u0027;\n// La clave temporal: UN numero de 6 digitos suelto en el mensaje (\"...clave temporal para retiro de efectivo es 919180, ...hasta 17:12\").\nconst codigoTemporalDe = texto =\u003e { const m = [...new Set(String(texto || \u0027\u0027).match(/(?\u003c!\\d)\\d{6}(?!\\d)/g) || [])]; return m.length === 1 ? m[0] : \u0027\u0027; };\n\nconst fmtMonto = n =\u003e { const x = Math.round(Number(n) * 100) / 100; return (x % 1 === 0) ? String(x) : x.toFixed(2); };\nconst ocultar = v =\u003e String(v).replace(/\\d(?=\\d{2})/g, \u0027•\u0027);      // en las vistas previas solo se ven los 2 ultimos digitos\n\n// El bloque que se publica en el grupo del banco (protocolo, seccion 2):\n//   (Nombre / BANCO / Monto / Codigo / Cedula / Telefono)\nfunction bloque(nombre, reg, ocultarDatos){\n  const d = reg.datos || {}, k = claveBanco(reg);\n  const m = v =\u003e (ocultarDatos ? ocultar(v) : String(v));\n  const L = [\u0027(\u0027 + nombre, String(reg.banco || \u0027\u0027).toUpperCase()];\n  if (reg.tipo === \u0027rct\u0027){\n    L.push(\u0027Retira con tarjeta\u0027);\n    L.push(\u0027Monto: \u0027 + fmtMonto(reg.monto_usd) + \u0027$\u0027);\n  } else {\n    L.push(\u0027Monto: \u0027 + fmtMonto(reg.monto_usd) + \u0027$\u0027);\n    const cods = Array.isArray(d.codigos) ? d.codigos : [];\n    if (k === \u0027guayaquil\u0027){ if (cods[0]) L.push(\u0027C1: \u0027 + m(cods[0])); if (cods[1]) L.push(\u0027C2: \u0027 + m(cods[1])); }\n    else if (cods[0]) L.push(\u0027Código: \u0027 + m(cods[0]));\n    if (d.clave) L.push(\u0027Clave: \u0027 + m(d.clave));\n    if (d.cedula) L.push(\u0027Cedula: \u0027 + m(d.cedula));\n    if (d.telefono) L.push(\u0027Teléfono: \u0027 + m(d.telefono));\n    if (d.hora) L.push(\u0027Hora: \u0027 + d.hora);\n  }\n  L[L.length - 1] += \u0027)\u0027;\n  return L.join(\u0027\\n\u0027);\n}\n\n// ===== JEP: el codigo dura 15 minutos, asi que NO se genera hasta que el cobrador este en el cajero =====\n// (24/11, Kelvin) El cliente que quiere hacer un RST de JEP recibe \"te avisamos al estar en el cajero\"; el bot le pide al\n// cobrador (en el grupo de JEP) que vaya a un cajero y avise citando el mensaje; cuando el cobrador escribe \"listo, ya\n// estoy aca\", el bot le dice al cliente que haga el RST ahora. Solo con ese permiso se publica el codigo.\nconst TEXTO_JEP_CLIENTE = \u0027Te avisamos cuando el cobrador esté en el cajero, para que realices el RST.\u0027;\nconst TEXTO_JEP_REPETIDO = \u0027Ya avisamos al cobrador. Te escribimos apenas esté en el cajero.\u0027;\nconst TEXTO_JEP_LISTO_CLIENTE = \u0027El cobrador ya está en el cajero. Realiza tu RST ahora y envíame todos los datos en un solo texto.\u0027;\nconst TEXTO_JEP_LISTO_GRUPO = \u0027ok, ya le aviso al cliente\u0027;\nconst jepSolicitud = (nombre, montos) =\u003e \u0027🏧 Cobrador: ir a un cajero y avisar aquí, citando este mensaje, cuando estés para indicarle al cliente que haga el RST.\\n\\nCliente: \u0027 + nombre\n  + (montos.length ? \u0027\\n\u0027 + (montos.length === 1 ? \u0027Monto: \u0027 : \u0027Montos: \u0027) + montos.map(m =\u003e fmtMonto(m) + \u0027$\u0027).join(\u0027, \u0027) : \u0027\u0027);\n// El cobrador avisa que ya llego (citando el mensaje del bot): \"listo\", \"ya estoy aca\", \"llegue\", \"pide rst\"...\nconst RX_COBRADOR_LISTO = /list[oa]s?\\b|llegu|\\bya\\b|\\baqui\\b|\\baca\\b|estoy|\\bpid[ae]n?\\b|genera|adelante|puede[ns]?\\b/;\nconst RX_NEGACION = /\\bno\\b|\\bsin\\b|\\bnunca\\b|\\btodavia\\b|\\baun\\b/;\nconst cobradorListo = t =\u003e { t = quitar(t); return RX_COBRADOR_LISTO.test(t) \u0026\u0026 !RX_NEGACION.test(t); };\n// ¿El cliente QUIERE hacer un RST de JEP aunque todavia no mande datos? (\"quiero hacer un retiro por JEP\"). Una charla o una\n// pregunta suelta (\"¿que tanto demora el rst de JEP?\") no es un pedido.\nfunction quiereJep(texto){\n  const t = quitar(texto);\n  if (!/\\bjep\\b/.test(t) || !/\\b(rst|retiro|retirar|retira|codigo|cobrar|sacar)\\b/.test(t)) return false;\n  const quiero = /\\b(quiero|quisiera|quisieramos|voy a|vamos a|necesito|necesitamos|deseo|solicito|me gustaria)\\b/.test(t);\n  const pregunta = /\\b(puedo|podemos|podria|podriamos|se puede)\\b/.test(t);\n  return quiero || pregunta;\n}\nif (MODO !== \u0027real\u0027) return [];\nconst destinos = {};\ntry { for (const it of $(\u0027Leer Grupos Destino\u0027).all()){ const g = it.json || {}; if (g.grupo_jid \u0026\u0026 g.nombre \u0026\u0026 g.activo !== false) destinos[quitar(g.nombre)] = g.grupo_jid; } } catch(e){}\nlet filas = [];\ntry { filas = $(\u0027Leer RST en Espera\u0027).all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id \u0026\u0026 !r.error); } catch(e){ filas = []; }\nconst ahora = Date.now();\nconst out = [];\nconst aviso = (fila, texto, estado) =\u003e out.push({ json: { tipo: \u0027texto\u0027, jid: GRUPO_AVISOS, texto, fila_id: fila.id, estado_fila: estado, grupo_destino: \u0027\u0027 } });\nfor (const f of filas){\n  const nombre = String(f.cliente_nombre || \u0027Cliente\u0027);\n  const edadH = (ahora - Date.parse(f.creado)) / 3600000;\n  const todos = (((f.datos || {}).registros) || []).filter(r =\u003e r.tipo === \u0027rst\u0027 || r.tipo === \u0027rct\u0027);\n  const regs = todos.filter(r =\u003e DURA_24H.indexOf(claveBanco(r)) !== -1 \u0026\u0026 faltan(r).length === 0 \u0026\u0026 revisar(r).length === 0);\n  // JEP: el cliente pidio hacer un RST de noche. Su codigo dura 15 minutos: aqui solo se le PIDE al cobrador que vaya al cajero.\n  const jepRst = todos.filter(r =\u003e r.tipo === \u0027rst\u0027 \u0026\u0026 claveBanco(r) === \u0027jep\u0027);\n  const pideJep = jepRst.length \u003e 0 || quiereJep(f.texto);\n  if (!regs.length \u0026\u0026 !pideJep){ aviso(f, \u0027⚠️ \u0027 + nombre + \u0027: tenía un RST esperando en COBRAR MAÑANA pero no encuentro qué pasar al banco. Revísalo a mano.\u0027, \u0027sin_grupo\u0027); continue; }\n  if (!(edadH \u003c= HORAS_MAX)){ aviso(f, \u0027⚠️ \u0027 + nombre + \u0027: su RST de \u0027 + regs.map(r =\u003e r.banco).concat(pideJep ? [\u0027JEP\u0027] : []).join(\u0027, \u0027) + \u0027 llevaba más de \u0027 + HORAS_MAX + \u0027 horas esperando en COBRAR MAÑANA y ya está vencido: NO se pasó al banco. Pídele uno nuevo.\u0027, \u0027vencido\u0027); continue; }\n  for (const reg of regs){\n    const dueno = GRUPO_DEL_BANCO[claveBanco(reg)], jid = dueno ? destinos[dueno] : null;\n    if (!jid){ aviso(f, \u0027⚠️ \u0027 + nombre + \u0027: su RST de \u0027 + reg.banco + \u0027 NO se pasó (no encuentro el grupo \u0027 + NOMBRE_GRUPO(dueno || claveBanco(reg)) + \u0027). Pásalo a mano.\u0027, \u0027sin_grupo\u0027); continue; }\n    out.push({ json: { tipo: \u0027texto\u0027, jid, texto: bloque(nombre, reg, false), fila_id: f.id, estado_fila: \u0027publicado\u0027, grupo_destino: NOMBRE_GRUPO(dueno),\n                       mapa: { cliente_jid: f.grupo_jid, cliente_nombre: nombre, id_msg_cliente: f.mensaje_id, banco: reg.banco, tipo: reg.tipo, fila_id: f.id, destino: NOMBRE_GRUPO(dueno) },\n                       // El reloj de estos codigos (24 h) corre desde que el cliente los mando: se vigilan desde que llegan a su banco.\n                       vigila: reg.tipo === \u0027rst\u0027 ? { banco: claveBanco(reg), recibido: f.fecha_mensaje || f.creado, resumen: nombre + \u0027 · \u0027 + String(reg.banco || \u0027\u0027).toUpperCase() + \u0027 \u0027 + fmtMonto(reg.monto_usd) + \u0027$\u0027 } : undefined } });\n  }\n  if (pideJep){\n    const dueno = GRUPO_DEL_BANCO.jep, jid = destinos[dueno];\n    if (!jid){ aviso(f, \u0027⚠️ \u0027 + nombre + \u0027: su pedido de JEP NO se pasó (no encuentro el grupo \u0027 + NOMBRE_GRUPO(dueno) + \u0027). Avísale al cobrador a mano.\u0027, \u0027sin_grupo\u0027); continue; }\n    const montos = jepRst.map(r =\u003e r.monto_usd).filter(m =\u003e m !== null \u0026\u0026 m !== undefined);\n    out.push({ json: { tipo: \u0027texto\u0027, jid, texto: jepSolicitud(nombre, montos), fila_id: f.id, estado_fila: regs.length ? \u0027publicado\u0027 : \u0027jep_esperando\u0027, grupo_destino: NOMBRE_GRUPO(dueno),\n                       mapa: { cliente_jid: f.grupo_jid, cliente_nombre: nombre, id_msg_cliente: f.mensaje_id, banco: \u0027JEP\u0027, tipo: \u0027rst\u0027, fila_id: f.id, destino: NOMBRE_GRUPO(dueno), jep: \u0027solicitud\u0027 },\n                       // Si en 30 minutos el cobrador no contesta, \"Mayor: alertas de vencimiento\" avisa en el grupo de avisos.\n                       vigila: { banco: \u0027jep_pedido\u0027, recibido: new Date(ahora).toISOString(), resumen: nombre + \u0027 · JEP\u0027 + (montos.length ? \u0027 \u0027 + fmtMonto(montos[0]) + \u0027$\u0027 : \u0027\u0027) } } });\n  }\n}\nreturn out;"
+                                     },
+                      "id":  "d2e3f4a5-0004-4c00-8c00-mayornoche04",
+                      "name":  "Armar Envios",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       528,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: $json.jid, text: $json.texto }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d2e3f4a5-0005-4c00-8c00-mayornoche05",
+                      "name":  "Enviar al Banco",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       704,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "transacciones_mayor_por_whatsapp",
+                                         "fieldsUi":  {
+                                                          "fieldValues":  [
+                                                                              {
+                                                                                  "fieldId":  "estado",
+                                                                                  "fieldValue":  "={{ $json.error ? \"error_envio\" : $(\"Armar Envios\").item.json.estado_fila }}"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "grupo_destino",
+                                                                                  "fieldValue":  "={{ $(\"Armar Envios\").item.json.grupo_destino || \"\" }}"
+                                                                              }
+                                                                          ]
+                                                      },
+                                         "filterString":  "={{ \"id=eq.\" + $(\"Armar Envios\").item.json.fila_id }}",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "update",
+                                         "dataToSend":  "defineBelow"
+                                     },
+                      "id":  "d2e3f4a5-0006-4c00-8c00-mayornoche06",
+                      "name":  "Marcar Publicado",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       120
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// De cada RST que llego bien al grupo del banco se anota \"este mensaje corresponde a este cliente\", para poder\n// avisarle cuando el banco responda \"Verificar\" o \"se dañó\" (lo hace el workflow \"Mayor: escuchar y registrar\").\nconst out = [];\nconst entradas = $input.all();\nfor (let i = 0; i \u003c entradas.length; i++){\n  let acc = null;\n  try { acc = $(\u0027Armar Envios\u0027).itemMatching(i).json; } catch(e){ continue; }\n  const r = entradas[i].json || {};\n  const id = (r.key \u0026\u0026 r.key.id) || (r.data \u0026\u0026 r.data.key \u0026\u0026 r.data.key.id) || \u0027\u0027;\n  if (acc \u0026\u0026 acc.mapa \u0026\u0026 id \u0026\u0026 !r.error) out.push({ json: { clave: \u0027mayorPub:\u0027 + id, valor: JSON.stringify(acc.mapa) } });\n}\nreturn out;"
+                                     },
+                      "id":  "d2e3f4a5-0007-4c00-8c00-mayornoche07",
+                      "name":  "Armar Mapa",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       880,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $json.valor }}",
+                                         "expire":  true,
+                                         "ttl":  604800,
+                                         "keyType":  "string",
+                                         "key":  "={{ $json.clave }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d2e3f4a5-0008-4c00-8c00-mayornoche08",
+                      "name":  "Redis Guardar Publicacion",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1056,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Despues de publicar el RST en el grupo de su banco: se anota con su hora de vencimiento para vigilarlo\n// (alerta de vencimiento, protocolo seccion 7). Un envio sin \"vigila\" no se anota.\n// ===== COMUN: VIGENCIA DE LOS RST Y ALERTAS (protocolo_rst_rct.md, seccion 7) =====\n// horas / minutos = lo que dura el codigo desde que el cliente lo envia; avisoAntesMin = cuanto antes de vencer se avisa.\n// Bolivariano vence a las 9:00 pm del MISMO dia (hora de Ecuador). JEP dura 15 minutos y se avisa a los 5 (el workflow corre cada 2 minutos: llega entre los 5 y los 7).\nconst VIGENCIA = {\n  pichincha:   { horas: 4,  avisoAntesMin: 60 },\n  pacifico:    { horas: 4,  avisoAntesMin: 60 },\n  guayaquil:   { horas: 24, avisoAntesMin: 60 },\n  produbanco:  { horas: 24, avisoAntesMin: 60 },\n  bolivariano: { hastaHora: 21, avisoAntesMin: 60 },\n  jep:         { minutos: 15, avisoDespuesMin: 5 },\n  // El PEDIDO al cobrador de JEP (\"ir a un cajero y avisar\"): si en 30 minutos no contesta, se avisa en el grupo de avisos.\n  // No es un RST: \"Entender Cobro\" lo da por atendido cuando el cobrador escribe \"listo\" o reacciona a ese mensaje.\n  jep_pedido:  { minutos: 360, avisoDespuesMin: 30 }\n};\nconst TEXTO_ALERTA = \u0027⚠️ ¡Pendiente! Este código está por vencerse, le queda poco tiempo. Favor proceder con el retiro en cajero.\u0027;\n// { venceMs, alertaMs } de un RST recibido en recibidoMs, o null si ese banco no se vigila.\nfunction vigenciaDe(banco, recibidoMs){\n  const k = String(banco || \u0027\u0027).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().trim();\n  const v = VIGENCIA[k];\n  if (!v || !(recibidoMs \u003e 0)) return null;\n  const MIN = 60000;\n  if (v.minutos){\n    const venceMs = recibidoMs + v.minutos * MIN;\n    return { venceMs, alertaMs: recibidoMs + v.avisoDespuesMin * MIN };\n  }\n  let venceMs;\n  if (v.hastaHora){\n    const ec = new Date(recibidoMs - 5 * 3600000);                                  // hora de Ecuador\n    const medianoche = recibidoMs - (((ec.getUTCHours() * 60 + ec.getUTCMinutes()) * 60 + ec.getUTCSeconds()) * 1000 + ec.getUTCMilliseconds());\n    venceMs = medianoche + v.hastaHora * 3600000;\n    if (venceMs \u003c= recibidoMs) return null;                                         // llego despues de las 9 pm: no hay nada que vigilar\n  } else venceMs = recibidoMs + v.horas * 3600000;\n  let alertaMs = venceMs - v.avisoAntesMin * MIN;\n  // Si el codigo llego cuando ya faltaba menos de una hora, se avisa 10 minutos despues (nunca pasada la hora de vencer).\n  if (alertaMs \u003c recibidoMs + 10 * MIN) alertaMs = Math.min(recibidoMs + 10 * MIN, venceMs - 5 * MIN);\n  return { venceMs, alertaMs };\n}\n// Que banco vigila un grupo de destino (por el NOMBRE del grupo en la tabla, nunca por su id).\nfunction bancoDelGrupo(nombreGrupo){\n  const g = String(nombreGrupo || \u0027\u0027).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().replace(/\\s+/g, \u0027 \u0027).trim();\n  const hallado = Object.keys(VIGENCIA).find(k =\u003e (k === \u0027jep\u0027 ? g === \u0027coop jep\u0027 || g === \u0027jep\u0027 : g === k));\n  return hallado || \u0027\u0027;\n}\nconst out = [];\nconst entradas = $input.all();\nfor (let i = 0; i \u003c entradas.length; i++){\n  let acc = null;\n  try { acc = $(\u0027Armar Envios\u0027).itemMatching(i).json; } catch(e){ continue; }\n  const r = entradas[i].json || {};\n  const id = (r.key \u0026\u0026 r.key.id) || (r.data \u0026\u0026 r.data.key \u0026\u0026 r.data.key.id) || \u0027\u0027;\n  if (!acc || !acc.vigila || !id || r.error) continue;\n  const recibido = Date.parse(acc.vigila.recibido);\n  const v = vigenciaDe(acc.vigila.banco, recibido);\n  if (!v) continue;\n  const iso = ms =\u003e new Date(ms).toISOString();\n  out.push({ json: { banco: String(acc.vigila.banco).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().trim(), grupo_jid: acc.jid, mensaje_id: id, resumen: acc.vigila.resumen || \u0027\u0027,\n                     recibido_en: iso(recibido), vence_en: iso(v.venceMs), alerta_en: iso(v.alertaMs), origen: \u0027bot\u0027 } });\n}\nreturn out;"
+                                     },
+                      "id":  "d2e3f4a5-0009-4c00-8c00-mayornoche09",
+                      "name":  "Armar Vigilancia",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       880,
+                                       480
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "vigilancia_rst_mayor",
+                                         "operation":  "create",
+                                         "resource":  "row",
+                                         "inputsToIgnore":  "",
+                                         "dataToSend":  "autoMapInputData"
+                                     },
+                      "id":  "d2e3f4a5-0010-4c00-8c00-mayornoche10",
+                      "name":  "Anotar Vigilancia",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1056,
+                                       480
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cada Mañana":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Leer RST en Espera",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Leer RST en Espera":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Leer Grupos Destino",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Leer Grupos Destino":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Armar Envios",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Armar Envios":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Enviar al Banco",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Enviar al Banco":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Armar Mapa",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 },
+                                                                 {
+                                                                     "node":  "Marcar Publicado",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 },
+                                                                 {
+                                                                     "node":  "Armar Vigilancia",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Armar Mapa":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "node":  "Redis Guardar Publicacion",
+                                                                "type":  "main",
+                                                                "index":  0
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Armar Vigilancia":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Anotar Vigilancia",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil"
+                 }
+}

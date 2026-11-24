@@ -124,16 +124,23 @@ console.log('=== 3) Router Pausa y el nodo que llama al workflow ===');
 }
 
 console.log('');
-console.log('=== 4) NADA de esto puede mandar un mensaje ===');
+console.log('=== 4) QUIEN PUEDE MANDAR MENSAJES (Fase 2: solo 2 nodos, y a un destino que decide "Decidir Publicacion") ===');
 {
   const ENVIA = /sendText|sendMedia|sendSticker|sendWhatsAppAudio|sendReaction|sendPoll|sendList|sendButtons|message\/send/i;
   const tipoEnvia = n => /evolutionApi|telegram|slack|whatsApp|gmail|emailSend|sendEmail/i.test(n.type) || (/httpRequest/.test(n.type) && ENVIA.test(JSON.stringify(n.parameters)));
-  const enviaMayor = mayor.nodes.filter(tipoEnvia);
-  chk(enviaMayor.length === 0, 'el workflow del mayor no tiene ningun nodo que envie mensajes', '-> ' + enviaMayor.map(n => n.name));
+  const enviaMayor = mayor.nodes.filter(tipoEnvia).map(n => n.name).sort();
+  chk(JSON.stringify(enviaMayor) === JSON.stringify(['Enviar', 'Reenviar sin Cita']), 'solo dos nodos mandan mensajes: "Enviar" y "Reenviar sin Cita"', '-> ' + enviaMayor);
+  // el destino de cada mensaje sale SIEMPRE del item que armo "Decidir Publicacion" (nunca un id escrito a mano)
+  const enviar = nodo(mayor, 'Enviar').parameters, reenviar = nodo(mayor, 'Reenviar sin Cita').parameters;
+  chk(/\$json\.jid/.test(enviar.jsonBody) && !/@g\.us|@s\.whatsapp\.net/.test(JSON.stringify(enviar)), '"Enviar": el destino sale del item (json.jid), sin ids escritos a mano');
+  chk(/Decidir Publicacion"\)\.item\.json\.jid/.test(reenviar.jsonBody) && !/@g\.us|@s\.whatsapp\.net/.test(JSON.stringify(reenviar)), '"Reenviar sin Cita": igual');
+  const hacia = nombreNodo => { const r = []; for (const [de, c] of Object.entries(mayor.connections)) for (const sal of (c.main || [])) for (const x of sal) if (x.node === nombreNodo) r.push(de); return r.sort(); };
+  chk(JSON.stringify(hacia('Enviar')) === JSON.stringify(['Decidir Publicacion']), '"Enviar" solo recibe de "Decidir Publicacion"', '-> ' + hacia('Enviar'));
+  chk(JSON.stringify(hacia('Reenviar sin Cita')) === JSON.stringify(['Fallo la Cita?']), '"Reenviar sin Cita" solo recibe del reintento', '-> ' + hacia('Reenviar sin Cita'));
+  const codigos = mayor.nodes.filter(n => n.type.endsWith('.code')).map(n => n.parameters.jsCode).join(String.fromCharCode(10));
+  chk(!/\$helpers|httpRequest|fetch\(|axios|XMLHttpRequest/.test(codigos), 'ningun nodo de codigo hace llamadas a internet');
   const tipos = [...new Set(mayor.nodes.map(n => n.type.replace('n8n-nodes-base.', '')))].sort();
-  chk(tipos.every(t => ['stickyNote', 'executeWorkflowTrigger', 'code', 'redis', 'supabase'].includes(t)), 'solo usa nodos de lectura/registro (code, redis, supabase)', '-> ' + tipos.join());
-  const codigo = mayor.nodes.filter(n => n.type.endsWith('.code')).map(n => n.parameters.jsCode).join(String.fromCharCode(10));
-  chk(!/\$helpers|httpRequest|fetch\(|axios|XMLHttpRequest/.test(codigo), 'y su codigo no hace llamadas a internet');
+  chk(tipos.every(t => ['stickyNote', 'executeWorkflowTrigger', 'code', 'redis', 'supabase', 'httpRequest', 'if'].includes(t)), 'y no hay ningun otro tipo de nodo (nada de IA, correo, Telegram...)', '-> ' + tipos.join());
   // Desde "Mayor Escuchar" nada puede llegar a un nodo que envie
   const alcanzables = new Set(); const pila = ['Mayor Escuchar'];
   while (pila.length) { const x = pila.pop(); for (const s of ((bot.connections[x] || {}).main || [])) for (const c of s) if (!alcanzables.has(c.node)) { alcanzables.add(c.node); pila.push(c.node); } }
@@ -151,8 +158,9 @@ console.log('=== 5) El workflow del mayor ===');
   const g = nodo(mayor, 'Guardar en Supabase').parameters;
   chk(g.tableId === 'transacciones_mayor_por_whatsapp' && g.operation === 'create' && g.dataToSend === 'autoMapInputData', 'guarda en transacciones_mayor_por_whatsapp');
   for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto']) chk(!!nodo(mayor, n).credentials, n + ': con credencial (sin claves en el codigo)');
-  for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto']) chk(nodo(mayor, n).onError === 'continueRegularOutput', n + ': si falla, no se cae');
-  chk(!!nodo(mayor, 'Nota') && /FASE 1/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 1');
+  for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto', 'Redis Leer Publicacion', 'Grupos Destino', 'Enviar', 'Reenviar sin Cita', 'Actualizar Fila', 'Redis Guardar Publicacion'])
+    chk(nodo(mayor, n).onError === 'continueRegularOutput', n + ': si falla, no se cae');
+  chk(!!nodo(mayor, 'Nota') && /FASE 2/.test(nodo(mayor, 'Nota').parameters.content) && /ENSAYO/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 2 y el modo ensayo');
 }
 
 console.log('');

@@ -1,0 +1,405 @@
+{
+    "name":  "Mayor: alertas de vencimiento",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "color":  4,
+                                         "content":  "## Mayor: alertas de vencimiento (FASE 3)\nCada RST que esta en el grupo de su banco se anota en la tabla `vigilancia_rst_mayor` con su hora de vencimiento. Los cobradores lo marcan con una **reaccion** (cualquier emoji menos la ❌ = cobrado).\n\nEste workflow revisa la tabla **cada 2 minutos**. Cuando falta **1 hora** para que venza (**5 minutos en JEP**) y nadie lo marco como cobrado, **cita el mensaje en el grupo del banco** y avisa: \"⚠️ ¡Pendiente! Este código está por vencerse...\".\n\n| Banco | Dura | Aviso |\n|---|---|---|\n| Pichincha, Pacifico | 4 h | a las 3 h |\n| Guayaquil, Produbanco | 24 h | a las 23 h |\n| Bolivariano | hasta las 9 pm | a las 8 pm |\n| JEP | 15 min | a los 5 min |\n\nAdemas: si el cobrador de JEP no contesta el PEDIDO (\"ir a un cajero y avisar\") en **30 minutos**, avisa en el grupo de **avisos**.\n\nSolo avisa en **horario de atencion**. Solo escribe al grupo donde esta el RST y solo si esta en `grupos_mayor`.\n\n**Modo ENSAYO** (`$ALERTAS_MODO` en `mayor_comun.ps1`): la alerta se muestra como vista previa en el grupo de avisos; no se escribe a ningun banco.\n\nSe crea **INACTIVO**: se activa a mano. Credenciales: Supabase Cambios JK, Evolution apikey. Se genera con `build_mayor_alertas.ps1`.",
+                                         "width":  520,
+                                         "height":  560
+                                     },
+                      "id":  "e3f4a5b6-0000-4d00-8d00-mayoralert000",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -640
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "expression":  "0 */2 * * * *",
+                                                                           "field":  "cronExpression"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "id":  "e3f4a5b6-0001-4d00-8d00-mayoralert001",
+                      "name":  "Cada 2 Minutos",
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "vigilancia_rst_mayor",
+                                         "filterString":  "={{ \u0027alerta_enviada_en=is.null\u0026cobro=in.(pendiente,no_cobrado)\u0026alerta_en=lte.\u0027 + new Date().toISOString() + \u0027\u0026order=alerta_en.asc\u0027 }}",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "getAll",
+                                         "returnAll":  true
+                                     },
+                      "id":  "e3f4a5b6-0002-4d00-8d00-mayoralert002",
+                      "name":  "Leer RST por Vencer",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       176,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Casi todas las veces no hay nada por avisar: se corta aqui y no se lee nada mas.\nlet filas = [];\ntry { filas = $(\u0027Leer RST por Vencer\u0027).all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id \u0026\u0026 !r.error); } catch(e){ filas = []; }\nreturn filas.length ? [{ json: { cuantas: filas.length } }] : [];"
+                                     },
+                      "id":  "e3f4a5b6-0003-4d00-8d00-mayoralert003",
+                      "name":  "Hay Algo?",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       352,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "grupos_mayor",
+                                         "filterString":  "tipo=eq.destino",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "getAll",
+                                         "returnAll":  true
+                                     },
+                      "id":  "e3f4a5b6-0004-4d00-8d00-mayoralert004",
+                      "name":  "Leer Grupos Destino",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       528,
+                                       300
+                                   ],
+                      "executeOnce":  true,
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== ALERTAS DE VENCIMIENTO: A QUIEN SE LE AVISA, DONDE Y CON QUE TEXTO =====\n// Entran los RST vigilados cuya hora de alerta ya paso, que nadie marco como cobrados y a los que todavia no se les avisó.\n// Sale una lista: cada item es UN aviso por enviar, o una actualizacion silenciosa (sinEnvio) de la fila.\nconst MODO = \u0027ensayo\u0027;\nconst GRUPO_AVISOS = \u0027120363413942097019@g.us\u0027;\n// ===== HORARIO DE ATENCION (hora de Ecuador: UTC-5, sin horario de verano) =====\n// Lunes a sabado y domingo, como el workflow de apertura y cierre. Se cambia en build_v12.ps1\n// ($HORA_ABRE_SEMANA y compania), nunca aqui.\nconst HORARIO_JK = { semana: [9, 18], domingo: [10, 14] };\nfunction horarioDe(ms){\n  const ec = new Date(ms - 5 * 3600000);\n  const dow = ec.getUTCDay();\n  const horas = ec.getUTCHours() + ec.getUTCMinutes() / 60;\n  const rango = (dow === 0) ? HORARIO_JK.domingo : HORARIO_JK.semana;\n  const abierto = horas \u003e= rango[0] \u0026\u0026 horas \u003c rango[1];\n  const medianoche = ms - (((ec.getUTCHours() * 60 + ec.getUTCMinutes()) * 60 + ec.getUTCSeconds()) * 1000 + ec.getUTCMilliseconds());\n  const esHoy = horas \u003c rango[0];                      // de madrugada abre hoy; si ya cerro, manana\n  const dowAbre = esHoy ? dow : (dow + 1) % 7;\n  const horaAbre = (dowAbre === 0) ? HORARIO_JK.domingo[0] : HORARIO_JK.semana[0];\n  const proximaApertura = medianoche + (esHoy ? 0 : 86400000) + horaAbre * 3600000;\n  const DIAS = [\u0027domingo\u0027, \u0027lunes\u0027, \u0027martes\u0027, \u0027miércoles\u0027, \u0027jueves\u0027, \u0027viernes\u0027, \u0027sábado\u0027];\n  const conDia = (dowAbre === 0 || (!esHoy \u0026\u0026 dowAbre === 1)) ? \u0027 \u0027 + DIAS[dowAbre] : \u0027\u0027;\n  const hora = (horaAbre % 12 || 12) + \u0027:00 \u0027 + (horaAbre \u003e= 12 ? \u0027pm\u0027 : \u0027am\u0027);\n  return { abierto, proximaApertura, cuandoAbre: (esHoy ? \u0027hoy\u0027 : \u0027mañana\u0027) + conDia + \u0027 a partir de las \u0027 + hora };\n}\n// ===== COMUN: VIGENCIA DE LOS RST Y ALERTAS (protocolo_rst_rct.md, seccion 7) =====\n// horas / minutos = lo que dura el codigo desde que el cliente lo envia; avisoAntesMin = cuanto antes de vencer se avisa.\n// Bolivariano vence a las 9:00 pm del MISMO dia (hora de Ecuador). JEP dura 15 minutos y se avisa a los 5 (el workflow corre cada 2 minutos: llega entre los 5 y los 7).\nconst VIGENCIA = {\n  pichincha:   { horas: 4,  avisoAntesMin: 60 },\n  pacifico:    { horas: 4,  avisoAntesMin: 60 },\n  guayaquil:   { horas: 24, avisoAntesMin: 60 },\n  produbanco:  { horas: 24, avisoAntesMin: 60 },\n  bolivariano: { hastaHora: 21, avisoAntesMin: 60 },\n  jep:         { minutos: 15, avisoDespuesMin: 5 },\n  // El PEDIDO al cobrador de JEP (\"ir a un cajero y avisar\"): si en 30 minutos no contesta, se avisa en el grupo de avisos.\n  // No es un RST: \"Entender Cobro\" lo da por atendido cuando el cobrador escribe \"listo\" o reacciona a ese mensaje.\n  jep_pedido:  { minutos: 360, avisoDespuesMin: 30 }\n};\nconst TEXTO_ALERTA = \u0027⚠️ ¡Pendiente! Este código está por vencerse, le queda poco tiempo. Favor proceder con el retiro en cajero.\u0027;\n// { venceMs, alertaMs } de un RST recibido en recibidoMs, o null si ese banco no se vigila.\nfunction vigenciaDe(banco, recibidoMs){\n  const k = String(banco || \u0027\u0027).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().trim();\n  const v = VIGENCIA[k];\n  if (!v || !(recibidoMs \u003e 0)) return null;\n  const MIN = 60000;\n  if (v.minutos){\n    const venceMs = recibidoMs + v.minutos * MIN;\n    return { venceMs, alertaMs: recibidoMs + v.avisoDespuesMin * MIN };\n  }\n  let venceMs;\n  if (v.hastaHora){\n    const ec = new Date(recibidoMs - 5 * 3600000);                                  // hora de Ecuador\n    const medianoche = recibidoMs - (((ec.getUTCHours() * 60 + ec.getUTCMinutes()) * 60 + ec.getUTCSeconds()) * 1000 + ec.getUTCMilliseconds());\n    venceMs = medianoche + v.hastaHora * 3600000;\n    if (venceMs \u003c= recibidoMs) return null;                                         // llego despues de las 9 pm: no hay nada que vigilar\n  } else venceMs = recibidoMs + v.horas * 3600000;\n  let alertaMs = venceMs - v.avisoAntesMin * MIN;\n  // Si el codigo llego cuando ya faltaba menos de una hora, se avisa 10 minutos despues (nunca pasada la hora de vencer).\n  if (alertaMs \u003c recibidoMs + 10 * MIN) alertaMs = Math.min(recibidoMs + 10 * MIN, venceMs - 5 * MIN);\n  return { venceMs, alertaMs };\n}\n// Que banco vigila un grupo de destino (por el NOMBRE del grupo en la tabla, nunca por su id).\nfunction bancoDelGrupo(nombreGrupo){\n  const g = String(nombreGrupo || \u0027\u0027).normalize(\u0027NFD\u0027).replace(/[̀-ͯ]/g, \u0027\u0027).toLowerCase().replace(/\\s+/g, \u0027 \u0027).trim();\n  const hallado = Object.keys(VIGENCIA).find(k =\u003e (k === \u0027jep\u0027 ? g === \u0027coop jep\u0027 || g === \u0027jep\u0027 : g === k));\n  return hallado || \u0027\u0027;\n}\nconst ahora = Date.now();\nconst hr = horarioDe(ahora);\nlet filas = [];\ntry { filas = $(\u0027Leer RST por Vencer\u0027).all().map(i =\u003e i.json).filter(r =\u003e r \u0026\u0026 r.id \u0026\u0026 !r.error); } catch(e){ filas = []; }\nconst destinos = {};          // id del grupo -\u003e su nombre, solo los de la tabla (lista blanca)\ntry { for (const it of $(\u0027Leer Grupos Destino\u0027).all()){ const g = it.json || {}; if (g.grupo_jid \u0026\u0026 g.nombre \u0026\u0026 g.activo !== false) destinos[g.grupo_jid] = g.nombre; } } catch(e){}\nconst hhmm = ms =\u003e new Date(ms - 5 * 3600000).toISOString().slice(11, 16);\nconst out = [];\nconst silencioso = (r, resultado, cobro) =\u003e out.push({ json: { sinEnvio: true, fila_id: r.id, resultado, cobro: cobro || r.cobro } });\nfor (const r of filas.slice(0, 25)){                    // si hubiera mas, el resto sale en la proxima vuelta (2 minutos)\n  const vence = Date.parse(r.vence_en);\n  if (!(vence \u003e 0) || ahora \u003e= vence){ silencioso(r, \u0027vencido\u0027, \u0027vencido\u0027); continue; }     // ya se paso: no se avisa\n  if (!hr.abierto){\n    // De noche nadie lo lee. Si el codigo sigue vivo cuando abrimos, se avisa entonces (la fila sigue pendiente); si no, ya no sirve.\n    if (hr.proximaApertura \u003e= vence) silencioso(r, \u0027fuera_de_horario\u0027);\n    continue;\n  }\n  const nombreGrupo = destinos[r.grupo_jid] || \u0027\u0027;\n  const resumen = r.resumen || String(r.banco || \u0027\u0027).toUpperCase();\n  if (r.banco === \u0027jep_pedido\u0027){\n    // El cobrador de JEP no contesto el pedido (\"ir a un cajero y avisar\"): el aviso va al grupo de AVISOS (a la gente de la oficina), no al banco.\n    out.push({ json: { jid: GRUPO_AVISOS, texto: \u0027⚠️ JEP: el cobrador todavía no avisa que llegó al cajero. Lleva 30 minutos esperando:\\n\u0027 + resumen + \u0027\\nRevisa el grupo \u0027 + (nombreGrupo || \u0027COOP JEP\u0027) + \u0027.\u0027, fila_id: r.id, resultado: \u0027enviada\u0027, cobro: r.cobro } });\n    continue;\n  }\n  if (MODO !== \u0027real\u0027){\n    const vista = \u0027🧪 ENSAYO — la alerta iría a \u0027 + (nombreGrupo || String(r.banco || \u0027\u0027).toUpperCase()) + \u0027, citando el RST de las \u0027 + hhmm(Date.parse(r.recibido_en)) + \u0027 (\u0027 + resumen + \u0027):\\n\u0027 + TEXTO_ALERTA;\n    out.push({ json: { jid: GRUPO_AVISOS, texto: vista, fila_id: r.id, resultado: \u0027ensayo\u0027, cobro: r.cobro } });\n    continue;\n  }\n  if (!nombreGrupo){ silencioso(r, \u0027sin_grupo\u0027); continue; }       // el grupo no esta en la tabla: no se le escribe\n  out.push({ json: { jid: r.grupo_jid, texto: TEXTO_ALERTA, citar: r.mensaje_id, texto_sin_cita: \u0027(\u0027 + resumen + \u0027)\\n\u0027 + TEXTO_ALERTA, fila_id: r.id, resultado: \u0027enviada\u0027, cobro: r.cobro } });\n}\nreturn out;"
+                                     },
+                      "id":  "e3f4a5b6-0005-4d00-8d00-mayoralert005",
+                      "name":  "Armar Alertas",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       704,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value2":  "={{true}}",
+                                                                                "value1":  "={{ !$json.sinEnvio }}"
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "e3f4a5b6-0006-4d00-8d00-mayoralert006",
+                      "name":  "Se Envia?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       880,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify(Object.assign({ number: $json.jid, text: $json.texto }, $json.citar ? { quoted: { key: { id: $json.citar } } } : {})) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "e3f4a5b6-0007-4d00-8d00-mayoralert007",
+                      "name":  "Enviar Alerta",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1056,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "boolean":  [
+                                                                            {
+                                                                                "value2":  "={{true}}",
+                                                                                "value1":  "={{ !!$json.error \u0026\u0026 !!$(\"Armar Alertas\").item.json.citar }}"
+                                                                            }
+                                                                        ]
+                                                        }
+                                     },
+                      "id":  "e3f4a5b6-0008-4d00-8d00-mayoralert008",
+                      "name":  "Fallo la Cita?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1232,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: $(\"Armar Alertas\").item.json.jid, text: $(\"Armar Alertas\").item.json.texto_sin_cita || $(\"Armar Alertas\").item.json.texto }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "e3f4a5b6-0009-4d00-8d00-mayoralert009",
+                      "name":  "Reenviar sin Cita",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       1408,
+                                       480
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "vigilancia_rst_mayor",
+                                         "fieldsUi":  {
+                                                          "fieldValues":  [
+                                                                              {
+                                                                                  "fieldId":  "alerta_enviada_en",
+                                                                                  "fieldValue":  "={{ new Date().toISOString() }}"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "alerta_resultado",
+                                                                                  "fieldValue":  "={{ $json.error ? \"error\" : $(\"Armar Alertas\").item.json.resultado }}"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "cobro",
+                                                                                  "fieldValue":  "={{ $(\"Armar Alertas\").item.json.cobro }}"
+                                                                              }
+                                                                          ]
+                                                      },
+                                         "filterString":  "={{ \"id=eq.\" + $(\"Armar Alertas\").item.json.fila_id + \"\u0026cobro=in.(pendiente,no_cobrado)\" }}",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "update",
+                                         "dataToSend":  "defineBelow"
+                                     },
+                      "id":  "e3f4a5b6-0010-4d00-8d00-mayoralert010",
+                      "name":  "Marcar Alerta",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1584,
+                                       300
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cada 2 Minutos":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Leer RST por Vencer",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Leer RST por Vencer":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Hay Algo?",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Hay Algo?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "node":  "Leer Grupos Destino",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Leer Grupos Destino":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Armar Alertas",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Armar Alertas":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Se Envia?",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Se Envia?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "node":  "Enviar Alerta",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "node":  "Marcar Alerta",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Enviar Alerta":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "node":  "Fallo la Cita?",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Fallo la Cita?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Reenviar sin Cita",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "node":  "Marcar Alerta",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Reenviar sin Cita":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Marcar Alerta",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil",
+                     "saveDataSuccessExecution":  "none"
+                 }
+}

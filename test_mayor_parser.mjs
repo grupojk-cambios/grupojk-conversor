@@ -86,7 +86,8 @@ console.log('=== 3) RST y RCT (retiros de los bancos de Ecuador) ===');
     ['Banco Pichincha 7396 Tlf+593 98 000 0008 Monto 500', { banco: 'Pichincha', usd: 500, cod: ['7396'], tel: '593980000008' }],
     ['Pichincha Código 5478 Teléfono 0990000009 Momto 200', { banco: 'Pichincha', usd: 200, cod: ['5478'], tel: '0990000009' }],
     ['PICHINCHA 🚛 Tlf 0990000010 COD 6428 MONTO: 100$', { banco: 'Pichincha', usd: 100, cod: ['6428'] }],
-    ['jep Tlf 0990000011 clave 1234 monto 80$', { banco: 'JEP', usd: 80, cod: ['1234'], destino: 'COOP JEP' }],
+    ['jep Tlf 0990000011 otp 874512 clave 1234 monto 80$', { banco: 'JEP', usd: 80, cod: ['874512'], destino: 'COOP JEP' }],
+    ['jep Tlf 0990000011 clave 1234 monto 80$', { banco: 'JEP', usd: 80, cod: [], destino: 'COOP JEP' }],     // en JEP "clave" es la de la TARJETA: falta el OTP
     ['Bolivariano Tlf 0990000012 clave 4321 monto 60$', { banco: 'Bolivariano', usd: 60, cod: ['4321'], destino: 'COOP JEP' }]
   ];
   for (const [texto, esp] of casos) {

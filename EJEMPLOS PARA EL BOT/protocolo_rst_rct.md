@@ -216,6 +216,17 @@ Cada código de retiro (RST) tiene una vigencia establecida por la entidad banca
    > *"⚠️ ¡Pendiente! Este código está por vencerse, le queda poco tiempo. Favor proceder con el retiro en cajero."*
    - De esta manera el cobrador sabe que debe acudir de inmediato al cajero antes de que el código quede inútil.
 
+### Cómo lo hace el bot (implementado)
+- **Qué vigila:** todo RST que está en el grupo de su banco: tanto el que **publica el bot** como el que **alguien pega a mano**. Solo los bancos de la tabla de arriba (Pichincha, Pacífico, Guayaquil, Produbanco, Bolivariano y JEP). De Solidario, Austro e Internacional el manual no dice cuánto duran, así que **no se vigilan**. Los RCT (retiro con tarjeta) tampoco: no tienen código que se venza.
+- **Cuándo cuenta el reloj:** desde que el cliente envió el código. Un RST de Guayaquil o Produbanco que esperó en COBRAR MAÑANA se vigila desde el momento en que el cliente lo mandó (no desde que se pasó a su banco).
+- **Cobrado o no:** lo marca el cobrador con una **reacción** al mensaje (cualquier emoji menos la ❌ = cobrado; ❌ = no cobrado; quitar la reacción lo devuelve a pendiente). También se entiende un emoji (o la palabra "cobrado") escrito como respuesta que cita el RST.
+- **Se anula la alerta** si el RST quedó cobrado, o si el banco citó el mensaje con "verificar / corregir" o "se dañó" (el cliente ya manda uno nuevo, no tiene sentido avisar de un código que se reemplaza).
+- **❌ + "Verificar":** si el cobrador pone la ❌ **y** cita el mensaje con "Verificar" (en cualquier orden), manda el "Verificar": el bot le pide al cliente que corrija y envíe de nuevo (Caso A de la sección 3) y **no** avisa de vencimiento de ese código. Una ❌ sola, sin "Verificar" ni "se dañó", **sí** genera la alerta (no cobrado). Para escribirle al cliente, el bot tiene que haber publicado él mismo ese RST; si alguien lo pegó a mano en el grupo, el bot solo anula la alerta.
+- **Solo en horario de atención** (lunes a sábado 9:00–18:00, domingo 10:00–14:00). Si la alerta toca de noche y el código sigue vivo cuando abrimos, se avisa al abrir; si ya se venció, no se avisa.
+- **Bolivariano:** vence a las 9:00 pm del mismo día, así que avisa a las 8:00 pm. Si el código llegó cuando ya faltaba menos de 1 hora, avisa 10 minutos después.
+- **JEP:** a los **5 minutos** de recibido (el bot revisa cada 2 minutos, así que el aviso llega entre los 5 y los 7).
+- **Arranca en ensayo:** la alerta no se escribe en ningún banco; aparece como vista previa en el grupo de avisos ("🧪 ENSAYO — la alerta iría a PICHINCHA…"). Cuando Kelvin revise y dé su OK, se pasa a real.
+
 
 ---
 
@@ -232,7 +243,8 @@ El bot lo publica en el grupo **COBRAR MAÑANA**, con el mismo formato de siempr
 | Banco | Duración del código | Qué hace el bot de noche |
 |---|---|---|
 | **Pichincha, Pacífico** (4 h), **Bolivariano** (hasta las 9 pm) | Se vence **el mismo día** | Publica en COBRAR MAÑANA con el aviso **"⚠️ COBRAR HOY para que no se venza"**, para que el cobrador lo lea y lo cobre ese mismo día. **Se queda ahí** (no se pasa al banco al otro día). |
-| **JEP** (15 min), **Solidario, Austro, Internacional** (y cualquier banco nuevo) | JEP se vence en minutos; los otros se tratan como **el mismo día** por seguridad | Igual que los anteriores. |
+| **Solidario, Austro, Internacional** (y cualquier banco nuevo) | Se tratan como **el mismo día** por seguridad | Igual que los anteriores. |
+| **JEP** (15 min) | Se vence en minutos: de noche el código no sirve | **No se publica ningún código.** El bot le dice al cliente cuándo abrimos y, al abrir, le pide al cobrador que vaya a un cajero (ver sección 10). |
 | **Guayaquil, Produbanco** | Duran **24 horas** | Publica en COBRAR MAÑANA **sin** el aviso. Al abrir (lunes a sábado 9:05, domingo 10:05) el bot lo **pasa a su grupo del banco**. |
 
 - Un RST de Guayaquil o Produbanco que lleve **más de 36 horas** esperando ya está vencido: el bot **no lo pasa** y avisa en el grupo de avisos para pedirle uno nuevo al cliente.
@@ -267,4 +279,47 @@ Cuando el cobrador está frente al cajero retirando un RST de **Banco Solidario*
 4. **Confirmación y Entrega al Cajero:**
    - El bot le responde al cliente: **"Ok, recibido"**.
    - Acto seguido, el bot reenvía ese mismo texto/clave al **Grupo Solidario**, **citando el RST en cuestión**, para que el cobrador pueda ingresarlo de inmediato en el cajero antes de que expire.
+
+### Cómo lo hace el bot (implementado)
+**Largo de los códigos**
+- Si el cliente manda un código con un largo distinto al de la tabla, el bot **no lo publica**: le responde citando su mensaje, por ejemplo *"Revisa tu RST de Pichincha: el código debe tener 4 dígitos. Corrígelo y envíalo de nuevo con todos los datos en un solo texto, por favor."* (Bolivariano: *"debe tener 6 u 8 dígitos"*; Guayaquil revisa el código 1 y el 2 por separado; JEP revisa el código y la clave de la tarjeta).
+- Si además falta algún dato, lo dice todo en el mismo mensaje.
+- Solo se revisan los bancos de la tabla. Austro e Internacional no tienen regla de largo y se publican como siempre. El RCT no tiene código, no se revisa.
+
+**Clave temporal de Solidario**
+- Para que funcione, **el RST tiene que haberlo publicado el bot** en el grupo Solidario (así sabe de qué cliente es). Si alguien lo pegó a mano, el bot no puede saber a quién pedirle la clave.
+- El cobrador cita el RST y escribe `"temporal"`, `"código temporal"`, `"segundo código"` o `"segunda clave"`. El bot responde en el grupo *"ok, se lo pido al cliente"* y le escribe al cliente (citando su RST): *"Por favor envíame de inmediato el código temporal que te acaba de llegar."*
+- Desde ese momento el bot espera esa clave **15 minutos**. Cuando el cliente manda **un solo número de 6 dígitos** (solo los dígitos, o el mensaje completo del banco), el bot reenvía **ese mismo texto** al grupo Solidario **citando el RST** y le dice al cliente *"Ok, recibido"*.
+- Si el cliente manda en cambio un **RST nuevo y completo**, se trata como RST, no como clave temporal. Si manda dos números de 6 dígitos distintos, no adivina cuál es: no hace nada. La clave se entrega **una sola vez**.
+
+---
+
+## 10. Cooperativa JEP: el cliente genera el RST cuando el cobrador ya está en el cajero (regla de Kelvin, 24/11/2026)
+
+El código de JEP dura solo **15 minutos**. Por eso el cliente **no debe generarlo antes de tiempo**: el bot espera a que el cobrador esté parado frente al cajero.
+
+### Flujo paso a paso
+1. **El cliente quiere hacer (o manda) un RST de JEP** (con datos o solo diciendo "quiero retirar por JEP"). Aunque ya traiga el código, **el bot NO lo publica**.
+2. **El bot le responde al cliente**, citando su mensaje:
+   > *"Te avisamos cuando el cobrador esté en el cajero, para que realices el RST."*
+3. **El bot le pide al cobrador, en el grupo de JEP** (COOP JEP), que vaya a un cajero y avise:
+   ```text
+   🏧 Cobrador: ir a un cajero y avisar aquí, citando este mensaje, cuando estés para indicarle al cliente que haga el RST.
+
+   Cliente: Nombre del Cliente
+   Monto: 300$
+   ```
+4. **El cobrador va al cajero**, **cita ese mensaje del bot** y escribe que ya llegó: `"listo, ya estoy acá"`, `"llegué"`, `"pide el RST"`, etc.
+5. **El bot confirma en el grupo** (*"ok, ya le aviso al cliente"*) y **le avisa al cliente**, citando su mensaje:
+   > *"El cobrador ya está en el cajero. Realiza tu RST ahora y envíame todos los datos en un solo texto."*
+6. **El cliente genera el RST y manda todos los datos** (banco, monto, OTP, cédula, clave de la tarjeta). El bot lo publica **de inmediato** en el grupo COOP JEP (con el formato de siempre) y le manda el sticker "RST Recibido". En ese momento empieza a correr la alerta de vencimiento de JEP (a los 5 minutos si nadie lo marcó como cobrado, sección 7).
+
+### Detalles
+- El permiso del cobrador dura **30 minutos**; sirve para **un solo** RST (el siguiente pedido repite el proceso).
+- Si el cliente vuelve a escribir mientras espera, el bot le dice: *"Ya avisamos al cobrador. Te escribimos apenas esté en el cajero."* y **no** vuelve a molestar al cobrador.
+- Si el cobrador responde algo que no es "ya llegué" ("no hay cajero", "todavía no"), el bot no le avisa al cliente.
+- **Si el cobrador no contesta en 30 minutos**, el bot avisa en el grupo de **avisos** ("⚠️ JEP: el cobrador todavía no avisa que llegó al cajero. Lleva 30 minutos esperando: …") para que alguien de la oficina lo llame. Cuenta desde que el pedido sale al grupo de JEP (de noche, desde que abre). Si el cobrador contesta "listo" citando el pedido, o reacciona a ese mensaje, queda atendido y no se avisa.
+- Si el cliente manda los datos incompletos después del aviso del cobrador, el bot le pide lo que falta (no vuelve a llamar al cobrador).
+- **Fuera de horario:** el bot le dice al cliente cuándo abrimos (*"Te avisamos cuando el cobrador esté en el cajero, mañana a partir de las 9:00 am, para que realices el RST."*) y, al abrir, publica el pedido al cobrador en el grupo de JEP (workflow de la mañana).
+- El **RCT** de JEP (retiro con tarjeta) **no** pasa por este proceso: va directo al grupo como los demás bancos.
 
