@@ -638,7 +638,7 @@ function venceEn(ts){
   const h = horarioDe(ts), base = ts + MINUTOS_PENDIENTE * 60000;
   return h.abierto ? base : Math.max(base, h.proximaApertura + MINUTOS_PENDIENTE * 60000);
 }
-const cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuenta.mensajes)) ? op.cuenta.mensajes : [];
+let cuentaGuardada = (op.cuenta && vigente(op.cuenta) && Array.isArray(op.cuenta.mensajes)) ? op.cuenta.mensajes : [];
 const capturasGuardadas = Array.isArray(op.capturas) ? op.capturas.filter(vigente) : [];
 const hechos = Array.isArray(op.hechos) ? op.hechos.filter(h => h && (ahora - (h.ts || 0)) <= HORAS_RECORDAR * 3600000) : [];
 
@@ -676,6 +676,11 @@ function datosFirmes(texto){
   if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
   return /(^|\s)[A-Za-z0-9]{26,}(\s|$)/.test(t);
 }
+function tieneDatosDeCuenta(t){
+  const s = String(t || '');
+  if (/CUENTA bancaria/i.test(s)) return true;
+  return datosFirmes(s) || (pareceCuenta(s) && /[0-9]{6,}/.test(s.replace(/([0-9])[ .-](?=[0-9])/g, '$1')));
+}
 
 // Las notas que escribe el bot no son del cliente. Con las citas hay que fijarse: si el cliente
 // cita el mensaje donde el bot le mando NUESTRA cuenta del dia (o cualquier mensaje sin datos),
@@ -707,6 +712,8 @@ function esCuentaNuestra(t){
   const d = datosDe(t);
   return d.length > 0 && d.every(x => NUESTROS.has(x));
 }
+// Descarta entradas viejas guardadas sin datos reales de cuenta (ej. charla como "ya te paso la otra cuenta").
+cuentaGuardada = cuentaGuardada.filter(m => tieneDatosDeCuenta(textoDelCliente(String((m && m.texto) || ''))));
 
 // ---------- capturas: monto, referencia y huella, para reconocer las repetidas ----------
 // La huella es hexadecimal y trae numeros: hay que quitarla antes de buscar el monto o la
@@ -1128,8 +1135,8 @@ for (const m of mensajes){
   // una billetera, o palabras de cuenta con un numero de 6 digitos o mas. "Buenos dias", "aqui mi pago" o
   // "para la cuenta de mi mama" son charla, no la cuenta (pedido de Kelvin, 24/11).
   const esPie = RX_CAPTURA.test(String((m && m.texto) || ''));
-  const pieConDatos = datosFirmes(resto) || (pareceCuenta(resto) && /[0-9]{6,}/.test(resto.replace(/([0-9])[ .-](?=[0-9])/g, '$1')));
-  const esCuenta = esPie ? pieConDatos : (datosFirmes(resto) || ((hayCaptura || corregir) && resto.indexOf('?') === -1 && pareceCuenta(resto)));
+  const conDatos = tieneDatosDeCuenta(resto);
+  const esCuenta = esPie ? conDatos : (datosFirmes(resto) || (corregir && resto.indexOf('?') === -1 && pareceCuenta(resto)) || (hayCaptura && resto.indexOf('?') === -1 && conDatos));
   if (esCuenta) cuentasAhora.push({ id: (m && m.id) || '', texto: resto });
 }
 

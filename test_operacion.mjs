@@ -296,12 +296,12 @@ console.log('=== 4d) CAPTURAS REPETIDAS: monto + referencia + datos bancarios ==
 }
 
 console.log('');
-console.log('=== 4e) CUANTO ESPERA ANTES DE CONTESTAR (captura + cuenta, o cuenta + captura) ===');
+console.log('=== 4e) CUANTO ESPERA ANTES DE CONTESTAR (30s para agilizar respuestas) ===');
 {
-  chk(prep(captura('60.00', '', '')).espera === 100, 'una captura espera 100s', '-> ' + prep(captura('60.00', '', '')).espera);
-  chk(prep(CUENTA_VE).espera === 100, 'una cuenta destino espera 100s (el mismo tiempo)', '-> ' + prep(CUENTA_VE).espera);
-  chk(prep('04120000001 V-11111111 Banesco').espera === 100, 'pago movil espera 100s');
-  chk(prep('maria.perez@example.com').espera === 100, 'un correo (Zelle) espera 100s');
+  chk(prep(captura('60.00', '', '')).espera === 30, 'una captura espera 30s', '-> ' + prep(captura('60.00', '', '')).espera);
+  chk(prep(CUENTA_VE).espera === 30, 'una cuenta destino espera 30s (agilizado)', '-> ' + prep(CUENTA_VE).espera);
+  chk(prep('04120000001 V-11111111 Banesco').espera === 30, 'pago movil espera 30s');
+  chk(prep('maria.perez@example.com').espera === 30, 'un correo (Zelle) espera 30s');
   chk(prep('hola, me pasas la cuenta para depositar?').espera === 30, 'pedir NUESTRA cuenta sigue en 30s');
   chk(prep('tienes cuenta en Banesco?').espera === 30, 'una pregunta con "banco" sigue en 30s');
   chk(prep('cuanto es 12.500.000 pesos en dolares').espera === 30, 'una cifra grande sin datos sigue en 30s');
@@ -634,6 +634,36 @@ console.log('=== 5f) LA CUENTA VIENE EN EL PIE DE LA FOTO (caso real del 24/11) 
   // charla en el pie + la cuenta en un mensaje aparte: sigue funcionando como siempre
   const sep2 = revisar([{ id: 'IMGY1', texto: imagen(RES.replace('55001122', '55009001'), 'Buenos días', 'IMGPIEY') }, { id: 'TXY1', texto: '01020000000000099999' + SALTO + 'V22222222' + SALTO + '$200' }], null);
   chk(sep2.estadoOperacion === 'completo', 'saludo en el pie y la cuenta en otro mensaje: COMPLETO', '-> ' + sep2.estadoOperacion);
+}
+
+console.log('');
+console.log('=== 5g) CHARLA CON LA PALABRA "CUENTA" NO SE GUARDA COMO CUENTA (caso real Operador 1 JK) ===');
+{
+  reloj = Date.parse('2026-11-24T21:00:00Z');   // 4:00 pm en Ecuador (abierto)
+  const CAP = '[El cliente envio un COMPROBANTE de pago. Datos leidos: Monto: $180,00, Moneda: USD, Banco: Banco Guayaquil, Fecha: 24/11/2026, Referencia: 0013513507]';
+  const CTA1 = 'pago movil' + SALTO + 'banco Venezuela' + SALTO + 'cedula 2848 731' + SALTO + 'celular 0422 34 4708' + SALTO + '$80';
+  const CTA2 = 'ANYELY Araujo' + SALTO + '0102' + SALTO + '04120449005 25425861' + SALTO + '$100';
+
+  const r1 = revisar([{ id: 'OP1-F', texto: CAP }, { id: 'OP1-C1', texto: CTA1 }], null);
+  chk(r1.estadoOperacion === 'no_cuadra', 'captura $180 + 1ra cuenta $80: no_cuadra', '-> ' + r1.estadoOperacion);
+
+  pasan(1);
+  const r2 = revisar([{ id: 'OP1-CH', texto: 'Oh, sí, cierto. Ya te paso la otra cuenta.' }], r1.op);
+  chk(r2.estadoOperacion === 'no_cuadra' && r2.op.cuenta.mensajes.length === 1,
+      '"Oh, sí, cierto. Ya te paso la otra cuenta." NO se guarda como 2da cuenta',
+      '-> estado=' + r2.estadoOperacion + ' cuentas=' + r2.op.cuenta.mensajes.length);
+
+  pasan(1);
+  const r3 = revisar([{ id: 'OP1-C2', texto: CTA2 }], r2.op);
+  chk(r3.estadoOperacion === 'completo' && r3.mensajesAprobar.some(m => m.id === 'OP1-C1') && r3.mensajesAprobar.some(m => m.id === 'OP1-C2'),
+      'llega 2da cuenta ($100): COMPLETO ($80 + $100 = $180)', '-> ' + r3.estadoOperacion);
+
+  // Limpieza defensiva: si Redis ya traia una charla vieja guardada como cuenta, se descarta al llegar la buena.
+  const opSucia = JSON.parse(JSON.stringify(r1.op));
+  opSucia.cuenta.mensajes.push({ id: 'BASURA1', texto: 'Oh, sí, cierto. Ya te paso la otra cuenta.' });
+  const rLimpia = revisar([{ id: 'OP1-C2B', texto: CTA2 }], opSucia);
+  chk(rLimpia.estadoOperacion === 'completo' && rLimpia.mensajesAprobar.every(m => m.id !== 'BASURA1'),
+      'limpieza defensiva: charla vieja contaminada en Redis se descarta y completa', '-> ' + rLimpia.estadoOperacion);
 }
 
 console.log('');

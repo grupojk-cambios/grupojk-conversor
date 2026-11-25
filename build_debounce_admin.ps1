@@ -129,8 +129,9 @@ function datosFirmes(t){
   if (/[^ @]+@[^ @]+\.[a-z]{2,}/.test(bajo)) return true;
   return /(^|\s)[A-Za-z0-9]{26,}(\s|$)/.test(sinCita);
 }
-const esperaLarga = esComprobante || datosFirmes(texto);
-const espera = esperaLarga ? 100 : 30;
+// Espera fija de 30s para todos los mensajes (pedido de Kelvin, 24/11: 100s demoraba mucho;
+// Revisar Operacion ya junta captura + cuenta en Redis aunque lleguen en envios separados).
+const espera = 30;
 
 // El id de ESTE mensaje viaja con el texto. Hace falta despues para poder CITAR el mensaje
 // en el que el cliente escribio sus datos bancarios cuando se le mande el comprobante.

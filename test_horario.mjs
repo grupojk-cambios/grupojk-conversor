@@ -162,7 +162,7 @@ console.log('=== 6) Sticker de "verificando": solo en horario ===');
   const cap = captura('60.00', '44440006');
   chk(prep(cap, ec('2026-11-20', '15:00')).stickerVerificando === true, 'captura de dia: sticker');
   chk(prep(cap, ec('2026-11-20', '22:00')).stickerVerificando === false, 'captura de noche: sin sticker');
-  chk(prep(cap, ec('2026-11-20', '22:00')).espera === 100, 'de noche igual espera 100 s (para juntar captura y cuenta)');
+  chk(prep(cap, ec('2026-11-20', '22:00')).espera === 30, 'de noche tambien espera 30 s');
   chk(prep('hola', ec('2026-11-20', '15:00')).stickerVerificando === false, 'un texto: nunca');
   const cond = JSON.stringify(nodo('Llego un Comprobante?').parameters);
   chk(/stickerVerificando/.test(cond), 'el nodo "Llego un Comprobante?" mira stickerVerificando');
