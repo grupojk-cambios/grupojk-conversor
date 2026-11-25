@@ -296,12 +296,12 @@ console.log('=== 4d) CAPTURAS REPETIDAS: monto + referencia + datos bancarios ==
 }
 
 console.log('');
-console.log('=== 4e) CUANTO ESPERA ANTES DE CONTESTAR (30s para agilizar respuestas) ===');
+console.log('=== 4e) CUANTO ESPERA ANTES DE CONTESTAR (captura + cuenta, o cuenta + captura) ===');
 {
-  chk(prep(captura('60.00', '', '')).espera === 30, 'una captura espera 30s', '-> ' + prep(captura('60.00', '', '')).espera);
-  chk(prep(CUENTA_VE).espera === 30, 'una cuenta destino espera 30s (agilizado)', '-> ' + prep(CUENTA_VE).espera);
-  chk(prep('04120000001 V-11111111 Banesco').espera === 30, 'pago movil espera 30s');
-  chk(prep('maria.perez@example.com').espera === 30, 'un correo (Zelle) espera 30s');
+  chk(prep(captura('60.00', '', '')).espera === 100, 'una captura espera 100s', '-> ' + prep(captura('60.00', '', '')).espera);
+  chk(prep(CUENTA_VE).espera === 100, 'una cuenta destino espera 100s (el mismo tiempo)', '-> ' + prep(CUENTA_VE).espera);
+  chk(prep('04120000001 V-11111111 Banesco').espera === 100, 'pago movil espera 100s');
+  chk(prep('maria.perez@example.com').espera === 100, 'un correo (Zelle) espera 100s');
   chk(prep('hola, me pasas la cuenta para depositar?').espera === 30, 'pedir NUESTRA cuenta sigue en 30s');
   chk(prep('tienes cuenta en Banesco?').espera === 30, 'una pregunta con "banco" sigue en 30s');
   chk(prep('cuanto es 12.500.000 pesos en dolares').espera === 30, 'una cifra grande sin datos sigue en 30s');
