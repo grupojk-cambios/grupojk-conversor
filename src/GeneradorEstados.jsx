@@ -190,7 +190,7 @@ export default function GeneradorEstados() {
     
     let texto = `🚛 *GRUPO JK - PIZARRA GLOBAL* 🚛\n`;
     texto += `📅 *Fecha:* ${fechaHoy}\n\n`;
-    texto += `💵 *BASE USD / USDT*\n\n`;
+    texto += `💵 *BASE $ ECUADOR*\n\n`;
     
     paisesLocales.forEach(pais => {
       const rawEnvio = parseFloat(pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0));
@@ -600,7 +600,7 @@ export default function GeneradorEstados() {
           gap: '0.5em',
           letterSpacing: '0.05em'
         }}>
-          💵 BASE USD / USDT
+          💵 BASE $ ECUADOR
         </div>
 
         {/* LISTA DE PAÍSES */}
