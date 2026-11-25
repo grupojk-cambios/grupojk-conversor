@@ -13,7 +13,8 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -211,7 +212,7 @@ console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviad
   }
   const base = { stanzaId: 'GRUPO1', claveEntregado: 'entregado:GRUPO1', jidGrupo: 'grupo@g.us', idFoto: 'FOTOOP' };
   const $ = n => {
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: base }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
     if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana', idCuenta: 'CTA1', idCaptura: 'FOTO1' }) } }) };
     if (n === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
     return { first: () => ({ json: {} }) };
@@ -240,7 +241,8 @@ console.log('=== 6) Como quedo conectado ===');
   chk(sale('Redis Guardar Operacion').indexOf('Armar Filas Noche') !== -1 && sale('Armar Filas Noche').join() === 'Guardar Operacion en Supabase',
       'de noche: Redis Guardar Operacion -> Armar Filas Noche -> Guardar Operacion en Supabase');
   chk(sale('Armar Fila Supabase').join() === 'Guardar Operacion en Supabase', 'Armar Fila Supabase -> Guardar Operacion en Supabase');
-  chk(sale('Redis Marcar Entregado').join() === 'Marcar Enviada en Supabase', 'Redis Marcar Entregado -> Marcar Enviada en Supabase');
+  const saleOp = (n, i) => ((((wfOp.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  chk(saleOp('Redis Marcar Entregado').join() === 'Marcar Enviada en Supabase', 'Redis Marcar Entregado -> Marcar Enviada en Supabase');
 
   const leer = nodo('Consultar Operaciones WhatsApp');
   chk(leer.parameters.tableId === 'transacciones_detal_por_whatsapp' && leer.parameters.operation === 'getAll', 'lee la tabla nueva');
@@ -261,7 +263,7 @@ console.log('=== 6b) Los nodos IF viejos (v1) usan operaciones que existen ===')
   // antes de mandarle al cliente la foto de la operadora.
   const VALIDAS = { boolean: ['equal', 'notEqual'], number: ['smaller', 'smallerEqual', 'equal', 'notEqual', 'larger', 'largerEqual', 'isEmpty', 'isNotEmpty'],
                     string: ['contains', 'notContains', 'endsWith', 'notEndsWith', 'equal', 'notEqual', 'regex', 'notRegex', 'startsWith', 'notStartsWith', 'isEmpty', 'isNotEmpty'] };
-  for (const n of wf.nodes.filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
+  for (const n of [...wf.nodes, ...wfOp.nodes].filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
     const malas = [];
     for (const tipo of Object.keys(n.parameters.conditions || {})) {
       for (const c of (n.parameters.conditions[tipo] || [])) if (c.operation && (VALIDAS[tipo] || []).indexOf(c.operation) === -1) malas.push(tipo + ':' + c.operation);

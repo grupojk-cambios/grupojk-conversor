@@ -11,8 +11,9 @@
 
 import { readFileSync } from 'fs';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wf = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
+const wfBot = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfBot.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -130,7 +131,7 @@ console.log('=== 5) "forzar" ===');
   // Revisar Pedido: si citaron el AVISO, la entrega es de la publicacion original, con la misma foto
   const aviso = JSON.stringify({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana Prueba', idCuenta: 'MSG-1', idCaptura: 'CAP-1', publicacion: PUB_A, idFotoOperadora: 'FOTO-OP' });
   const rp = (forzar, idFoto, pedido) => new Function('$', code('Revisar Pedido'))(n => {
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: { stanzaId: 'AVISO-1', idFoto, jidGrupo: GRUPO, claveEntregado: 'entregado:AVISO-1', forzar } }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { stanzaId: 'AVISO-1', idFoto, jidGrupo: GRUPO, claveEntregado: 'entregado:AVISO-1', forzar } }) };
     if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido } }) };
     return { first: () => ({ json: {} }) };
   });

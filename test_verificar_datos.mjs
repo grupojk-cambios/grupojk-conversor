@@ -14,7 +14,8 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -66,7 +67,7 @@ const BASE = soloEstos({ conversation: 'Verificar datos' }, citando())[0];
 const PEDIDO = { jid: CLIENTE, nombre: 'Ana Prueba', idCuenta: 'A5CUENTA01', idCaptura: 'A5CAPTURA01' };
 function prepararCorregir(pedido, base) {
   const $ = n => {
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: base || BASE }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base || BASE }) };
     if (n === 'Redis Leer Publicacion Verificar') return { first: () => ({ json: { pedido: pedido === null ? null : JSON.stringify(pedido) } }) };
     throw new Error('nodo inesperado: ' + n);
   };
@@ -166,7 +167,7 @@ console.log('=== 5) LA FOTO DE LA OPERADORA SOBRE LA CORRECCION LE LLEGA AL CLIE
   const mapa = { jid: CLIENTE, nombre: 'Ana Prueba', idCuenta: 'A5NUEVA01', idCaptura: 'A5CAPTURA01', publicacion: '3EB0PUBLICACION01' };
   const base = { stanzaId: '3EB0CORRECCION01', claveEntregado: 'entregado:3EB0CORRECCION01', idFoto: 'A5FOTO01', jidGrupo: GRUPO_TRANSFERIR };
   const $ = n => {
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: base }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
     if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify(mapa) } }) };
     if (n === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
     if (n === 'Redis Leer Ultima Foto') return { first: () => ({ json: {} }) };
@@ -181,12 +182,14 @@ console.log('');
 console.log('=== 6) CABLEADO ===');
 {
   const c = wf.connections;
-  const sig = (n, i) => ((c[n] && c[n].main && c[n].main[i || 0]) || []).map(x => x.node).join(',');
+  const cOp = wfOp.connections;
+  const sig = (n, i, mapa) => { const m = mapa || c; return ((m[n] && m[n].main && m[n].main[i || 0]) || []).map(x => x.node).join(','); };
   const reglas = nodo('Router Pausa').parameters.rules.values.map(v => v.outputKey);
-  chk(reglas[7] === 'verificar' && sig('Router Pausa', 7) === 'Redis Leer Publicacion Verificar', 'Router Pausa: la salida "verificar" (la ultima) -> Redis Leer Publicacion Verificar');
-  chk(sig('Redis Leer Publicacion Verificar') === 'Preparar Corregir Datos' && sig('Preparar Corregir Datos') === 'Redis Leer Op Corregir'
-      && sig('Redis Leer Op Corregir') === 'Marcar Corregir Datos' && sig('Marcar Corregir Datos') === 'Redis Guardar Op Corregir'
-      && sig('Redis Guardar Op Corregir') === 'Pedir Corregir al Cliente' && sig('Pedir Corregir al Cliente') === 'Confirmar Verificar en Grupo',
+  chk(reglas[7] === 'verificar' && sig('Router Pausa', 7) === 'Ejecutar Operadoras', 'Router Pausa: la salida "verificar" (la ultima) -> Ejecutar Operadoras');
+  chk(sig('Router Operadoras', 2, cOp) === 'Redis Leer Publicacion Verificar', 'Router Operadoras: salida "verificar" (2) -> Redis Leer Publicacion Verificar');
+  chk(sig('Redis Leer Publicacion Verificar', 0, cOp) === 'Preparar Corregir Datos' && sig('Preparar Corregir Datos', 0, cOp) === 'Redis Leer Op Corregir'
+      && sig('Redis Leer Op Corregir', 0, cOp) === 'Marcar Corregir Datos' && sig('Marcar Corregir Datos', 0, cOp) === 'Redis Guardar Op Corregir'
+      && sig('Redis Guardar Op Corregir', 0, cOp) === 'Pedir Corregir al Cliente' && sig('Pedir Corregir al Cliente', 0, cOp) === 'Confirmar Verificar en Grupo',
       'verificar: publicacion -> preparar -> op del cliente -> marcar -> guardar -> cliente -> grupo');
   chk(/Preparar Corregir Datos.*\.jid/.test(nodo('Pedir Corregir al Cliente').parameters.remoteJid), 'el mensaje va al chat del CLIENTE');
   chk(/idNota/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody) && /jidGrupo/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody),

@@ -14,7 +14,9 @@ import { readFileSync } from 'fs';
 
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const codeOp = n => wfOp.nodes.find(x => x.name === n).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -63,13 +65,13 @@ function revisar({ guardado = null, yaEntregado = '', idFoto = ID_FOTO, fotoReco
     claveFoto: 'ultimaFoto:' + GRUPO + ':quien'
   };
   const $ = (n) => {
-    if (n === 'Solo Estos Numeros')     return { first: () => ({ json: base }) };
+    if (n === 'Cuando lo Llama el Bot')  return { first: () => ({ json: base }) };
     if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: guardado } }) };
     if (n === 'Redis Leer Entregado')   return { first: () => ({ json: { entregado: yaEntregado } }) };
     if (n === 'Redis Leer Ultima Foto') return { first: () => ({ json: { ultimaFoto: fotoRecordada } }) };
     throw new Error('Node "' + n + '" not executed');
   };
-  return new Function('$', code('Revisar Pedido'))($);
+  return new Function('$', codeOp('Revisar Pedido'))($);
 }
 
 console.log('=== 1) LO QUE MAS IMPORTA: solo se entrega lo que publico el bot ===');
@@ -324,6 +326,20 @@ console.log('=== 10) Aviso si los montos no cuadran ===');
   chk(montos([30, null, 15, 35], 120).length === 0, 'si falta un monto, se calla');
   chk(montos([30, 40], null).length === 0, 'si no se leyo el comprobante, se calla');
   chk(montos([120], 120).length === 0, 'con una sola cuenta no hay nada que sumar');
+}
+
+console.log('');
+console.log('=== 11) Cableado hacia Bot JK - Grupos de Operadoras ===');
+{
+  const sal = (w, n, i) => (((w.connections[n] && w.connections[n].main) || [])[i || 0] || []).map(c => c.node).join();
+  const ej = wf.nodes.find(x => x.name === 'Ejecutar Operadoras');
+  chk(!!ej && ej.type === 'n8n-nodes-base.executeWorkflow' && ej.parameters?.workflowId?.value === 'gav5txTYWq3ARV8H',
+      'Ejecutar Operadoras apunta a gav5txTYWq3ARV8H');
+  chk(ej && ej.parameters?.options?.waitForSubWorkflow === false, 'no espera al sub-workflow');
+  chk(sal(wf, 'Router Pausa', 4) === 'Ejecutar Operadoras' && sal(wf, 'Router Pausa', 5) === 'Ejecutar Operadoras',
+      'Router Pausa: entregar (4) y recordarFoto (5) -> Ejecutar Operadoras');
+  chk(sal(wfOp, 'Router Operadoras', 0) === 'Redis Leer Publicacion' && sal(wfOp, 'Router Operadoras', 1) === 'Redis Guardar Ultima Foto',
+      'Router Operadoras: entregar -> Redis Leer Publicacion | recordarFoto -> Redis Guardar Ultima Foto');
 }
 
 console.log('');

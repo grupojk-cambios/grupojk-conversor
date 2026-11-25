@@ -143,6 +143,10 @@ $DIAS_ULTIMA_OPERACION = 7
 # responde ni publica nada en esos grupos.
 $MAYOR_WORKFLOW_ID = 'HIERZLV4lwtuBRbZ'
 
+# FASE 1 (Operadoras): el workflow "Bot JK - Grupos de Operadoras" (scripts\desplegar_operadoras.ps1).
+# Atiende entregas de comprobante, foto suelta y "verificar datos" del grupo de TRANSFERIR.
+$OPERADORAS_WORKFLOW_ID = 'gav5txTYWq3ARV8H'
+
 # ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
 # EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
 # se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
@@ -2894,59 +2898,6 @@ $nodes = @(
     credentials = $redisCred
   },
   [ordered]@{
-    # La operadora mando una foto SUELTA: se recuerda unos minutos por si despues cita con
-    # un punto. La clave lleva quien la mando, para no mezclar operadoras.
-    parameters = @{ operation = 'set'; key = '={{ $json.claveFoto }}'; value = '={{ $json.idFoto }}'; keyType = 'string'; expire = $true; ttl = $MINUTOS_RECORDAR_FOTO * 60 }
-    id = 'd0e1f2a3-0000-4b00-9000-guardafoto001'; name = 'Redis Guardar Ultima Foto'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(60,-660)
-    onError = 'continueRegularOutput'
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # La ultima foto suelta de quien acaba de citar, por si cito con un punto.
-    parameters = @{ operation = 'get'; key = "={{ `$('Solo Estos Numeros').first().json.claveFoto }}"; keyType = 'string'; propertyName = 'ultimaFoto'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-leerfoto00001'; name = 'Redis Leer Ultima Foto'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(300,-500)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # Entregar o avisar que ya se entrego?
-    # OJO: en este tipo de nodo (IF v1, condicion "boolean") la operacion se llama 'equal', no 'equals'.
-    # Con 'equals' n8n se caia ("compareOperationFunctions... is not a function") y la foto de la
-    # operadora nunca le llegaba al cliente. Se compara como verdadero/falso, igual que los demas IF.
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = "={{ `$json.accion === 'repetido' }}"; value2 = '={{true}}' } ) } }
-    id = 'd0e1f2a3-0000-4b00-9000-esrepetido001'; name = 'Ya Se Entrego?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(460,-420)
-  },
-  [ordered]@{
-    # Aviso de capture repetido, citando la misma publicacion.
-    parameters = @{ method = 'POST'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; jsonBody = '={{ JSON.stringify({ number: $json.jidGrupo, text: ("OJO: " + $json.aviso), quoted: { key: { id: $json.stanzaId } } }) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-avisarepeti01'; name = 'Avisar Repetido'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(620,-360)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Si la cita no la soporta esta version de Evolution, el envio falla. Aqui se detecta
-    # para reintentar sin cita: una cita que no funcione NUNCA puede dejar a un cliente sin
-    # su comprobante.
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ !!$json.error }}'; value2 = '={{true}}' } ) } }
-    id = 'd0e1f2a3-0000-4b00-9000-fallocita0001'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(860,-560)
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin'; jsonBody = '={{ JSON.stringify({ number: $("Revisar Pedido").first().json.jid, mediatype: "image", mimetype: ($("Bajar Foto Operadora").first().json.mimetype || "image/jpeg"), media: $("Bajar Foto Operadora").first().json.base64 }) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-envsincita001'; name = 'Enviar Comprobante sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1020,-620)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ !!$json.error }}'; value2 = '={{true}}' } ) } }
-    id = 'd0e1f2a3-0000-4b00-9000-fallocitag001'; name = 'Fallo la Cita del Grupo?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(1340,-500)
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; jsonBody = '={{ JSON.stringify({ number: $("Revisar Pedido").first().json.jidGrupo, text: ("Enviado a " + $("Revisar Pedido").first().json.nombre + " OK") }) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-confsincita01'; name = 'Confirmar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1500,-560)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
     parameters = @{ jsCode = $revisarMontosCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3460,400); id = 'd0e1f2a3-0000-4b00-9000-revisarmont01'; name = 'Revisar Montos'
     executeOnce = $true
@@ -2956,114 +2907,6 @@ $nodes = @(
     id = 'd0e1f2a3-0000-4b00-9000-avisarmonto01'; name = 'Avisar Montos'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3640,400)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Era una publicacion del bot el mensaje que cito la operadora?
-    parameters = @{ operation = 'get'; key = '={{ $json.claveGrupoMsg }}'; keyType = 'string'; propertyName = 'pedido'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-leerpublic001'; name = 'Redis Leer Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(60,-500)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # Ya se le mando el comprobante a ese cliente por esta misma publicacion?
-    parameters = @{ operation = 'get'; key = "={{ `$('Solo Estos Numeros').first().json.claveEntregado }}"; keyType = 'string'; propertyName = 'entregado'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-leerentreg001'; name = 'Redis Leer Entregado'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(220,-500)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $revisarPedidoCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(380,-500); id = 'd0e1f2a3-0000-4b00-9000-revisarped001'; name = 'Revisar Pedido'
-  },
-  [ordered]@{
-    # Se vuelve a bajar la foto de la operadora desde Evolution para poder reenviarla.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.idFoto }}" } }, "convertToMp4": false }'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-bajarfoto0001'; name = 'Bajar Foto Operadora'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(540,-500)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  # ---------- FASE B: antes de mandarle la foto al cliente, se revisa que sea de SU cuenta ----------
-  [ordered]@{
-    parameters = @{ jsCode = $toBinarioImgCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(592,-752); id = 'a1b2c3d4-0013-4e00-9a00-faseb0000013'; name = 'Foto Operadora a Binario'
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    parameters = @{ resource = 'image'; operation = 'analyze'; modelId = @{ __rl = $true; value = 'gpt-4o'; mode = 'list'; cachedResultName = 'gpt-4o' }; inputType = 'base64'; binaryPropertyName = 'data'; text = $leerComprobanteOperadoraPrompt; options = @{} }
-    id = 'a1b2c3d4-0014-4e00-9a00-faseb0000014'; name = 'Leer Comprobante Operadora'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(768,-752)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
-  },
-  [ordered]@{
-    # Las cuentas del deposito (una fila por cuenta), para comparar con la foto.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_detal_por_whatsapp'; returnAll = $false; limit = 20; filterType = 'string'; filterString = "={{ 'id_msg_captura=eq.' + (`$('Revisar Pedido').first().json.idCaptura || 'sin-dato') }}" }
-    id = 'a1b2c3d4-0015-4e00-9a00-faseb0000015'; name = 'Leer Cuentas de la Operacion'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(944,-752)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $revisarComprobanteCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1120,-752); id = 'a1b2c3d4-0016-4e00-9a00-faseb0000016'; name = 'Revisar Comprobante'
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    # Si cuadra (o no se pudo comparar) -> se le manda al cliente. Si no cuadra -> aviso en el grupo.
-    # Solo se frena si la revision dijo EXPLICITAMENTE que no cuadra: si "Revisar Comprobante" fallara por
-    # cualquier error, la foto se entrega como antes (mejor eso que dejar al cliente sin su comprobante).
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.cuadra !== false }}'; value2 = '={{true}}' } ) } }
-    id = 'a1b2c3d4-0017-4e00-9a00-faseb0000017'; name = '¿Cuadra el Comprobante?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(1296,-752)
-  },
-  [ordered]@{
-    # El aviso de "este comprobante NO cuadra", citando la foto de la operadora.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: $("Revisar Pedido").first().json.jidGrupo, text: $json.aviso, quoted: { key: { id: $("Revisar Pedido").first().json.idFoto } } }) }}'; options = @{} }
-    id = 'a1b2c3d4-0018-4e00-9a00-faseb0000018'; name = 'Avisar Comprobante No Cuadra'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1472,-592)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Se anota el aviso como una publicacion mas: si la operadora lo responde con "forzar", se entrega
-    # la misma foto; si lo responde con otra foto, se revisa esa.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Revisar Pedido').first().json.jid, nombre: `$('Revisar Pedido').first().json.nombre, idCuenta: `$('Revisar Pedido').first().json.idCuenta, idCaptura: `$('Revisar Pedido').first().json.idCaptura, publicacion: `$('Revisar Pedido').first().json.stanzaId, idFotoOperadora: `$('Revisar Pedido').first().json.idFoto }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'a1b2c3d4-0019-4e00-9a00-faseb0000019'; name = 'Marcar Aviso No Cuadra'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1648,-592)
-    onError = 'continueRegularOutput'
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # La foto va al cliente CITANDO el mensaje donde el escribio sus datos bancarios, para que
-    # quede claro a que cuenta corresponde ese pago. Si no se supo cual era, se manda sin citar.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify(Object.assign({ number: $("Revisar Pedido").first().json.jid, mediatype: "image", mimetype: ($("Bajar Foto Operadora").first().json.mimetype || "image/jpeg"), media: $("Bajar Foto Operadora").first().json.base64 }, $("Revisar Comprobante").first().json.idCuenta ? { quoted: { key: { id: $("Revisar Comprobante").first().json.idCuenta } } } : {})) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-enviarcompr01'; name = 'Enviar Comprobante al Cliente'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(700,-500)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 1500; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Revisar Pedido").first().json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-pagado.webp" }'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-stickpagado01'; name = 'Sticker Pedido Pagado'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(860,-500)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Confirmacion en el grupo, citando la misma publicacion que respondio la operadora, para
-    # que se vea de que pedido se trata y nadie lo mande dos veces.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: $("Revisar Pedido").first().json.jidGrupo, text: ("Enviado a " + $("Revisar Pedido").first().json.nombre + " OK"), quoted: { key: { id: $("Revisar Pedido").first().json.stanzaId } } }) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-confirmgrup01'; name = 'Confirmar en el Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1020,-500)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ `$('Revisar Pedido').first().json.claveEntregado }}"; value = '1'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'd0e1f2a3-0000-4b00-9000-marcaentreg01'; name = 'Redis Marcar Entregado'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1180,-500)
-    onError = 'continueRegularOutput'
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # La operadora devolvio la foto de UNA cuenta y ya le llego al cliente: ESA cuenta queda
-    # 'enviada' (hay una fila por cuenta). Se busca la fila por la publicacion que cito la operadora
-    # (id_msgs_grupo). Solo si estaba en proceso.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_detal_por_whatsapp'; filterType = 'string'; filterString = "={{ (`$('Revisar Comprobante').first().json.filaId ? 'id=eq.' + `$('Revisar Comprobante').first().json.filaId : 'id_msgs_grupo=cs.' + JSON.stringify([ `$('Revisar Pedido').first().json.stanzaId || 'sin-dato' ])) + '&estado=in.(en_proceso,en_espera)' }}"; dataToSend = 'defineBelow'; fieldsUi = @{ fieldValues = @( @{ fieldId = 'estado'; fieldValue = 'enviada' }, @{ fieldId = 'enviada_en'; fieldValue = '={{ $now.toISO() }}' } ) } }
-    id = 'a1b2c3d4-0011-4e00-9a00-registro00011'; name = 'Marcar Enviada en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,-752)
-    onError = 'continueRegularOutput'
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
@@ -3101,6 +2944,14 @@ $nodes = @(
                     workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
                     mode = 'once'; options = @{ waitForSubWorkflow = $false } }
     id = 'e1f2a3b4-0001-4c00-9c00-mayorescucha01'; name = 'Mayor Escuchar'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(-1280,-352)
+    onError = 'continueRegularOutput'
+  },
+  [ordered]@{
+    # FASE 1 (Operadoras): le pasa entregar / recordarFoto / verificar al workflow "Bot JK - Grupos de Operadoras" sin esperarlo.
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $OPERADORAS_WORKFLOW_ID; mode = 'id' }
+                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
+                    mode = 'once'; options = @{ waitForSubWorkflow = $false } }
+    id = 'e1f2a3b4-0002-4c00-9c00-operadoras001'; name = 'Ejecutar Operadoras'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(60,-500)
     onError = 'continueRegularOutput'
   },
   [ordered]@{
@@ -3389,46 +3240,6 @@ $nodes = @(
     onError = 'continueRegularOutput'
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
-  # ----- VERIFICAR: la operadora cita una cuenta con "Verificar datos" (23/11) -----
-  [ordered]@{
-    # Era una publicacion del bot la cuenta que cito la operadora?
-    parameters = @{ operation = 'get'; key = '={{ $json.claveGrupoMsg }}'; keyType = 'string'; propertyName = 'pedido'; options = @{} }
-    id = 'c9d0e1f2-0011-4a00-9c00-verificar011'; name = 'Redis Leer Publicacion Verificar'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-1104,-1408)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $prepararCorregirCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-928,-1408); id = 'c9d0e1f2-0012-4a00-9c00-verificar012'; name = 'Preparar Corregir Datos'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'get'; key = '={{ "op:" + $json.jid }}'; keyType = 'string'; propertyName = 'operacion'; options = @{} }
-    id = 'c9d0e1f2-0013-4a00-9c00-verificar013'; name = 'Redis Leer Op Corregir'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-752,-1408)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $marcarCorregirCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-576,-1408); id = 'c9d0e1f2-0014-4a00-9c00-verificar014'; name = 'Marcar Corregir Datos'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = '={{ "op:" + $json.jid }}'; value = '={{ $json.operacionNueva }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'c9d0e1f2-0015-4a00-9c00-verificar015'; name = 'Redis Guardar Op Corregir'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-400,-1408)
-    onError = 'continueRegularOutput'; credentials = $redisCred
-  },
-  [ordered]@{
-    # Al cliente: que revise esos datos, los corrija y los mande de nuevo.
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = '={{ $("Preparar Corregir Datos").first().json.jid }}'; messageText = '={{ $("Preparar Corregir Datos").first().json.mensaje }}'; options_message = @{} }
-    id = 'c9d0e1f2-0016-4a00-9c00-verificar016'; name = 'Pedir Corregir al Cliente'; type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(-224,-1408)
-    retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
-    onError = 'continueRegularOutput'
-    credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
-  },
-  [ordered]@{
-    # En el grupo, citando lo que escribio la operadora: que ya se le pidio al cliente.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: $("Preparar Corregir Datos").first().json.jidGrupo, text: $("Preparar Corregir Datos").first().json.confirmacion, quoted: { key: { id: $("Preparar Corregir Datos").first().json.idNota } } }) }}'; options = @{} }
-    id = 'c9d0e1f2-0017-4a00-9c00-verificar017'; name = 'Confirmar Verificar en Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(-48,-1408)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
   [ordered]@{
     # Que se le contesta (lo decide "Revisar Operacion"):
     #   gracias -> sticker A SU ORDEN | callar -> nada | todo lo demas -> la IA
@@ -3593,39 +3404,11 @@ $connections = [ordered]@{
       @( ,@( @{ node='Redis Guardar Pausa';   type='main'; index=0 } ) ) +
       @( ,@( @{ node='Redis Borrar Pausa';    type='main'; index=0 } ) ) +
       @( ,@( @{ node='Avisar Pausa';          type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Redis Leer Publicacion';     type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Redis Guardar Ultima Foto';  type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Mayor Escuchar';             type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Redis Leer Publicacion Verificar'; type='main'; index=0 } ) )
+      @( ,@( @{ node='Ejecutar Operadoras';   type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Ejecutar Operadoras';   type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Mayor Escuchar';        type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Ejecutar Operadoras';   type='main'; index=0 } ) )
     ) }
-  'Redis Leer Publicacion' = @{ main = @( ,@( @{ node='Redis Leer Entregado';   type='main'; index=0 } ) ) }
-  'Redis Leer Entregado'   = @{ main = @( ,@( @{ node='Redis Leer Ultima Foto'; type='main'; index=0 } ) ) }
-  'Redis Leer Ultima Foto' = @{ main = @( ,@( @{ node='Revisar Pedido';         type='main'; index=0 } ) ) }
-  'Revisar Pedido'         = @{ main = @( ,@( @{ node='Ya Se Entrego?';         type='main'; index=0 } ) ) }
-  'Ya Se Entrego?'         = @{ main = (
-      @( ,@( @{ node='Avisar Repetido';      type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Bajar Foto Operadora'; type='main'; index=0 } ) )
-    ) }
-  'Bajar Foto Operadora'   = @{ main = @( ,@( @{ node='Foto Operadora a Binario'; type='main'; index=0 } ) ) }
-  'Foto Operadora a Binario' = @{ main = @( ,@( @{ node='Leer Comprobante Operadora'; type='main'; index=0 } ) ) }
-  'Leer Comprobante Operadora' = @{ main = @( ,@( @{ node='Leer Cuentas de la Operacion'; type='main'; index=0 } ) ) }
-  'Leer Cuentas de la Operacion' = @{ main = @( ,@( @{ node='Revisar Comprobante'; type='main'; index=0 } ) ) }
-  'Revisar Comprobante'    = @{ main = @( ,@( @{ node='¿Cuadra el Comprobante?'; type='main'; index=0 } ) ) }
-  '¿Cuadra el Comprobante?' = @{ main = (@( ,@( @{ node='Enviar Comprobante al Cliente'; type='main'; index=0 } ) ) + @( ,@( @{ node='Avisar Comprobante No Cuadra'; type='main'; index=0 } ) )) }
-  'Avisar Comprobante No Cuadra' = @{ main = @( ,@( @{ node='Marcar Aviso No Cuadra'; type='main'; index=0 } ) ) }
-  'Enviar Comprobante al Cliente' = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
-  'Fallo la Cita?'         = @{ main = (
-      @( ,@( @{ node='Enviar Comprobante sin Cita'; type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Sticker Pedido Pagado';       type='main'; index=0 } ) )
-    ) }
-  'Enviar Comprobante sin Cita' = @{ main = @( ,@( @{ node='Sticker Pedido Pagado'; type='main'; index=0 } ) ) }
-  'Sticker Pedido Pagado'  = @{ main = @( ,@( @{ node='Confirmar en el Grupo'; type='main'; index=0 } ) ) }
-  'Confirmar en el Grupo'  = @{ main = @( ,@( @{ node='Fallo la Cita del Grupo?'; type='main'; index=0 } ) ) }
-  'Fallo la Cita del Grupo?' = @{ main = (
-      @( ,@( @{ node='Confirmar sin Cita';     type='main'; index=0 } ) ) +
-      @( ,@( @{ node='Redis Marcar Entregado'; type='main'; index=0 } ) )
-    ) }
-  'Confirmar sin Cita'     = @{ main = @( ,@( @{ node='Redis Marcar Entregado'; type='main'; index=0 } ) ) }
   'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
   'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
   'Es Imagen?'             = @{ main = (@( ,@( @{ node='Descargar Imagen'; type='main'; index=0 } ) ) + @( ,@( @{ node='Texto Directo'; type='main'; index=0 } ) )) }
@@ -3675,12 +3458,6 @@ $connections = [ordered]@{
   'Publicar Correccion'    = @{ main = @( ,@( @{ node='Redis Guardar Publicacion Correccion'; type='main'; index=0 } ) ) }
   'Redis Guardar Publicacion Correccion' = @{ main = @( ,@( @{ node='Datos Correccion Supabase'; type='main'; index=0 } ) ) }
   'Datos Correccion Supabase' = @{ main = @( ,@( @{ node='Corregir Cuenta en Supabase'; type='main'; index=0 } ) ) }
-  'Redis Leer Publicacion Verificar' = @{ main = @( ,@( @{ node='Preparar Corregir Datos'; type='main'; index=0 } ) ) }
-  'Preparar Corregir Datos' = @{ main = @( ,@( @{ node='Redis Leer Op Corregir'; type='main'; index=0 } ) ) }
-  'Redis Leer Op Corregir' = @{ main = @( ,@( @{ node='Marcar Corregir Datos'; type='main'; index=0 } ) ) }
-  'Marcar Corregir Datos'  = @{ main = @( ,@( @{ node='Redis Guardar Op Corregir'; type='main'; index=0 } ) ) }
-  'Redis Guardar Op Corregir' = @{ main = @( ,@( @{ node='Pedir Corregir al Cliente'; type='main'; index=0 } ) ) }
-  'Pedir Corregir al Cliente' = @{ main = @( ,@( @{ node='Confirmar Verificar en Grupo'; type='main'; index=0 } ) ) }
   'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
   '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
@@ -3691,7 +3468,6 @@ $connections = [ordered]@{
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
   'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }
   'Armar Fila Supabase'    = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
-  'Redis Marcar Entregado' = @{ main = @( ,@( @{ node='Marcar Enviada en Supabase'; type='main'; index=0 } ) ) }
   'Redis Leer ID Imagen'   = @{ main = @( ,@( @{ node='Re-descargar Imagen'; type='main'; index=0 } ) ) }
   'Re-descargar Imagen'    = @{ main = @( ,@( @{ node='Enviar Imagen Grupo'; type='main'; index=0 } ) ) }
   'Enviar Imagen Grupo'    = @{ main = @( ,@(
