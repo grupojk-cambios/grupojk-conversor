@@ -1,0 +1,465 @@
+{
+    "name":  "Bot JK - Procesar Media",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "content":  "## Bot JK - Procesar Media\n\nConvierte cualquier mensaje de cliente (audio con Whisper, imagen/comprobante con GPT-4o Vision o texto directo)\nen `{ texto }` unificado y guarda el `imgKeyId` en Redis cuando llega una imagen.\n\nSin nodos Wait: ejecución síncrona rápida y segura.\nSe mantiene inactivo hasta que Kelvin lo publique manualmente en n8n.",
+                                         "height":  240,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "id":  "med33000-0000-4a00-9a00-mednota00001",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -300,
+                                       -260
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "id":  "med33000-0001-4a00-9a00-medtrig00001",
+                      "name":  "Cuando lo Llama el Bot",
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -300,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "aud-cond-1",
+                                                                                   "leftValue":  "={{ $json.body.data.messageType }}",
+                                                                                   "rightValue":  "audioMessage",
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "string"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "d0a1b2c3-e4f5-4060-9788-esaudio00001",
+                      "name":  "Es Audio?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -60,
+                                       60
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Extrae el texto del mensaje. Cubre: texto simple, extendedTextMessage (incluye cita),\n// pie de imagen/video/documento, y respuestas a botones/listas. Si el cliente CITO un\n// mensaje, agregamos el texto citado como CONTEXTO para que el bot sepa a que se refiere.\nlet t = \u0027\u0027;\nlet citado = \u0027\u0027;\ntry {\n  const m = $json.body.data.message || {};\n  t = m.conversation\n    || (m.extendedTextMessage \u0026\u0026 m.extendedTextMessage.text)\n    || (m.imageMessage \u0026\u0026 m.imageMessage.caption)\n    || (m.videoMessage \u0026\u0026 m.videoMessage.caption)\n    || (m.documentMessage \u0026\u0026 m.documentMessage.caption)\n    || (m.buttonsResponseMessage \u0026\u0026 m.buttonsResponseMessage.selectedDisplayText)\n    || (m.listResponseMessage \u0026\u0026 m.listResponseMessage.title)\n    || (m.templateButtonReplyMessage \u0026\u0026 m.templateButtonReplyMessage.selectedDisplayText)\n    || \u0027\u0027;\n  // Contexto de cita (extendedText, imageMessage o data.contextInfo directamente)\n  const ctx = (m.extendedTextMessage \u0026\u0026 m.extendedTextMessage.contextInfo)\n    || (m.imageMessage \u0026\u0026 m.imageMessage.contextInfo)\n    || (m.videoMessage \u0026\u0026 m.videoMessage.contextInfo)\n    || $json.body.data.contextInfo\n    || null;\n  if (ctx \u0026\u0026 ctx.quotedMessage) {\n    const q = ctx.quotedMessage;\n    citado = q.conversation\n      || (q.extendedTextMessage \u0026\u0026 q.extendedTextMessage.text)\n      || (q.imageMessage \u0026\u0026 q.imageMessage.caption)\n      || (q.videoMessage \u0026\u0026 q.videoMessage.caption)\n      || \u0027\u0027;\n  }\n} catch(e){}\nlet texto = String(t || \u0027\u0027).normalize(\u0027NFKC\u0027).trim();\nif (citado) {\n  citado = String(citado).normalize(\u0027NFKC\u0027).trim();\n  if (citado.length \u003e 200) citado = citado.substring(0,200) + \u0027...\u0027;\n  texto = \u0027[el cliente respondio citando esto que tu/asesor le dijiste antes: \"\u0027 + citado + \u0027\"]\\n\u0027 + texto;\n}\nreturn [{ json: { texto } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -60,
+                                       220
+                                   ],
+                      "id":  "e1f2a3b4-c5d6-4071-9899-txtdirecto01",
+                      "name":  "Texto Directo"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $json.body.data.key.id }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "f2a3b4c5-d6e7-4082-9900-getbase64001",
+                      "name":  "Descargar Audio",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       120,
+                                       -60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Convierte el base64 del audio (de Evolution) en un archivo binario para Whisper.\nconst b64 = $json.base64;\nif(!b64) return [{ json: { texto: \u0027\u0027 } }];\nreturn [{ json: { mimetype: $json.mimetype || \u0027\u0027 }, binary: { data: { data: b64, mimeType: \u0027audio/ogg\u0027, fileName: \u0027audio.ogg\u0027 } } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       300,
+                                       -60
+                                   ],
+                      "id":  "a3b4c5d6-e7f8-4093-9a11-tobinario001",
+                      "name":  "Audio a Binario"
+                  },
+                  {
+                      "parameters":  {
+                                         "binaryPropertyName":  "data",
+                                         "operation":  "transcribe",
+                                         "resource":  "audio",
+                                         "options":  {
+                                                         "language":  "es"
+                                                     }
+                                     },
+                      "id":  "b4c5d6e7-f8a9-4004-9b22-transcribe01",
+                      "name":  "Transcribir Audio",
+                      "type":  "@n8n/n8n-nodes-langchain.openAi",
+                      "typeVersion":  1.8,
+                      "position":  [
+                                       480,
+                                       -60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Toma la transcripcion de Whisper como texto del mensaje.\nlet t=\u0027\u0027;\ntry { t = $(\u0027Transcribir Audio\u0027).item.json.text || \u0027\u0027; } catch(e){}\nt = String(t).trim();\nif(!t) t = \u0027El cliente envio una nota de voz que no se pudo entender. Pidele amablemente que la repita o escriba.\u0027;\nreturn [{ json: { texto: String(t || \u0027\u0027).normalize(\u0027NFKC\u0027) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       -60
+                                   ],
+                      "id":  "c5d6e7f8-a9b0-4015-9c33-txtaudio0001",
+                      "name":  "Texto de Audio"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "typeValidation":  "loose",
+                                                                            "leftValue":  "",
+                                                                            "caseSensitive":  true
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "img-cond-1",
+                                                                                   "leftValue":  "={{ $json.body.data.messageType }}",
+                                                                                   "rightValue":  "imageMessage",
+                                                                                   "operator":  {
+                                                                                                    "operation":  "equals",
+                                                                                                    "type":  "string"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        }
+                                     },
+                      "id":  "d1e2f3a4-b5c6-4170-9080-esimagen0001",
+                      "name":  "Es Imagen?",
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -60,
+                                       380
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $json.body.data.key.id }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "f3a4b5c6-d7e8-4181-9191-getimg000001",
+                      "name":  "Descargar Imagen",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       120,
+                                       460
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Convierte el base64 de la imagen (de Evolution) en binario para GPT-4o vision.\nconst b64 = $json.base64;\nif(!b64) return [{ json: { sinImagen: true } }];\nreturn [{ json: { mimetype: $json.mimetype || \u0027image/jpeg\u0027 }, binary: { data: { data: b64, mimeType: $json.mimetype || \u0027image/jpeg\u0027, fileName: \u0027img.jpg\u0027 } } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       300,
+                                       460
+                                   ],
+                      "id":  "a4b5c6d7-e8f9-4192-9a22-tobinimg0001",
+                      "name":  "Imagen a Binario"
+                  },
+                  {
+                      "parameters":  {
+                                         "text":  "Esta imagen la envio un cliente de una casa de cambio de remesas por WhatsApp. Clasificala y responde SOLO en JSON valido sin texto extra: {\"tipo\": \"comprobante|cuenta|otra\", \"resumen\": \"...\"}. comprobante = recibo o captura de un pago/transferencia que el cliente hizo; el resumen DEBE ir asi, en una sola linea: \"Monto: \u003cmonto con su moneda, ej. $30,00\u003e, Moneda: \u003ccodigo de la moneda del monto: USD, VES, COP, PEN, BRL, MXN, CLP, ARS, UYU, PYG, BOB, CRC, DOP, CUP, GTQ, HNL, NIO, EUR o USDT; ojo que Colombia, Mexico, Chile, Argentina, Uruguay, Republica Dominicana y Cuba tambien usan el simbolo $\u003e, Banco: \u003cbanco desde donde pago\u003e, Fecha: \u003cfecha\u003e, Referencia: \u003cnumero de referencia, de comprobante o de transaccion\u003e\". cuenta = datos de una cuenta bancaria; el resumen asi: \"Banco: \u003cbanco\u003e, Cuenta: \u003cnumero\u003e, Titular: \u003cnombre\u003e, Cedula: \u003ccedula\u003e\". Si un dato no se ve, escribe \"no visible\". otra = cualquier otra cosa (resumen corto).",
+                                         "inputType":  "base64",
+                                         "modelId":  {
+                                                         "mode":  "list",
+                                                         "__rl":  true,
+                                                         "cachedResultName":  "gpt-4o-mini",
+                                                         "value":  "gpt-4o-mini"
+                                                     },
+                                         "resource":  "image",
+                                         "options":  {
+
+                                                     },
+                                         "operation":  "analyze",
+                                         "binaryPropertyName":  "data"
+                                     },
+                      "id":  "b5c6d7e8-f9a0-4103-9b33-leerimg00001",
+                      "name":  "Leer Imagen",
+                      "type":  "@n8n/n8n-nodes-langchain.openAi",
+                      "typeVersion":  1.8,
+                      "position":  [
+                                       480,
+                                       460
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  2000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "44lRGIyEnSk1lMc5",
+                                                            "name":  "cambios jk para n8n"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Toma lo que GPT-4o leyo de la imagen y arma el texto para el flujo + guarda metadatos.\nlet raw=\u0027\u0027;\ntry { raw = $(\u0027Leer Imagen\u0027).item.json.content || $(\u0027Leer Imagen\u0027).item.json.text || \u0027\u0027; } catch(e){}\nlet tipo=\u0027otra\u0027, resumen=\u0027\u0027;\ntry {\n  let limpio = String(raw).replace(/```json/gi,\u0027\u0027).replace(/```/g,\u0027\u0027).trim();\n  const obj = JSON.parse(limpio);\n  tipo = (obj.tipo||\u0027otra\u0027).toLowerCase();\n  resumen = obj.resumen||\u0027\u0027;\n} catch(e){ resumen = String(raw).slice(0,200); }\nlet keyId=\u0027\u0027;\ntry { keyId = $(\u0027Cuando lo Llama el Bot\u0027).first().json.body.data.key.id || \u0027\u0027; } catch(e){}\n// Huella de la foto (el sha256 que manda WhatsApp). Si el cliente reenvia la MISMA foto, la huella\n// es la misma: asi \"Revisar Operacion\" reconoce el deposito repetido aunque no se lea la referencia.\nlet huella=\u0027\u0027;\ntry {\n  const im = $(\u0027Cuando lo Llama el Bot\u0027).first().json.body.data.message.imageMessage || {};\n  const f = im.fileSha256;\n  let bytes = [];\n  if (typeof f === \u0027string\u0027) bytes = Array.from(Buffer.from(f, \u0027base64\u0027));\n  else if (f \u0026\u0026 typeof f === \u0027object\u0027) bytes = Object.keys(f).sort((a, b) =\u003e Number(a) - Number(b)).map(k =\u003e f[k]);\n  huella = bytes.slice(0, 8).map(x =\u003e (\u00270\u0027 + (Number(x) \u0026 255).toString(16)).slice(-2)).join(\u0027\u0027);\n} catch(e){ huella=\u0027\u0027; }\nlet texto=\u0027\u0027;\nif(tipo.indexOf(\u0027comprobante\u0027)\u003e=0){ texto = \u0027[El cliente envio un COMPROBANTE de pago. Datos leidos: \u0027 + resumen + (huella ? \u0027 Huella: \u0027 + huella : \u0027\u0027) + \u0027]\u0027; }\nelse if(tipo.indexOf(\u0027cuenta\u0027)\u003e=0){ texto = \u0027[El cliente envio una imagen con una CUENTA bancaria. Datos: \u0027 + resumen + \u0027]\u0027; }\nelse { texto = \u0027[El cliente envio una imagen que no parece comprobante ni cuenta de banco]\u0027; }\n// EL PIE DE FOTO es del cliente: muchos mandan la captura y escriben la cuenta destino en el pie de la\n// misma foto (\"Tipo de cuenta: VES / 0102... / cedula / 200$\", un cliente, 24/11). Antes se\n// descartaba y el bot contestaba \"Pasame la cuenta destino\" teniendo la cuenta ahi. Va DESPUES de la\n// nota de la imagen, como si lo hubiera escrito aparte: \"Revisar Operacion\" la toma como la cuenta.\nlet pie = \u0027\u0027;\ntry { pie = String($(\u0027Cuando lo Llama el Bot\u0027).first().json.body.data.message.imageMessage.caption || \u0027\u0027).trim(); } catch(e){ pie = \u0027\u0027; }\nif (pie) texto += \u0027\\n\u0027 + pie;\nreturn [{ json: { texto, tipoImagen: tipo, resumenImagen: resumen, imgKeyId: keyId } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       460
+                                   ],
+                      "id":  "c6d7e8f9-a0b1-4114-9c44-txtimg000001",
+                      "name":  "Texto de Imagen"
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ $json.imgKeyId }}",
+                                         "expire":  true,
+                                         "ttl":  86400,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027lastimg:\u0027 + $(\u0027Cuando lo Llama el Bot\u0027).first().json.body.data.key.remoteJid }}",
+                                         "operation":  "set"
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       840,
+                                       460
+                                   ],
+                      "id":  "d7e8f9a0-b1c2-4125-9d55-rsetimg00001",
+                      "name":  "Redis Guardar Imagen",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cuando lo Llama el Bot":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Es Audio?",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Es Audio?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "node":  "Descargar Audio",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "node":  "Es Imagen?",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Es Imagen?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "node":  "Descargar Imagen",
+                                                                "type":  "main",
+                                                                "index":  0
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "node":  "Texto Directo",
+                                                                "type":  "main",
+                                                                "index":  0
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Descargar Imagen":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Imagen a Binario",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Imagen a Binario":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Leer Imagen",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Leer Imagen":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Texto de Imagen",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Texto de Imagen":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Redis Guardar Imagen",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Descargar Audio":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Audio a Binario",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Audio a Binario":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Transcribir Audio",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Transcribir Audio":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Texto de Audio",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil"
+                 }
+}
