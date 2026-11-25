@@ -31,7 +31,7 @@ Se mantiene inactivo hasta que Kelvin lo publique manualmente en n8n.
     typeVersion = 1
     position = @(
       ,-320
-      ,-260
+      ,-240
     )
   }
   ,[ordered]@{
@@ -44,7 +44,7 @@ Se mantiene inactivo hasta que Kelvin lo publique manualmente en n8n.
     typeVersion = 1.1
     position = @(
       ,-320
-      ,128
+      ,120
     )
   }
   ,[ordered]@{
@@ -73,8 +73,8 @@ Se mantiene inactivo hasta que Kelvin lo publique manualmente en n8n.
     type = 'n8n-nodes-base.executeWorkflow'
     typeVersion = 1.3
     position = @(
-      ,-60
-      ,128
+      ,-80
+      ,120
     )
     onError = 'continueRegularOutput'
   }
@@ -144,8 +144,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,140
-      ,128
+      ,160
+      ,120
     )
     id = 'c1a2b3c4-1111-4a11-9111-prep00000001'
     name = 'Prep Debounce'
@@ -166,8 +166,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.if'
     typeVersion = 1
     position = @(
-      ,300
-      ,-120
+      ,400
+      ,-60
     )
   }
   ,[ordered]@{
@@ -195,8 +195,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.httpRequest'
     typeVersion = 4
     position = @(
-      ,460
-      ,-120
+      ,640
+      ,-60
     )
     onError = 'continueRegularOutput'
     retryOnFail = $true
@@ -220,8 +220,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,160
-      ,128
+      ,400
+      ,120
     )
     id = 'c2a2b3c4-2222-4a22-9222-rpush0000001'
     name = 'Redis Guardar Msg'
@@ -244,8 +244,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,340
-      ,128
+      ,640
+      ,120
     )
     id = 'c3a2b3c4-3333-4a33-9333-rset00000001'
     name = 'Redis Marcar Token'
@@ -264,8 +264,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.wait'
     typeVersion = 1.1
     position = @(
-      ,520
-      ,128
+      ,880
+      ,120
     )
     id = 'd2b3c4d5-4444-4a44-9444-wait00000001'
     name = 'Esperar 30s'
@@ -282,8 +282,8 @@ return [{ json: { jid, texto: texto || '', miTs, esComprobante, stickerVerifican
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,700
-      ,128
+      ,1120
+      ,120
     )
     id = 'c4a2b3c4-6666-4a66-9666-rget00000001'
     name = 'Redis Leer Token'
@@ -310,8 +310,8 @@ return [{ json: { jid: $('Prep Debounce').item.json.jid } }];
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,880
-      ,128
+      ,1360
+      ,120
     )
     id = 'f3c4d5e6-7777-4a77-9777-filtrar00001'
     name = 'Filtrar Ultimo'
@@ -327,8 +327,8 @@ return [{ json: { jid: $('Prep Debounce').item.json.jid } }];
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,1060
-      ,128
+      ,1600
+      ,120
     )
     id = 'c5a2b3c4-8888-4a88-9888-rgetlist0001'
     name = 'Redis Leer Mensajes'
@@ -347,8 +347,8 @@ return [{ json: { jid: $('Prep Debounce').item.json.jid } }];
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,1240
-      ,128
+      ,1840
+      ,120
     )
     id = 'c6a2b3c4-9999-4a99-9999-rdel00000001'
     name = 'Redis Borrar Buffer'
@@ -389,8 +389,8 @@ return [{ json: { mensajeCombinado: combinado, mensajes } }];
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,1420
-      ,128
+      ,2080
+      ,120
     )
     id = 'a7b8c9d0-aaaa-4aaa-9aaa-combinar0001'
     name = 'Combinar'
@@ -410,8 +410,8 @@ return [{ json: { mensajeCombinado: combinado, mensajes } }];
     type = 'n8n-nodes-base.supabase'
     typeVersion = 1
     position = @(
-      ,1420
-      ,300
+      ,2320
+      ,120
     )
     onError = 'continueRegularOutput'
     alwaysOutputData = $true
@@ -479,8 +479,8 @@ return [{ json: { esAdmin, esComandoModo, modoElegido, soloComando, textoLimpio,
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,1490
-      ,300
+      ,2560
+      ,120
     )
     id = 'f4a5b6c7-2345-4d10-9e22-detcomando01'
     name = 'Detectar Comando Admin'
@@ -512,8 +512,8 @@ return [{ json: { esAdmin, esComandoModo, modoElegido, soloComando, textoLimpio,
     type = 'n8n-nodes-base.if'
     typeVersion = 2.2
     position = @(
-      ,1560
-      ,300
+      ,2800
+      ,120
     )
   }
   ,[ordered]@{
@@ -528,8 +528,8 @@ return [{ json: { esAdmin, esComandoModo, modoElegido, soloComando, textoLimpio,
     type = 'n8n-nodes-base.redis'
     typeVersion = 1
     position = @(
-      ,1630
-      ,220
+      ,3040
+      ,-40
     )
     id = 'f6a7b8c9-4567-4d32-9e44-rsetmodo0001'
     name = 'Redis Guardar Modo Admin'
@@ -567,8 +567,8 @@ return [{ json: { esAdmin, esComandoModo, modoElegido, soloComando, textoLimpio,
     type = 'n8n-nodes-base.if'
     typeVersion = 2.2
     position = @(
-      ,1700
-      ,150
+      ,3280
+      ,-40
     )
   }
   ,[ordered]@{
@@ -583,8 +583,8 @@ return [{ json: { output: texto } }];
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,1700
-      ,220
+      ,3520
+      ,-120
     )
     id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'
     name = 'Confirmar Modo Admin'
@@ -600,8 +600,8 @@ return [{ json: { output: texto } }];
     type = 'n8n-nodes-evolution-api.evolutionApi'
     typeVersion = 1
     position = @(
-      ,2320
-      ,128
+      ,3760
+      ,-120
     )
     id = '02d01e05-a9f8-4caa-a02e-37a660aa662c'
     name = 'Enviar texto a WhatsApp'
@@ -641,8 +641,8 @@ return [{
     type = 'n8n-nodes-base.code'
     typeVersion = 2
     position = @(
-      ,1900
-      ,128
+      ,3520
+      ,200
     )
     id = 'e1f2a3b4-0006-4c00-9c00-prepctxia001'
     name = 'Preparar Contexto IA'
@@ -673,8 +673,8 @@ return [{
     type = 'n8n-nodes-base.executeWorkflow'
     typeVersion = 1.3
     position = @(
-      ,2120
-      ,128
+      ,3760
+      ,200
     )
     onError = 'continueRegularOutput'
   }
