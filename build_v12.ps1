@@ -151,6 +151,10 @@ $OPERADORAS_WORKFLOW_ID = 'gav5txTYWq3ARV8H'
 # Atiende aprobaciones (TRANSFERIR + Supabase), correcciones y guardado nocturno.
 $OPERACION_PUBLICAR_WORKFLOW_ID = 'EVe1KsFiKhZtv4zK'
 
+# FASE 3 (Media): el workflow "Bot JK - Procesar Media" (scripts\desplegar_media.ps1).
+# Procesa audio (Whisper), imagen/comprobante (Vision + Redis Guardar Imagen) y texto directo -> { texto }.
+$MEDIA_WORKFLOW_ID = 'UMQqyE6H4HVrIDoy'
+
 # ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
 # EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
 # se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
@@ -3009,60 +3013,12 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(140,128); id = 'c1a2b3c4-1111-4a11-9111-prep00000001'; name = 'Prep Debounce'
   },
   [ordered]@{
-    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'aud-cond-1'; leftValue = '={{ $json.body.data.messageType }}'; rightValue = 'audioMessage'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' } }
-    id = 'd0a1b2c3-e4f5-4060-9788-esaudio00001'; name = 'Es Audio?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(-60,60)
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $textoDirectoCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-60,220); id = 'e1f2a3b4-c5d6-4071-9899-txtdirecto01'; name = 'Texto Directo'
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
-    id = 'f2a3b4c5-d6e7-4082-9900-getbase64001'; name = 'Descargar Audio'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(120,-60)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $toBinarioCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(300,-60); id = 'a3b4c5d6-e7f8-4093-9a11-tobinario001'; name = 'Audio a Binario'
-  },
-  [ordered]@{
-    parameters = @{ resource = 'audio'; operation = 'transcribe'; binaryPropertyName = 'data'; options = @{ language = 'es' } }
-    id = 'b4c5d6e7-f8a9-4004-9b22-transcribe01'; name = 'Transcribir Audio'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(480,-60)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $textoAudioCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(660,-60); id = 'c5d6e7f8-a9b0-4015-9c33-txtaudio0001'; name = 'Texto de Audio'
-  },
-  [ordered]@{
-    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'img-cond-1'; leftValue = '={{ $json.body.data.messageType }}'; rightValue = 'imageMessage'; operator = @{ type = 'string'; operation = 'equals' } } ); combinator = 'and' } }
-    id = 'd1e2f3a4-b5c6-4170-9080-esimagen0001'; name = 'Es Imagen?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(-60,380)
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $json.body.data.key.id }}" } }, "convertToMp4": false }'; options = @{} }
-    id = 'f3a4b5c6-d7e8-4181-9191-getimg000001'; name = 'Descargar Imagen'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(120,460)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 3; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $toBinarioImgCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(300,460); id = 'a4b5c6d7-e8f9-4192-9a22-tobinimg0001'; name = 'Imagen a Binario'
-  },
-  [ordered]@{
-    parameters = @{ resource = 'image'; operation = 'analyze'; modelId = @{ __rl = $true; value = 'gpt-4o-mini'; mode = 'list'; cachedResultName = 'gpt-4o-mini' }; inputType = 'base64'; binaryPropertyName = 'data'; text = $leerImagenPrompt; options = @{} }
-    id = 'b5c6d7e8-f9a0-4103-9b33-leerimg00001'; name = 'Leer Imagen'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(480,460)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
-    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $textoImagenCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(660,460); id = 'c6d7e8f9-a0b1-4114-9c44-txtimg000001'; name = 'Texto de Imagen'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ 'lastimg:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; value = "={{ `$json.imgKeyId }}"; keyType = 'string'; expire = $true; ttl = 86400 }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(840,460); id = 'd7e8f9a0-b1c2-4125-9d55-rsetimg00001'; name = 'Redis Guardar Imagen'; credentials = $redisCred
+    # FASE 3 (Media): convierte audio, imagen/comprobante o texto en { texto } (sin Wait: sincrono seguro).
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $MEDIA_WORKFLOW_ID; mode = 'id' }
+                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
+                    mode = 'once'; options = @{ waitForSubWorkflow = $true } }
+    id = 'e1f2a3b4-0005-4c00-9c00-procmedia001'; name = 'Ejecutar Media'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(-60,128)
+    onError = 'continueRegularOutput'
   },
   [ordered]@{
     parameters = @{ operation = 'push'; list = "={{ `$('Prep Debounce').item.json.keyBuf }}"; messageData = "={{ JSON.stringify({ id: `$('Prep Debounce').item.json.idMensaje, texto: `$('Prep Debounce').item.json.texto }) }}"; tail = $true }
@@ -3333,19 +3289,8 @@ $connections = [ordered]@{
       @( ,@( @{ node='Mayor Escuchar';        type='main'; index=0 } ) ) +
       @( ,@( @{ node='Ejecutar Operadoras';   type='main'; index=0 } ) )
     ) }
-  'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Es Audio?'; type='main'; index=0 } ) ) }
-  'Es Audio?'              = @{ main = (@( ,@( @{ node='Descargar Audio'; type='main'; index=0 } ) ) + @( ,@( @{ node='Es Imagen?'; type='main'; index=0 } ) )) }
-  'Es Imagen?'             = @{ main = (@( ,@( @{ node='Descargar Imagen'; type='main'; index=0 } ) ) + @( ,@( @{ node='Texto Directo'; type='main'; index=0 } ) )) }
-  'Descargar Imagen'       = @{ main = @( ,@( @{ node='Imagen a Binario'; type='main'; index=0 } ) ) }
-  'Imagen a Binario'       = @{ main = @( ,@( @{ node='Leer Imagen'; type='main'; index=0 } ) ) }
-  'Leer Imagen'            = @{ main = @( ,@( @{ node='Texto de Imagen'; type='main'; index=0 } ) ) }
-  'Texto de Imagen'        = @{ main = @( ,@( @{ node='Redis Guardar Imagen'; type='main'; index=0 } ) ) }
-  'Redis Guardar Imagen'   = @{ main = @( ,@( @{ node='Prep Debounce'; type='main'; index=0 } ) ) }
-  'Descargar Audio'        = @{ main = @( ,@( @{ node='Audio a Binario'; type='main'; index=0 } ) ) }
-  'Audio a Binario'        = @{ main = @( ,@( @{ node='Transcribir Audio'; type='main'; index=0 } ) ) }
-  'Transcribir Audio'      = @{ main = @( ,@( @{ node='Texto de Audio'; type='main'; index=0 } ) ) }
-  'Texto de Audio'         = @{ main = @( ,@( @{ node='Prep Debounce'; type='main'; index=0 } ) ) }
-  'Texto Directo'          = @{ main = @( ,@( @{ node='Prep Debounce'; type='main'; index=0 } ) ) }
+  'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Ejecutar Media'; type='main'; index=0 } ) ) }
+  'Ejecutar Media'         = @{ main = @( ,@( @{ node='Prep Debounce';  type='main'; index=0 } ) ) }
   'Prep Debounce'          = @{ main = @( ,@(
       @{ node='Redis Guardar Msg';      type='main'; index=0 },
       @{ node='Llego un Comprobante?';  type='main'; index=0 }

@@ -15,6 +15,7 @@ import { readFileSync } from 'fs';
 const leer = f => JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
 const bot = leer('workflow_bot_whatsapp_v12.json');
 const vig = leer('workflow_vigilar_monto.json');
+const med = leer('workflow_media.json');
 const nodoDe = (wf, n) => wf.nodes.find(x => x.name === n);
 const GRUPO_AVISOS = '120363413942097019@g.us';
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -127,7 +128,7 @@ console.log('=== 5) EL BOT LO LLAMA Y NO LO ESPERA ===');
 console.log('');
 console.log('=== 6) LA IA QUE LEE LA CAPTURA DICE LA MONEDA ===');
 {
-  const leer = nodoDe(bot, 'Leer Imagen').parameters.text;
+  const leer = nodoDe(med, 'Leer Imagen').parameters.text;
   chk(/Moneda: <codigo de la moneda/.test(leer) && /tambien usan el simbolo \$/.test(leer), 'el prompt pide "Moneda: USD/VES/COP..." y avisa que el $ no siempre es dolar');
 }
 

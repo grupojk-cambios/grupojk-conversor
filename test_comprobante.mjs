@@ -15,7 +15,8 @@ import { readFileSync } from 'fs';
 
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
+const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n)).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -142,6 +143,14 @@ console.log('=== 5) Cuanto espera antes de contestar ===');
   chk(conComprobante.esComprobante === true, 'y lo marca para el sticker');
   chk(normal.espera === 30, 'un mensaje normal sigue en 30s', '-> ' + normal.espera);
   chk(normal.esComprobante === false, 'y no dispara el sticker');
+
+  const sig = n => (((wf.connections[n] && wf.connections[n].main) || [])[0] || []).map(c => c.node).join();
+  const ej = wf.nodes.find(x => x.name === 'Ejecutar Media');
+  chk(!!ej && ej.type === 'n8n-nodes-base.executeWorkflow' && ej.parameters?.workflowId?.value === 'UMQqyE6H4HVrIDoy',
+      'Ejecutar Media apunta a UMQqyE6H4HVrIDoy');
+  chk(ej && ej.parameters?.options?.waitForSubWorkflow === true, 'espera al sub-workflow de Media (sincrono, sin Wait)');
+  chk(sig('Es mensaje de cliente?') === 'Ejecutar Media' && sig('Ejecutar Media') === 'Prep Debounce',
+      'Es mensaje de cliente? -> Ejecutar Media -> Prep Debounce');
 }
 
 console.log('');

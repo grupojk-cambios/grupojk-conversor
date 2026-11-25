@@ -12,7 +12,8 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
+const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -310,7 +311,7 @@ console.log('=== 5) HUELLA DE LA FOTO (Texto de Imagen) ===');
   const leer = (sha) => {
     const $ = (n) => {
       if (n === 'Leer Imagen') return { item: { json: { content: '{"tipo":"comprobante","resumen":"Monto: $60.00, Referencia: 123456"}' } } };
-      if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id: 'IMG1' }, message: { imageMessage: { fileSha256: sha } } } } } }) };
+      if (n === 'Cuando lo Llama el Bot' || n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id: 'IMG1' }, message: { imageMessage: { fileSha256: sha } } } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
     return new Function('$', code('Texto de Imagen'))($)[0].json.texto;
@@ -586,7 +587,7 @@ console.log('=== 5f) LA CUENTA VIENE EN EL PIE DE LA FOTO (caso real del 24/11) 
   const imagen = (resumen, caption, id) => {
     const $ = (n) => {
       if (n === 'Leer Imagen') return { item: { json: { content: JSON.stringify({ tipo: 'comprobante', resumen }) } } };
-      if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id }, message: { imageMessage: { caption } } } } } }) };
+      if (n === 'Cuando lo Llama el Bot' || n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id }, message: { imageMessage: { caption } } } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
     return new Function('$', code('Texto de Imagen'))($)[0].json.texto;
