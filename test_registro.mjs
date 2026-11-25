@@ -14,7 +14,8 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n);
+const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -72,9 +73,9 @@ console.log('=== 1) Operacion completa -> lo que se guarda en Supabase ===');
 
   // Lo que hay despues de publicar en el grupo: lo que armo "Separar Cuentas" y lo que respondio Evolution.
   function armar(ro, ap, separadas, idsGrupo, idFoto) {
+    const payload = Object.assign({}, ap, { registro: ro.registro });
     const $ = n => {
-      if (n === 'Detectar Aprobación') return { first: () => ({ json: ap }), item: { json: ap } };
-      if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
       if (n === 'Separar Cuentas') return { all: () => separadas.map(json => ({ json })) };
       if (n === 'Enviar Cuenta Grupo') return { all: () => idsGrupo.map(id => ({ json: { key: { id } } })) };
       if (n === 'Enviar Imagen Grupo') return { first: () => ({ json: { key: { id: idFoto } } }) };
@@ -208,7 +209,7 @@ console.log('');
 console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviada" ===');
 {
   for (const n of ['Marcar Publicacion Imagen', 'Marcar Publicacion Cuenta']) {
-    chk(/idCaptura:\s*\$\('Detectar Aprobación'\)\.first\(\)\.json\.idImagen/.test(nodo(n).parameters.value), n + ' guarda el id de la captura');
+    chk(/idCaptura:\s*\$\('Cuando lo Llama el Bot'\)\.first\(\)\.json\.idImagen/.test(nodo(n).parameters.value), n + ' guarda el id de la captura');
   }
   const base = { stanzaId: 'GRUPO1', claveEntregado: 'entregado:GRUPO1', jidGrupo: 'grupo@g.us', idFoto: 'FOTOOP' };
   const $ = n => {
@@ -234,13 +235,17 @@ console.log('');
 console.log('=== 6) Como quedo conectado ===');
 {
   const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const salePub = (n, i) => ((((wfPub.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp', 'Redis Leer Pregunta -> Consultar Operaciones WhatsApp', '-> ' + sale('Redis Leer Pregunta'));
   chk(sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion', 'Consultar Operaciones WhatsApp -> Revisar Operacion');
-  chk(sale('Marcar Publicacion Cuenta').indexOf('Armar Fila Supabase') !== -1, 'Marcar Publicacion Cuenta -> Armar Fila Supabase (despues de publicar)');
-  chk(sale('Detectar Aprobación').indexOf('Armar Fila Supabase') === -1, 'ya no se arma antes de publicar');
-  chk(sale('Redis Guardar Operacion').indexOf('Armar Filas Noche') !== -1 && sale('Armar Filas Noche').join() === 'Guardar Operacion en Supabase',
-      'de noche: Redis Guardar Operacion -> Armar Filas Noche -> Guardar Operacion en Supabase');
-  chk(sale('Armar Fila Supabase').join() === 'Guardar Operacion en Supabase', 'Armar Fila Supabase -> Guardar Operacion en Supabase');
+  chk(sale('Detectar Aprobación').join() === 'Ejecutar Publicacion', 'Detectar Aprobación -> Ejecutar Publicacion');
+  chk(salePub('Marcar Publicacion Cuenta').indexOf('Armar Fila Supabase') !== -1, 'Marcar Publicacion Cuenta -> Armar Fila Supabase (despues de publicar)');
+  chk(salePub('Armar Fila Supabase').join() === 'Guardar Operacion en Supabase', 'Armar Fila Supabase -> Guardar Operacion en Supabase');
+  chk(sale('Redis Guardar Operacion').indexOf('Armar Filas Noche') !== -1 && sale('Armar Filas Noche').join() === 'Empaquetar Noche'
+      && sale('Empaquetar Noche').join() === 'Ejecutar Publicacion',
+      'de noche: Redis Guardar Operacion -> Armar Filas Noche -> Empaquetar Noche -> Ejecutar Publicacion');
+  chk(salePub('Router Publicacion', 2).join() === 'Desempacar Filas Noche' && salePub('Desempacar Filas Noche').join() === 'Guardar Operacion en Supabase',
+      'sub-workflow noche: Router Publicacion (2) -> Desempacar Filas Noche -> Guardar Operacion en Supabase');
   const saleOp = (n, i) => ((((wfOp.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
   chk(saleOp('Redis Marcar Entregado').join() === 'Marcar Enviada en Supabase', 'Redis Marcar Entregado -> Marcar Enviada en Supabase');
 
@@ -263,7 +268,7 @@ console.log('=== 6b) Los nodos IF viejos (v1) usan operaciones que existen ===')
   // antes de mandarle al cliente la foto de la operadora.
   const VALIDAS = { boolean: ['equal', 'notEqual'], number: ['smaller', 'smallerEqual', 'equal', 'notEqual', 'larger', 'largerEqual', 'isEmpty', 'isNotEmpty'],
                     string: ['contains', 'notContains', 'endsWith', 'notEndsWith', 'equal', 'notEqual', 'regex', 'notRegex', 'startsWith', 'notStartsWith', 'isEmpty', 'isNotEmpty'] };
-  for (const n of [...wf.nodes, ...wfOp.nodes].filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
+  for (const n of [...wf.nodes, ...wfOp.nodes, ...wfPub.nodes].filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
     const malas = [];
     for (const tipo of Object.keys(n.parameters.conditions || {})) {
       for (const c of (n.parameters.conditions[tipo] || [])) if (c.operation && (VALIDAS[tipo] || []).indexOf(c.operation) === -1) malas.push(tipo + ':' + c.operation);

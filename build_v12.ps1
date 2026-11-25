@@ -147,6 +147,10 @@ $MAYOR_WORKFLOW_ID = 'HIERZLV4lwtuBRbZ'
 # Atiende entregas de comprobante, foto suelta y "verificar datos" del grupo de TRANSFERIR.
 $OPERADORAS_WORKFLOW_ID = 'gav5txTYWq3ARV8H'
 
+# FASE 2 (Publicar y Registrar): el workflow "Bot JK - Publicar y Registrar Operacion" (scripts\desplegar_operacion_publicar.ps1).
+# Atiende aprobaciones (TRANSFERIR + Supabase), correcciones y guardado nocturno.
+$OPERACION_PUBLICAR_WORKFLOW_ID = 'EVe1KsFiKhZtv4zK'
+
 # ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
 # EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
 # se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
@@ -1110,8 +1114,16 @@ try {
 // otra imagen (ej. la foto de la cuenta).
 const idImagen = desdeOperacion ? String(ro.idImagen || '') : '';
 
-return [{ json: { aprobado: true, jid, nombre, nombreMostrar, numero, datosCuenta, idCuenta,
-                  montoComprobante, idImagen, mensajeCombinado: combinado } }];
+let modoTarifa = 'detal';
+try { modoTarifa = $('Code in JavaScript').first().json.modo || 'detal'; } catch(e){}
+let mensajesCombinar = [];
+try { mensajesCombinar = $('Combinar').item.json.mensajes || []; } catch(e){}
+
+return [{ json: { modoPublicar: 'aprobar', aprobado: true, jid, nombre, nombreMostrar, numero, datosCuenta, idCuenta,
+                  montoComprobante, idImagen, mensajeCombinado: combinado,
+                  mensajesAprobar: desdeOperacion ? (ro.mensajesAprobar || []) : undefined,
+                  mensajes: mensajesCombinar, modoTarifa,
+                  registro: desdeOperacion ? (ro.registro || null) : null } }];
 '@
 
 # ===================== CODIGO: CUENTAS POR BLOQUE (compartido) =====================
@@ -2706,7 +2718,7 @@ const monto = montoNuevo || montoViejo;
 const nombre = String(c.nombre || 'Cliente');
 const cabecera = montoNuevo ? (nombre + ' - $' + montoNuevo) : (c.cabecera || nombre);
 const texto = '✏️ DATOS CORREGIDOS (la operadora pidió: ' + String(c.nota || 'verificar') + ')\n' + cabecera + '\n\n' + String(c.texto).trim();
-return [{ json: { jid, nombre, publicacion: c.publicacion, idCaptura: c.idCaptura || '', idCuenta: c.idCuenta || '', nota: c.nota || '',
+return [{ json: { modoPublicar: 'correccion', jid, nombre, publicacion: c.publicacion, idCaptura: c.idCaptura || '', idCuenta: c.idCuenta || '', nota: c.nota || '',
                   datos: String(c.texto).trim(), monto: monto ? parseFloat(monto.replace(',', '.')) : null, texto } }];
 '@
 
@@ -2896,17 +2908,6 @@ $nodes = @(
     id = 'd0e1f2a3-0000-4b00-9000-leeraviso0001'; name = 'Redis Leer Aviso'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(-250,-420)
     onError = 'continueRegularOutput'; alwaysOutputData = $true; executeOnce = $true
     credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $revisarMontosCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3460,400); id = 'd0e1f2a3-0000-4b00-9000-revisarmont01'; name = 'Revisar Montos'
-    executeOnce = $true
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; jsonBody = '={{ JSON.stringify({ number: "' + $GRUPO_OPERACIONES + '", text: $json.aviso }) }}'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-avisarmonto01'; name = 'Avisar Montos'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3640,400)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
   },
   [ordered]@{
     parameters = @{ jsCode = $soloEstosCode }
@@ -3216,31 +3217,6 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,736); id = 'c9d0e1f2-0001-4a00-9c00-correccion01'; name = 'Preparar Correccion'
   },
   [ordered]@{
-    # Los datos corregidos van a transferir, marcados como CORREGIDOS.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "' + $GRUPO_OPERACIONES + '", text: $json.texto }) }}'; options = @{} }
-    id = 'c9d0e1f2-0002-4a00-9c00-correccion02'; name = 'Publicar Correccion'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2336,736)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # La publicacion corregida apunta al mismo cliente y a la publicacion ORIGINAL: asi la foto de la
-    # operadora le llega al cliente, y se marca la fila de Supabase de siempre.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = '={{ JSON.stringify({ jid: $("Preparar Correccion").first().json.jid, nombre: $("Preparar Correccion").first().json.nombre, idCuenta: $("Preparar Correccion").first().json.idCuenta, idCaptura: $("Preparar Correccion").first().json.idCaptura, publicacion: $("Preparar Correccion").first().json.publicacion }) }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'c9d0e1f2-0003-4a00-9c00-correccion03'; name = 'Redis Guardar Publicacion Correccion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2512,736)
-    onError = 'continueRegularOutput'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $datosCorreccionCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2688,736); id = 'c9d0e1f2-0004-4a00-9c00-correccion04'; name = 'Datos Correccion Supabase'
-  },
-  [ordered]@{
-    # La fila de esa cuenta (la buscada por la publicacion original) queda con los datos corregidos.
-    parameters = @{ resource = 'row'; operation = 'update'; tableId = 'transacciones_detal_por_whatsapp'; filterType = 'string'; filterString = '={{ "id_msgs_grupo=cs." + JSON.stringify([ $("Preparar Correccion").first().json.publicacion || "sin-dato" ]) + "&estado=in.(en_proceso,en_espera)" }}'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'c9d0e1f2-0005-4a00-9c00-correccion05'; name = 'Corregir Cuenta en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2864,736)
-    onError = 'continueRegularOutput'
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
     # Que se le contesta (lo decide "Revisar Operacion"):
     #   gracias -> sticker A SU ORDEN | callar -> nada | todo lo demas -> la IA
     # Lo que no calce en ninguna regla sale por la salida de respaldo, hacia la IA: si algo
@@ -3311,76 +3287,24 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,220); id = 'aa11bb22-cc33-4170-9aaa-aprobacion001'; name = 'Detectar Aprobación'
   },
   [ordered]@{
-    parameters = @{ operation = 'get'; key = "={{ 'lastimg:' + `$('Detectar Aprobación').item.json.jid }}"; propertyName = 'imgKeyId'; keyType = 'string'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2380,220); id = 'bb22cc33-dd44-4271-9bbb-redisimg0001'; name = 'Redis Leer ID Imagen'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "message": { "key": { "id": "{{ $("Detectar Aprobación").first().json.idImagen || $json.imgKeyId }}" } }, "convertToMp4": false }'; options = @{} }
-    id = 'cc33dd44-ee55-4282-9ccc-redownload001'; name = 'Re-descargar Imagen'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2560,220)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "' + $GRUPO_OPERACIONES + '", mediatype: "image", mimetype: ($json.mimetype || "image/jpeg"), media: $json.base64, caption: ("Cliente: " + $("Detectar Aprobación").item.json.nombreMostrar) }) }}'; options = @{} }
-    id = 'dd44ee55-ff66-4393-9ddd-sendimg0001'; name = 'Enviar Imagen Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2740,220)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Detectar Aprobación").item.json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-aprobado.webp" }'; options = @{} }
-    id = 'ee55ff66-aa77-4404-9eee-sendsticker01'; name = 'Enviar Sticker Cliente'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2920,220)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Se anota de quien es la publicacion que acaba de hacer el bot en el grupo. Cuando la
-    # operadora RESPONDA ese mensaje con la foto del envio, asi se sabe a que cliente va.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: `$('Detectar Aprobación').first().json.idCuenta, idCaptura: `$('Detectar Aprobación').first().json.idImagen }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'd0e1f2a3-0000-4b00-9000-marcapubimg1'; name = 'Marcar Publicacion Imagen'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2740,60)
-    onError = 'continueRegularOutput'
-    credentials = $redisCred
-  },
-  [ordered]@{
-    # Se anota de quien es la publicacion que acaba de hacer el bot en el grupo. Cuando la
-    # operadora RESPONDA ese mensaje con la foto del envio, asi se sabe a que cliente va.
-    parameters = @{ operation = 'set'; key = "={{ 'grupoMsg:' + ((`$json.key && `$json.key.id) || (`$json.data && `$json.data.key && `$json.data.key.id) || 'nada') }}"; value = "={{ JSON.stringify({ jid: `$('Detectar Aprobación').first().json.jid, nombre: `$('Detectar Aprobación').first().json.nombreMostrar, idCuenta: (`$('Separar Cuentas').item.json.idCuenta || `$('Detectar Aprobación').first().json.idCuenta), idCaptura: `$('Detectar Aprobación').first().json.idImagen }) }}"; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    id = 'd0e1f2a3-0000-4b00-9000-marcapubcta1'; name = 'Marcar Publicacion Cuenta'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(3280,400)
-    onError = 'continueRegularOutput'
-    credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $separarCuentasCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2920,400); id = 'ff66aa77-bb88-4505-9fff-separarctas1'; name = 'Separar Cuentas'
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={{ JSON.stringify({ number: "' + $GRUPO_OPERACIONES + '", text: $json.cuenta }) }}'; options = @{} }
-    id = 'aa77bb88-cc99-4616-9aaa-sendcuenta01'; name = 'Enviar Cuenta Grupo'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3100,400)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $registrarOperacionCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2380,340); id = 'bb88cc99-dd00-4727-9bbb-registrarop1'; name = 'Registrar Operación'
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $armarFilaCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3728,208); id = 'a1b2c3d4-0009-4e00-9a00-registro00009'; name = 'Armar Fila Supabase'
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
     # Fuera de horario: la operacion completa queda 'en_espera' (no se publica). Ver el codigo.
     parameters = @{ jsCode = $armarFilasNocheCode }
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,-128); id = 'a1b2c3d4-0012-4e00-9a00-horario000012'; name = 'Armar Filas Noche'
     onError = 'continueRegularOutput'
   },
   [ordered]@{
-    # Guarda la operacion en transacciones_detal_por_whatsapp ('en_proceso'; de noche, 'en_espera'). Si falla, la operacion
-    # igual se paso al grupo: solo queda sin registro.
-    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'transacciones_detal_por_whatsapp'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'a1b2c3d4-0010-4e00-9a00-registro00010'; name = 'Guardar Operacion en Supabase'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3904,208)
+    # Agrupa las filas nocturnas en un solo paquete para "Bot JK - Publicar y Registrar Operacion".
+    parameters = @{ jsCode = "// Agrupa las filas nocturnas en un solo paquete para `"Bot JK - Publicar y Registrar Operacion`".`nconst filas = `$input.all().map(i => i.json).filter(Boolean);`nif (!filas.length) return [];`nreturn [{ json: { modoPublicar: 'noche', filas } }];" }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2380,-128); id = 'e1f2a3b4-0003-4c00-9c00-pubnoche0001'; name = 'Empaquetar Noche'
     onError = 'continueRegularOutput'
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
+  },
+  [ordered]@{
+    # FASE 2: le pasa aprobar / correccion / noche al workflow "Bot JK - Publicar y Registrar Operacion" sin esperarlo.
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $OPERACION_PUBLICAR_WORKFLOW_ID; mode = 'id' }
+                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
+                    mode = 'once'; options = @{ waitForSubWorkflow = $false } }
+    id = 'e1f2a3b4-0004-4c00-9c00-publicar0001'; name = 'Ejecutar Publicacion'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2900,320)
+    onError = 'continueRegularOutput'
   },
   [ordered]@{
     parameters = @{ name = 'calculadora_remesas'; description = 'Convierte montos de dinero entre paises/monedas con las tasas oficiales del dia de JK Remesas. Usala para cualquier conversion de monto, para cruces entre dos paises, o cuando intervengan dolares, USDT o euros. Devuelve el resultado exacto.'; language = 'javaScript'; jsCode = $toolCode; specifyInputSchema = $true; schemaType = 'manual'; inputSchema = $inputSchema }
@@ -3454,11 +3378,9 @@ $connections = [ordered]@{
   'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
   'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 }, @{ node='Armar Filas Noche'; type='main'; index=0 }, @{ node='Preparar Vigilancia Monto'; type='main'; index=0 }, @{ node='Preparar Correccion'; type='main'; index=0 } ) ) }
   'Preparar Vigilancia Monto' = @{ main = @( ,@( @{ node='Vigilar Monto'; type='main'; index=0 } ) ) }
-  'Preparar Correccion'    = @{ main = @( ,@( @{ node='Publicar Correccion'; type='main'; index=0 } ) ) }
-  'Publicar Correccion'    = @{ main = @( ,@( @{ node='Redis Guardar Publicacion Correccion'; type='main'; index=0 } ) ) }
-  'Redis Guardar Publicacion Correccion' = @{ main = @( ,@( @{ node='Datos Correccion Supabase'; type='main'; index=0 } ) ) }
-  'Datos Correccion Supabase' = @{ main = @( ,@( @{ node='Corregir Cuenta en Supabase'; type='main'; index=0 } ) ) }
-  'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
+  'Preparar Correccion'    = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
+  'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Empaquetar Noche'; type='main'; index=0 } ) ) }
+  'Empaquetar Noche'       = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
   '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
   'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
   'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
@@ -3466,18 +3388,7 @@ $connections = [ordered]@{
   'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 }, @{ node='Redis Marcar Pregunta'; type='main'; index=0 } ) ) }
   'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
   'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
-  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Redis Leer ID Imagen'; type='main'; index=0 }, @{ node='Enviar Sticker Cliente'; type='main'; index=0 }, @{ node='Registrar Operación'; type='main'; index=0 } ) ) }
-  'Armar Fila Supabase'    = @{ main = @( ,@( @{ node='Guardar Operacion en Supabase'; type='main'; index=0 } ) ) }
-  'Redis Leer ID Imagen'   = @{ main = @( ,@( @{ node='Re-descargar Imagen'; type='main'; index=0 } ) ) }
-  'Re-descargar Imagen'    = @{ main = @( ,@( @{ node='Enviar Imagen Grupo'; type='main'; index=0 } ) ) }
-  'Enviar Imagen Grupo'    = @{ main = @( ,@(
-      @{ node='Separar Cuentas';            type='main'; index=0 },
-      @{ node='Marcar Publicacion Imagen';  type='main'; index=0 }
-    ) ) }
-  'Separar Cuentas'        = @{ main = @( ,@( @{ node='Enviar Cuenta Grupo'; type='main'; index=0 } ) ) }
-  'Enviar Cuenta Grupo'    = @{ main = @( ,@( @{ node='Marcar Publicacion Cuenta'; type='main'; index=0 } ) ) }
-  'Marcar Publicacion Cuenta' = @{ main = @( ,@( @{ node='Revisar Montos'; type='main'; index=0 }, @{ node='Armar Fila Supabase'; type='main'; index=0 } ) ) }
-  'Revisar Montos'         = @{ main = @( ,@( @{ node='Avisar Montos';    type='main'; index=0 } ) ) }
+  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
 }
 
 $body = [ordered]@{ name = 'Bot WhatsApp CAMBIOS JK'; nodes = $nodes; connections = $connections; settings = @{ executionOrder = 'v1' } }

@@ -15,8 +15,10 @@ import { readFileSync } from 'fs';
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
+const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
 const codeOp = n => wfOp.nodes.find(x => x.name === n).parameters.jsCode;
+const codePub = n => wfPub.nodes.find(x => x.name === n).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -245,13 +247,12 @@ console.log('');
 console.log('=== 9) Cuentas multiples: cabecera, monto y a que mensaje citan ===');
 {
   const separar = (mensajes, nombreMostrar) => {
-    const ap = { nombreMostrar, nombre: 'Maigre Herrera', datosCuenta: 'algo', idCuenta: 'XX' };
+    const ap = { nombreMostrar, nombre: 'Maigre Herrera', datosCuenta: 'algo', idCuenta: 'XX', mensajes };
     const $ = (n) => {
-      if (n === 'Detectar Aprobación') return { item: { json: ap } };
-      if (n === 'Combinar') return { item: { json: { mensajes } } };
-      return { item: { json: {} } };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: ap }), item: { json: ap } };
+      return { item: { json: {} }, first: () => ({ json: {} }) };
     };
-    return new Function('$', code('Separar Cuentas'))($).map(i => i.json);
+    return new Function('$', codePub('Separar Cuentas'))($).map(i => i.json);
   };
 
   // Las 4 cuentas en UN solo mensaje.
@@ -311,10 +312,10 @@ console.log('=== 10) Aviso si los montos no cuadran ===');
   const montos = (lista, total) => {
     const $ = (n) => {
       if (n === 'Separar Cuentas') return { all: () => lista.map(m => ({ json: { monto: m } })) };
-      if (n === 'Detectar Aprobación') return { first: () => ({ json: { montoComprobante: total } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { montoComprobante: total } }) };
       return { all: () => [], first: () => ({ json: {} }) };
     };
-    return new Function('$', code('Revisar Montos'))($);
+    return new Function('$', codePub('Revisar Montos'))($);
   };
 
   chk(montos([30, 40, 15, 35], 120).length === 0, 'si suman, no dice nada');

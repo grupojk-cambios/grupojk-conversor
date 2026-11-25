@@ -15,7 +15,8 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n);
+const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -153,10 +154,10 @@ console.log('=== 4) LA CORRECCION VA A TRANSFERIR ===');
   chk(JSON.stringify(Object.keys(d).sort()) === '["cuentas","notas"]' && d.cuentas[0].texto === p.datos && d.cuentas[0].monto === 10 && /Verificar datos/.test(d.notas),
       'Supabase: la fila queda con los datos corregidos (solo cuentas y notas)', '-> ' + JSON.stringify(d).slice(0, 100));
   const sb = nodo('Corregir Cuenta en Supabase').parameters;
-  chk(sb.operation === 'update' && sb.dataToSend === 'autoMapInputData' && /id_msgs_grupo=cs\./.test(sb.filterString) && /Preparar Correccion/.test(sb.filterString),
+  chk(sb.operation === 'update' && sb.dataToSend === 'autoMapInputData' && /id_msgs_grupo=cs\./.test(sb.filterString) && /Cuando lo Llama el Bot/.test(sb.filterString),
       'se actualiza la fila de la publicacion ORIGINAL');
   const rg = nodo('Redis Guardar Publicacion Correccion').parameters;
-  chk(/publicacion: \$\("Preparar Correccion"\)\.first\(\)\.json\.publicacion/.test(rg.value) && /grupoMsg:/.test(rg.key),
+  chk(/publicacion: \$\("Cuando lo Llama el Bot"\)\.first\(\)\.json\.publicacion/.test(rg.value) && /grupoMsg:/.test(rg.key),
       'la publicacion corregida queda apuntando al cliente y a la publicacion original');
   chk(nodo('Publicar Correccion').parameters.jsonBody.indexOf(GRUPO_TRANSFERIR) !== -1, 'y se publica en el grupo de transferir');
 }
@@ -183,6 +184,7 @@ console.log('=== 6) CABLEADO ===');
 {
   const c = wf.connections;
   const cOp = wfOp.connections;
+  const cPub = wfPub.connections;
   const sig = (n, i, mapa) => { const m = mapa || c; return ((m[n] && m[n].main && m[n].main[i || 0]) || []).map(x => x.node).join(','); };
   const reglas = nodo('Router Pausa').parameters.rules.values.map(v => v.outputKey);
   chk(reglas[7] === 'verificar' && sig('Router Pausa', 7) === 'Ejecutar Operadoras', 'Router Pausa: la salida "verificar" (la ultima) -> Ejecutar Operadoras');
@@ -194,9 +196,10 @@ console.log('=== 6) CABLEADO ===');
   chk(/Preparar Corregir Datos.*\.jid/.test(nodo('Pedir Corregir al Cliente').parameters.remoteJid), 'el mensaje va al chat del CLIENTE');
   chk(/idNota/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody) && /jidGrupo/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody),
       'la confirmacion va al grupo, citando lo que escribio la operadora');
-  chk(sig('Redis Guardar Operacion').split(',').indexOf('Preparar Correccion') !== -1 && sig('Preparar Correccion') === 'Publicar Correccion'
-      && sig('Publicar Correccion') === 'Redis Guardar Publicacion Correccion' && sig('Redis Guardar Publicacion Correccion') === 'Datos Correccion Supabase'
-      && sig('Datos Correccion Supabase') === 'Corregir Cuenta en Supabase', 'correccion: preparar -> publicar -> Redis -> Supabase');
+  chk(sig('Redis Guardar Operacion').split(',').indexOf('Preparar Correccion') !== -1 && sig('Preparar Correccion') === 'Ejecutar Publicacion'
+      && sig('Router Publicacion', 1, cPub) === 'Publicar Correccion'
+      && sig('Publicar Correccion', 0, cPub) === 'Redis Guardar Publicacion Correccion' && sig('Redis Guardar Publicacion Correccion', 0, cPub) === 'Datos Correccion Supabase'
+      && sig('Datos Correccion Supabase', 0, cPub) === 'Corregir Cuenta en Supabase', 'correccion: preparar -> Ejecutar Publicacion -> publicar -> Redis -> Supabase');
   chk(sig('Redis Guardar Operacion').split(',')[0] === '¿Qué Responder?', 'la respuesta al cliente sigue siendo la primera rama');
 }
 

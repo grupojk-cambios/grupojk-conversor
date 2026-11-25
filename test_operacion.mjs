@@ -11,7 +11,8 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -66,11 +67,10 @@ function detectar(ro) {
 }
 
 function separar(ro, ap) {
+  const payload = Object.assign({}, ap, { mensajesAprobar: ro.mensajesAprobar, registro: ro.registro });
   const $ = (n) => {
-    if (n === 'Detectar Aprobación') return { item: { json: ap } };
-    if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
-    if (n === 'Combinar') return { item: { json: { mensajes: [] } } };
-    return { item: { json: {} } };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
+    return { item: { json: {} }, first: () => ({ json: {} }) };
   };
   return new Function('$', code('Separar Cuentas'))($).map(i => i.json);
 }

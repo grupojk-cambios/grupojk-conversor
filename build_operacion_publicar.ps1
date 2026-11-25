@@ -543,6 +543,7 @@ const ap = $('Cuando lo Llama el Bot').first().json || {};
 const nombre = ap.nombreMostrar || ap.nombre || 'Cliente';
 
 let lista = (ap.mensajesAprobar !== undefined) ? (ap.mensajesAprobar || []) : (ap.mensajes || []);
+const ro = { registro: ap.registro || null };
 
 // ===== CUENTAS DESTINO, UNA POR BLOQUE (lo usan "Separar Cuentas", "Armar Filas Noche" y "Revisar Operacion") =====
 // Los nombres son propios (montoDelBloque, limpiarNotasBot...) para no chocar con los de "Revisar Operacion".
