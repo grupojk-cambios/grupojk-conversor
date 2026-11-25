@@ -68,8 +68,11 @@ const textoCrudo = String(msg.conversation || (msg.extendedTextMessage && msg.ex
 const esImagen = !!msg.imageMessage, esAudio = !!msg.audioMessage;
 if (!textoCrudo && !esImagen && !esAudio) return [];
 
-// Los numeros escritos con emojis ("6️⃣6️⃣5️⃣") se vuelven digitos.
-const limpio = textoCrudo.normalize('NFKC').replace(/([0-9])️?⃣/g, '$1').replace(/[​-‏‪-‮]/g, '');
+// Los numeros escritos con emojis ("6️⃣6️⃣5️⃣") se vuelven digitos. PERO un emoji de numero SOLO al inicio de una linea y
+// separado por un espacio ("1️⃣ 2403" / "2️⃣ 2790", como los manda Julio) es el ROTULO del codigo 1 y el codigo 2 de
+// Guayaquil: se vuelve "C1: 2403". Antes se volvia "1 2403" y ese 1 se tomaba como el monto ("$1", 25/11).
+const limpio = textoCrudo.normalize('NFKC').replace(/(^|\n)[ \t]*([12])️?⃣[ \t]+(?=\d)/g, '$1C$2: ')
+  .replace(/([0-9])️?⃣/g, '$1').replace(/[​-‏‪-‮]/g, '');
 const minus = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const digitos = x => String(x || '').replace(/\D/g, '');
 const mismoNumero = (a, b) => { const x = digitos(a), y = digitos(b); return !!x && !!y && x.slice(-9) === y.slice(-9); };
@@ -164,10 +167,11 @@ function extraerMontos(b){
   for (let i = 0; i < toks.length; i++){
     const t = toks[i]; if (t.ruido || t.marca) continue;
     const antes = b.slice(Math.max(0, t.ini - 4), t.ini), despues = b.slice(t.fin, t.fin + 14);
-    if (/\$\s*$/.test(antes)) { t.marca = 'usd'; continue; }
+    // El "$" nunca salta de linea: "monto 500$" + (otra linea) "1 2403" -> el $ es del 500, no del 1 (25/11).
+    if (/\$[ \t]*$/.test(antes)) { t.marca = 'usd'; continue; }
     if (/^\s*(usdt|usd|dolares|dls|\$)/.test(despues)){
       const sig = toks[i + 1];
-      const pegaConElQueSigue = /^\s*\$/.test(despues) && sig && !sig.ruido && sig.marca !== 'local' && /^\s*\$\s*$/.test(b.slice(t.fin, sig.ini));
+      const pegaConElQueSigue = /^\s*\$/.test(despues) && sig && !sig.ruido && sig.marca !== 'local' && /^\s*\$[ \t]*$/.test(b.slice(t.fin, sig.ini));
       if (!pegaConElQueSigue) t.marca = 'usd';
     }
   }

@@ -96,7 +96,14 @@ console.log('=== 3) RST y RCT (retiros de los bancos de Ecuador) ===');
     ['PICHINCHA 🚛 Tlf 0990000010 COD 6428 MONTO: 100$', { banco: 'Pichincha', usd: 100, cod: ['6428'] }],
     ['jep Tlf 0990000011 otp 874512 clave 1234 monto 80$', { banco: 'JEP', usd: 80, cod: ['874512'], destino: 'COOP JEP' }],
     ['jep Tlf 0990000011 clave 1234 monto 80$', { banco: 'JEP', usd: 80, cod: [], destino: 'COOP JEP' }],     // en JEP "clave" es la de la TARJETA: falta el OTP
-    ['Bolivariano Tlf 0990000012 clave 4321 monto 60$', { banco: 'Bolivariano', usd: 60, cod: ['4321'], destino: 'COOP JEP' }]
+    ['Bolivariano Tlf 0990000012 clave 4321 monto 60$', { banco: 'Bolivariano', usd: 60, cod: ['4321'], destino: 'COOP JEP' }],
+    // 25/11: los codigos numerados con emojis (asi los manda un cliente). Antes el "1️⃣" se volvia "1" y se tomaba como "$1".
+    ['*guayaquil*\nLeo\n\nmonto  500$\n1️⃣ 2403\n2️⃣ 2790\n099 000 0013', { banco: 'Guayaquil', usd: 500, cod: ['2403', '2790'], tel: '0990000013' }],
+    ['*guayaquil*\nmonto 300$\n1️⃣  1111\n2️⃣  2222\n0990000014', { banco: 'Guayaquil', usd: 300, cod: ['1111', '2222'], tel: '0990000014' }],
+    // el $ al final de una linea no se pega al numero de la linea siguiente
+    ['Guayaquil\nmonto 250$\n1 3333\n2 4444\n0990000015', { banco: 'Guayaquil', usd: 250, cod: ['3333', '4444'], tel: '0990000015' }],
+    // un monto escrito todo con emojis sigue siendo un numero (no es el rotulo de un codigo)
+    ['Pichincha Tlf 0990000016 Código 5478 Monto 1️⃣0️⃣0️⃣$', { banco: 'Pichincha', usd: 100, cod: ['5478'] }]
   ];
   for (const [texto, esp] of casos) {
     const r = entender(texto);
