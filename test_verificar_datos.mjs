@@ -16,7 +16,8 @@ import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -104,6 +105,7 @@ function revisar(mensajes, op) {
   try {
     const $ = n => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: [], sessionId: 'chat', modo: 'detal' } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);
@@ -140,6 +142,7 @@ console.log('=== 4) LA CORRECCION VA A TRANSFERIR ===');
   const ro = revisar([{ id: 'A5NUEVA01', texto: CORREGIDA }], { corregir: CORREGIR, hechos: [] });
   const $ = n => {
     if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: CLIENTE } }) };
     if (n === 'Prep Debounce') return { first: () => ({ json: { jid: CLIENTE } }) };
     throw new Error('nodo inesperado: ' + n);
   };
@@ -185,6 +188,7 @@ console.log('=== 6) CABLEADO ===');
   const c = wf.connections;
   const cOp = wfOp.connections;
   const cPub = wfPub.connections;
+  const cIa = wfIa.connections;
   const sig = (n, i, mapa) => { const m = mapa || c; return ((m[n] && m[n].main && m[n].main[i || 0]) || []).map(x => x.node).join(','); };
   const reglas = nodo('Router Pausa').parameters.rules.values.map(v => v.outputKey);
   chk(reglas[7] === 'verificar' && sig('Router Pausa', 7) === 'Ejecutar Operadoras', 'Router Pausa: la salida "verificar" (la ultima) -> Ejecutar Operadoras');
@@ -196,11 +200,11 @@ console.log('=== 6) CABLEADO ===');
   chk(/Preparar Corregir Datos.*\.jid/.test(nodo('Pedir Corregir al Cliente').parameters.remoteJid), 'el mensaje va al chat del CLIENTE');
   chk(/idNota/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody) && /jidGrupo/.test(nodo('Confirmar Verificar en Grupo').parameters.jsonBody),
       'la confirmacion va al grupo, citando lo que escribio la operadora');
-  chk(sig('Redis Guardar Operacion').split(',').indexOf('Preparar Correccion') !== -1 && sig('Preparar Correccion') === 'Ejecutar Publicacion'
+  chk(sig('Redis Guardar Operacion', 0, cIa).split(',').indexOf('Preparar Correccion') !== -1 && sig('Preparar Correccion', 0, cIa) === 'Ejecutar Publicacion'
       && sig('Router Publicacion', 1, cPub) === 'Publicar Correccion'
       && sig('Publicar Correccion', 0, cPub) === 'Redis Guardar Publicacion Correccion' && sig('Redis Guardar Publicacion Correccion', 0, cPub) === 'Datos Correccion Supabase'
       && sig('Datos Correccion Supabase', 0, cPub) === 'Corregir Cuenta en Supabase', 'correccion: preparar -> Ejecutar Publicacion -> publicar -> Redis -> Supabase');
-  chk(sig('Redis Guardar Operacion').split(',')[0] === '¿Qué Responder?', 'la respuesta al cliente sigue siendo la primera rama');
+  chk(sig('Redis Guardar Operacion', 0, cIa).split(',')[0] === '¿Qué Responder?', 'la respuesta al cliente sigue siendo la primera rama');
 }
 
 console.log('');

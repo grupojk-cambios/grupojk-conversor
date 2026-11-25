@@ -9,7 +9,8 @@
 
 import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json','utf8').replace(/^\uFEFF/,''));
-const codigo = wf.nodes.find(n=>n.name==='Code in JavaScript').parameters.jsCode;
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json','utf8').replace(/^\uFEFF/,''));
+const codigo = wfIa.nodes.find(n=>n.name==='Code in JavaScript').parameters.jsCode;
 const CSV='https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const tasas = await (await fetch(CSV+'&n='+Date.now())).text();
 
@@ -29,6 +30,7 @@ function correr(iso){
     const $ = (n) => { const uno = j => ({first:()=>({json:j}),all:()=>[{json:j}]});
       if(n==='Consultar Tasas') return uno({data:tasas});
       if(n==='Consultar Cuentas') return uno({data:cuentasCSV});
+      if(n==='Cuando lo Llama el Bot') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
       if(n==='Webhook Evolution API') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
       return {first:()=>({json:{}}),all:()=>[]}; };
     return new Function('$',codigo)($)[0].json;
@@ -69,10 +71,10 @@ ok(r.sessionId === '584121112233@s.whatsapp.net', 'el agente recibe sessionId (e
 // 23/11: con la llave bien puesta, "Memoria de Chat" fallo igual 3 veces con "Key parameter is empty":
 // $('Webhook Evolution API').item a veces no encuentra su pareja y sale vacio, y el cliente se queda
 // sin respuesta. Cada ejecucion trae UN solo mensaje, asi que .first() da lo mismo y nunca se pierde.
-const conItem = wf.nodes.filter(n => JSON.stringify(n.parameters || {}).includes("Webhook Evolution API').item")).map(n => n.name);
+const conItem = [...wf.nodes, ...wfIa.nodes].filter(n => /Webhook Evolution API'\)\.item|Cuando lo Llama el Bot'\)\.item/.test(JSON.stringify(n.parameters || {}))).map(n => n.name);
 ok(conItem.length === 0, 'ningun nodo lee el webhook con .item (se usa .first())', '-> ' + conItem.join(', '));
-const mem = wf.nodes.find(n => n.name === 'Memoria de Chat');
-ok(/Webhook Evolution API'\)\.first\(\)\.json\.body\.data\.key\.remoteJid/.test(mem.parameters.sessionKey || ''), 'la llave de la memoria usa .first()', '-> ' + mem.parameters.sessionKey);
+const mem = wfIa.nodes.find(n => n.name === 'Memoria de Chat');
+ok(/Cuando lo Llama el Bot'\)\.first\(\)\.json\.body\.data\.key\.remoteJid/.test(mem.parameters.sessionKey || ''), 'la llave de la memoria usa .first()', '-> ' + mem.parameters.sessionKey);
 console.log('');
 console.log(f ? ('FALLARON '+f) : 'TODO OK');
 

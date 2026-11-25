@@ -14,7 +14,8 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -34,6 +35,7 @@ function revisar(textos, op) {
   try {
     const $ = (n) => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       if (n === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
@@ -82,6 +84,7 @@ console.log('=== 2) Captura + cuenta de noche: "Recibido", en espera, NO se publ
 
   const $ = n => {
     if (n === 'Revisar Operacion') return { first: () => ({ json: r }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: '', mensajes: [], body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
     if (n === 'Combinar') return { item: { json: { mensajeCombinado: '', mensajes: [] } } };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } } } }) };
     if (n === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };

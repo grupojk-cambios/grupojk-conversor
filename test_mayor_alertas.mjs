@@ -214,7 +214,7 @@ console.log('=== 5) EL CABLEADO DEL WORKFLOW DE ALERTAS ===');
   chk(tipos.every(t => ['stickyNote', 'scheduleTrigger', 'code', 'supabase', 'if', 'httpRequest'].includes(t)), 'y ningun otro tipo de nodo', '-> ' + tipos);
   // el mismo horario y las mismas reglas que el resto
   const sacar = js => { const i = js.indexOf('// ===== HORARIO DE ATENCION'); const f = js.indexOf('\n}\n', js.indexOf('function horarioDe')); return js.slice(i, f + 3); };
-  const bot = leer('workflow_bot_whatsapp_v12.json');
+  const bot = leer('workflow_ia_atencion.json');
   chk(sacar(code(alertas, 'Armar Alertas')) === sacar(code(bot, 'Revisar Operacion')) && sacar(code(alertas, 'Armar Alertas')).length > 500, 'el horario es el MISMO bloque del bot del detal');
   const reglas = js => js.slice(js.indexOf('// ===== COMUN: VIGENCIA'), js.indexOf('\nconst ', js.indexOf('function bancoDelGrupo')));
   chk(reglas(code(alertas, 'Armar Alertas')).length > 900 && reglas(code(alertas, 'Armar Alertas')) === reglas(code(mayor, 'Vigilar Vencimiento')) && reglas(code(mayor, 'Armar Vigilancia')) === reglas(code(mayor, 'Vigilar Vencimiento')) && reglas(code(noche, 'Armar Vigilancia')) === reglas(code(mayor, 'Vigilar Vencimiento')), 'las reglas de duracion son IDENTICAS en los 4 sitios que las usan (un solo origen)');

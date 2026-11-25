@@ -13,7 +13,7 @@
 
 import { readFileSync } from 'fs';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const nodo = n => wf.nodes.find(x => x.name === n);
 const codigo = nodo('Code in JavaScript').parameters.jsCode;
 
@@ -40,6 +40,7 @@ function correr(iso, tasas, cuentas, memoria) {
       const uno = j => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
       if (n === 'Consultar Tasas') return uno(tasas === null ? {} : { data: tasas });
       if (n === 'Consultar Cuentas') return uno(cuentas === null ? {} : { data: cuentas });
+      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       return { first: () => ({ json: {} }), all: () => [] };
     };

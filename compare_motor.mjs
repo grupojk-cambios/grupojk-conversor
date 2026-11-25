@@ -41,7 +41,7 @@ function appParse(csv){
 // Antes esta seccion era una copia escrita a mano del nodo; podia quedar desfasada y hacer que
 // la comparacion mintiera. Ahora se lee tal cual del JSON que se despliega.
 import { readFileSync } from 'fs';
-const WF = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^\uFEFF/, ''));
+const WF = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^\uFEFF/, ''));
 const NODO = WF.nodes.find(n => n.name === 'Calculadora de Conversion');
 if (!NODO) throw new Error('No encontre el nodo "Calculadora de Conversion" en el workflow');
 const CODIGO_NODO = NODO.parameters.jsCode || NODO.parameters.code || '';

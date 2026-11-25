@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'fs';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const codigo = wf.nodes.find(n => n.name === 'Code in JavaScript').parameters.jsCode;
 
 const CSV_TASAS = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
@@ -37,6 +37,7 @@ function correrEnFecha(iso) {
       const uno = (j) => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
       if (n === 'Consultar Tasas')   return uno({ data: tasas });
       if (n === 'Consultar Cuentas') return uno({ data: cuentasCSV });
+      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       return { first: () => ({ json: {} }), all: () => [] };
     };
@@ -118,6 +119,7 @@ const r2 = (() => {
     const uno = (j) => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
     if (n === 'Consultar Tasas')   return uno({ data: tasas });
     if (n === 'Consultar Cuentas') return uno({ data: sinFinde });
+    if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
     if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
     return { first: () => ({ json: {} }), all: () => [] };
   };

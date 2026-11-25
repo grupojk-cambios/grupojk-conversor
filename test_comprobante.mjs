@@ -16,7 +16,8 @@ import { readFileSync } from 'fs';
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
-const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n)).parameters.jsCode;
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n)).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -27,6 +28,8 @@ const chk = (ok, etiqueta, detalle) => {
 // Corre "Detectar Aprobacion" con el texto ya combinado que le llegaria.
 function detectar(mensajeCombinado) {
   const $ = (n) => {
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado, body: { data: {
+      key: { remoteJid: '593962907849@s.whatsapp.net' }, pushName: 'Maigre Herrera' } } } }) };
     if (n === 'Combinar') return { item: { json: { mensajeCombinado } } };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
       key: { remoteJid: '593962907849@s.whatsapp.net' }, pushName: 'Maigre Herrera' } } } }) };

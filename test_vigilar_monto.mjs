@@ -16,6 +16,7 @@ const leer = f => JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
 const bot = leer('workflow_bot_whatsapp_v12.json');
 const vig = leer('workflow_vigilar_monto.json');
 const med = leer('workflow_media.json');
+const ia = leer('workflow_ia_atencion.json');
 const nodoDe = (wf, n) => wf.nodes.find(x => x.name === n);
 const GRUPO_AVISOS = '120363413942097019@g.us';
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -34,12 +35,13 @@ function correr(nodo, entrada, operaciones) {
 function preparar(ro) {
   const $ = n => {
     if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net', body: { data: { pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
     if (n === 'Prep Debounce') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net' } }) };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { pushName: 'Ana' } } } }) };
     if (n === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
     throw new Error('nodo inesperado: ' + n);
   };
-  return new Function('$', nodoDe(bot, 'Preparar Vigilancia Monto').parameters.jsCode)($);
+  return new Function('$', nodoDe(ia, 'Preparar Vigilancia Monto').parameters.jsCode)($);
 }
 
 const TOKEN = 1795449600000;
@@ -107,12 +109,12 @@ console.log('=== 4) EL WORKFLOW ===');
 console.log('');
 console.log('=== 5) EL BOT LO LLAMA Y NO LO ESPERA ===');
 {
-  const c = bot.connections;
+  const c = ia.connections;
   const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node);
   chk(sig('Redis Guardar Operacion').includes('Preparar Vigilancia Monto') && sig('Preparar Vigilancia Monto').join() === 'Vigilar Monto',
       'Redis Guardar Operacion -> Preparar Vigilancia Monto -> Vigilar Monto');
   chk(sig('Redis Guardar Operacion')[0] === '¿Qué Responder?', 'la respuesta al cliente sigue siendo la primera rama');
-  const v = nodoDe(bot, 'Vigilar Monto');
+  const v = nodoDe(ia, 'Vigilar Monto');
   chk(v.type === 'n8n-nodes-base.executeWorkflow' && v.parameters.options.waitForSubWorkflow === false, 'Vigilar Monto no espera al otro workflow (el bot no se frena)');
   chk(/^[A-Za-z0-9]{16}$/.test(v.parameters.workflowId.value), 'apunta a un workflow de verdad (no al marcador __PENDIENTE__)', '-> ' + v.parameters.workflowId.value);
   chk(v.onError === 'continueRegularOutput' && sig('Vigilar Monto').length === 0, 'si falla, el bot sigue igual; y ahi termina esa rama');

@@ -20,6 +20,14 @@ $raiz = Split-Path -Parent $PSScriptRoot
 
 $jsonPath = Join-Path $raiz 'workflow_ia_atencion.json'
 if(-not (Test-Path $jsonPath)){ throw 'No existe workflow_ia_atencion.json. Corre primero build_ia_atencion.ps1.' }
+
+Write-Host '  [0/4] Verificando que el bot calcule igual que la app...'
+Push-Location $raiz
+try { & node 'compare_motor.mjs' } finally { Pop-Location }
+if($LASTEXITCODE -ne 0){
+  throw 'ABORTADO: el bot NO calcula igual que la app. Arregla src/motor.js, corre .\build_ia_atencion.ps1 y vuelve a intentar.'
+}
+
 $ctx = Get-N8nCtx
 $nombre = 'Bot JK - Atencion al Cliente e IA'
 
@@ -30,7 +38,7 @@ if($ya.Count -gt 1){ throw ('Hay ' + $ya.Count + ' workflows con ese nombre. Bor
 
 if($ya.Count -eq 1){
   Write-Host ('Ya existe (id=' + $ya[0].id + '): se actualiza.')
-  Publish-N8nWorkflow $ctx $ya[0].id $jsonPath $null
+  Publish-N8nWorkflow $ctx $ya[0].id $jsonPath @('Eres asistente de *Cambios JK', 'tarifa MAYOR ', 'tu comprobante! ')
   Write-Host ''
   Write-Host ('LISTO. Workflow id=' + $ya[0].id + ' (activo=' + $ya[0].active + ').')
 } else {

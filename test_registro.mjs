@@ -15,7 +15,8 @@ import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n);
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -38,6 +39,7 @@ function revisar(textos, op, historial, ex) {
   try {
     const $ = (n) => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       if (n === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
@@ -234,7 +236,7 @@ console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviad
 console.log('');
 console.log('=== 6) Como quedo conectado ===');
 {
-  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const sale = (n, i) => ((((wfIa.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
   const salePub = (n, i) => ((((wfPub.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp', 'Redis Leer Pregunta -> Consultar Operaciones WhatsApp', '-> ' + sale('Redis Leer Pregunta'));
   chk(sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion', 'Consultar Operaciones WhatsApp -> Revisar Operacion');
@@ -268,7 +270,7 @@ console.log('=== 6b) Los nodos IF viejos (v1) usan operaciones que existen ===')
   // antes de mandarle al cliente la foto de la operadora.
   const VALIDAS = { boolean: ['equal', 'notEqual'], number: ['smaller', 'smallerEqual', 'equal', 'notEqual', 'larger', 'largerEqual', 'isEmpty', 'isNotEmpty'],
                     string: ['contains', 'notContains', 'endsWith', 'notEndsWith', 'equal', 'notEqual', 'regex', 'notRegex', 'startsWith', 'notStartsWith', 'isEmpty', 'isNotEmpty'] };
-  for (const n of [...wf.nodes, ...wfOp.nodes, ...wfPub.nodes].filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
+  for (const n of [...wf.nodes, ...wfOp.nodes, ...wfPub.nodes, ...wfIa.nodes].filter(x => x.type === 'n8n-nodes-base.if' && x.typeVersion === 1)) {
     const malas = [];
     for (const tipo of Object.keys(n.parameters.conditions || {})) {
       for (const c of (n.parameters.conditions[tipo] || [])) if (c.operation && (VALIDAS[tipo] || []).indexOf(c.operation) === -1) malas.push(tipo + ':' + c.operation);

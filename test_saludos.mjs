@@ -15,7 +15,7 @@
 
 import { readFileSync } from 'fs';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const nodo = n => wf.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 
@@ -30,6 +30,7 @@ function revisar(textos, op, extra) {
     const mensajes = textos.map((t, i) => ({ id: 'M' + i, texto: t }));
     const $ = n => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: Object.assign({ cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal', nombreCliente: 'Ana Prueba' }, extra || {}) }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);

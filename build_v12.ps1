@@ -155,6 +155,10 @@ $OPERACION_PUBLICAR_WORKFLOW_ID = 'EVe1KsFiKhZtv4zK'
 # Procesa audio (Whisper), imagen/comprobante (Vision + Redis Guardar Imagen) y texto directo -> { texto }.
 $MEDIA_WORKFLOW_ID = 'UMQqyE6H4HVrIDoy'
 
+# FASE 4 (Atencion al Cliente e IA): el workflow "Bot JK - Atencion al Cliente e IA" (scripts\desplegar_ia_atencion.ps1).
+# Atiende consultas de tasas/cuentas, deteccion de operaciones/aprobaciones y AI Agent con Calculadora.
+$IA_WORKFLOW_ID = 'OjALXRrfveeGpdtd'
+
 # ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
 # EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
 # se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
@@ -2852,6 +2856,27 @@ return [{ json: { cuadra, verificado, motivo, filaId: elegida ? elegida.id : nul
                   idCuenta: (elegida && cuentaDe(elegida).id) || ped.idCuenta || '', leido, aviso } }];
 '@
 
+$prepararContextoIaCode = @'
+// Empaqueta todo el contexto necesario para "Bot JK - Atencion al Cliente e IA" (Fase 4).
+const wh = $('Webhook Evolution API').first().json || {};
+const solo = $('Solo Estos Numeros').first().json || {};
+const prep = $('Prep Debounce').first().json || {};
+const comb = $('Combinar').first().json || {};
+const adm = $('Detectar Comando Admin').first().json || {};
+return [{
+  json: {
+    body: wh.body || {},
+    jid: prep.jid || '',
+    nombreCargado: solo.nombreCargado || '',
+    tarifaCargada: solo.tarifaCargada || '',
+    esAdmin: !!adm.esAdmin,
+    textoLimpio: adm.textoLimpio || '',
+    mensajeCombinado: comb.mensajeCombinado || '',
+    mensajes: Array.isArray(comb.mensajes) ? comb.mensajes : []
+  }
+}];
+'@
+
 # ===================== CONSTRUCCION DEL WORKFLOW =====================
 $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
 $nodes = @(
@@ -3085,186 +3110,22 @@ $nodes = @(
     type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1700,220); id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'; name = 'Confirmar Modo Admin'
   },
   [ordered]@{
-    # Con tope de tiempo: si Google no contesta, "Code in JavaScript" usa la ultima copia buena.
-    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'; options = @{ timeout = $SEGUNDOS_MAX_GOOGLE * 1000 } }
-    id = 'd117ce37-c8f2-4d1d-8c17-2e2ac16dcc5a'; name = 'Consultar Tasas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1600,128)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
+    parameters = @{ jsCode = $prepararContextoIaCode }
+    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1900,128); id = 'e1f2a3b4-0006-4c00-9c00-prepctxia001'; name = 'Preparar Contexto IA'
   },
   [ordered]@{
-    parameters = @{ url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?gid=908170655&single=true&output=csv'; options = @{ timeout = $SEGUNDOS_MAX_GOOGLE * 1000 } }
-    id = 'e2f3a4b5-c6d7-4e88-9f00-cuentas00001'; name = 'Consultar Cuentas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1690,300)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-  },
-  [ordered]@{
-    # Busca el numero del cliente en la tabla perfiles_mayor de Supabase (registro de la app).
-    # Filtro "like.*<digitos>" para que matchee con o sin "+" delante. Si falla o no hay credencial -> sigue (detal).
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_mayor'; returnAll = $false; limit = 1; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'') }}" }
-    id = 'ab12cd34-ef56-4789-9abc-supamayor001'; name = 'Consultar Mayorista'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1780,300)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    # Busca las operaciones previas del cliente en 'transacciones' (por su whatsapp) para personalizar la atencion.
-    # Solo columnas necesarias. Si falla o no hay credencial -> sigue sin contexto (normal).
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones'; returnAll = $false; limit = 15; filterType = 'string'; filterString = "={{ 'whatsapp_cliente=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'') }}" }
-    id = 'cd34ef56-ab78-4890-9cde-supacliente1'; name = 'Consultar Cliente'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1820,300)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    # Lee la preferencia de tarifa guardada por un admin (comando "modo mayor"/"modo detal"). Vacio para clientes normales.
-    parameters = @{ operation = 'get'; key = "={{ 'modoAdmin:' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; propertyName = 'modoAdmin'; keyType = 'string'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1840,300); id = 'f8a9b0c1-6789-4d54-9e66-rgetmodo0001'; name = 'Redis Leer Modo Admin'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $mainCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1860,128); id = '6ac06fc7-1afb-49ab-893c-e2f2b5f8b995'; name = 'Code in JavaScript'
-  },
-  [ordered]@{
-    # Lo que el cliente tenia pendiente (cuenta sin captura, o captura sin cuenta) y las capturas
-    # que ya se pasaron al grupo. Ver "Revisar Operacion".
-    parameters = @{ operation = 'get'; key = "={{ 'op:' + `$('Prep Debounce').first().json.jid }}"; propertyName = 'operacion'; keyType = 'string'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1280,48); id = 'a1b2c3d4-0001-4e00-9a00-operacion0001'; name = 'Redis Leer Operacion'; credentials = $redisCred
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-  },
-  [ordered]@{
-    # Si el ultimo mensaje del bot fue una pregunta ('1') o no ('0'). Con eso "Revisar Operacion"
-    # decide si un "ok" suelto se contesta. Lo escribe "Redis Marcar Pregunta".
-    parameters = @{ operation = 'get'; key = "={{ 'preg:' + `$('Prep Debounce').first().json.jid }}"; propertyName = 'pregunta'; keyType = 'string'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1456,48); id = 'a1b2c3d4-0004-4e00-9a00-cierres00004'; name = 'Redis Leer Pregunta'; credentials = $redisCred
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-  },
-  [ordered]@{
-    # Las ultimas operaciones de este cliente en transacciones_detal_por_whatsapp, la mas reciente primero
-    # (ver "Revisar Operacion"). Si Supabase falla, el bot sigue sin eso.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_detal_por_whatsapp'; returnAll = $false; limit = $OPERACIONES_A_LEER; filterType = 'string'; filterString = "={{ 'whatsapp=eq.' + `$('Prep Debounce').first().json.jid.split('@')[0].replace(/\D/g,'') + '&order=creado.desc' }}" }
-    id = 'a1b2c3d4-0008-4e00-9a00-registro00008'; name = 'Consultar Operaciones WhatsApp'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1632,48)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $revisarOperacionCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1456,48); id = 'a1b2c3d4-0002-4e00-9a00-operacion0002'; name = 'Revisar Operacion'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ 'op:' + `$('Prep Debounce').first().json.jid }}"; value = '={{ $json.operacionNueva }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1632,48); id = 'a1b2c3d4-0003-4e00-9a00-operacion0003'; name = 'Redis Guardar Operacion'; credentials = $redisCred
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    # Deposito que no cuadra con las cuentas: arma lo que necesita el workflow "Avisar deposito que no
-    # cuadra" (vigilar la primera vez, o escalar). Si no hay nada que hacer devuelve vacio y "Vigilar Monto" ni corre.
-    parameters = @{ jsCode = $prepararVigilanciaCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,416); id = 'b7c8d9e0-0001-4f00-9b00-vigilarmonto1'; name = 'Preparar Vigilancia Monto'
-  },
-  [ordered]@{
-    # Le pasa el caso al workflow "Avisar deposito que no cuadra" y NO lo espera: ese workflow espera por
-    # su cuenta (recordatorio al cliente y aviso al grupo de avisos), o deja el aviso en transferir.
-    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $VIGILAR_MONTO_WORKFLOW_ID; mode = 'id' }
+    # FASE 4 (Atencion e IA): delega tasas/cuentas/operaciones/IA al workflow "Bot JK - Atencion al Cliente e IA" sin esperarlo.
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $IA_WORKFLOW_ID; mode = 'id' }
                     workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
                     mode = 'once'; options = @{ waitForSubWorkflow = $false } }
-    id = 'b7c8d9e0-0002-4f00-9b00-vigilarmonto2'; name = 'Vigilar Monto'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2336,416)
+    id = 'e1f2a3b4-0006-4c00-9c00-ejecutaria01'; name = 'Ejecutar IA'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2120,128)
     onError = 'continueRegularOutput'
-  },
-  # ----- CORRECCION: el cliente mando los datos corregidos que pidio la operadora (23/11) -----
-  [ordered]@{
-    # Si "Revisar Operacion" decidio que llegaron los datos corregidos, arma la publicacion. Si no, vacio.
-    parameters = @{ jsCode = $prepararCorreccionCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,736); id = 'c9d0e1f2-0001-4a00-9c00-correccion01'; name = 'Preparar Correccion'
-  },
-  [ordered]@{
-    # Que se le contesta (lo decide "Revisar Operacion"):
-    #   gracias -> sticker A SU ORDEN | callar -> nada | todo lo demas -> la IA
-    # Lo que no calce en ninguna regla sale por la salida de respaldo, hacia la IA: si algo
-    # falla, el bot contesta como antes en vez de quedarse callado.
-    parameters = @{ options = @{ fallbackOutput = 'extra'; renameFallbackOutput = 'ia' }; rules = @{ values = @(
-      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'q-gracias'; leftValue = "={{ `$('Revisar Operacion').first().json.accion }}"; rightValue = 'gracias'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'gracias' },
-      @{ conditions = @{ options = @{ typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }; conditions = @( @{ id = 'q-callar'; leftValue = "={{ `$('Revisar Operacion').first().json.accion }}"; rightValue = 'callar'; operator = @{ operation = 'equals'; type = 'string' } } ); combinator = 'and' }; renameOutput = $true; outputKey = 'callar' }
-    ) } }
-    type = 'n8n-nodes-base.switch'; typeVersion = 3.2; position = @(1984,48); id = 'a1b2c3d4-0005-4e00-9a00-cierres00005'; name = '¿Qué Responder?'
-  },
-  [ordered]@{
-    # "gracias" -> sticker A SU ORDEN, sin pasar por la IA.
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Prep Debounce").first().json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-a-su-orden.webp" }'; options = @{} }
-    id = 'a1b2c3d4-0006-4e00-9a00-cierres00006'; name = 'Sticker A Su Orden'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2160,208)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    # Anota si la respuesta de la IA fue una pregunta ('1') o no ('0'). Ver "Redis Leer Pregunta".
-    parameters = @{ operation = 'set'; key = "={{ 'preg:' + `$('Prep Debounce').first().json.jid }}"; value = '={{ /[?¿]/.test(String($json.output || "")) ? "1" : "0" }}'; keyType = 'string'; expire = $true; ttl = $SEG_MEMORIA_OPERACION }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1392,592); id = 'a1b2c3d4-0007-4e00-9a00-cierres00007'; name = 'Redis Marcar Pregunta'; credentials = $redisCred
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    # Se usa el texto SIN la linea del comando ("modo mayor"/"modo detal"), para que el agente no
-    # crea que el cliente le pregunto algo sobre tarifas. Si no hubo comando, es el mensaje tal cual.
-    parameters = @{ promptType = 'define'; text = "={{ ((`$('Detectar Comando Admin').first().json.textoLimpio || `$('Combinar').item.json.mensajeCombinado) + (`$('Revisar Operacion').first().json.notaIA || '')).replace(/ Huella: [0-9a-f]+/gi, '') }}"; options = @{ systemMessage = $systemMsg } }
-    type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1; position = @(1960,128); id = '2ac354a3-fe77-4708-80c5-b238454cfdd6'; name = 'AI Agent'; executeOnce = $true
-    retryOnFail = $true; maxTries = 3; waitBetweenTries = 3000
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $separarRespuestaCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2180,128); id = 'cc99dd00-ee11-4727-9ccc-separarresp1'; name = 'Separar Respuesta'
   },
   [ordered]@{
     parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = "={{ `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
     type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2320,128); id = '02d01e05-a9f8-4caa-a02e-37a660aa662c'; name = 'Enviar texto a WhatsApp'
     retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
     credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $detectarCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,320); id = 'aa11bb22-cc33-4d44-9e55-detasesor001'; name = 'Detectar Asesor'
-  },
-  [ordered]@{
-    # El aviso de "este cliente quiere un asesor" va al grupo "Notificaciones Clientes",
-    # creado el 18/11 solo para esto. NO al grupo de operaciones, donde llegan comprobantes
-    # y cuentas: Kelvin los quiere separados.
-    # Para mandarlo a otro lado se cambia este remoteJid: otro grupo es otro id terminado
-    # en @g.us, y una persona es <numero>@s.whatsapp.net.
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = '120363413942097019@g.us'; messageText = '={{ $json.alerta }}'; options_message = @{} }
-    type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2420,320); id = 'bb22cc33-dd44-4e55-9f66-notasesor001'; name = 'Notificar Asesor'
-    retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
-    credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ model = 'gpt-4o'; options = @{ temperature = 0.2 } }
-    id = '073e3eb0-3806-4654-8016-ed7207a45715'; name = 'OpenAI Model'; type = '@n8n/n8n-nodes-langchain.lmChatOpenAi'; typeVersion = 1; position = @(1820,400)
-    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
-  },
-  [ordered]@{
-    parameters = @{ sessionIdType = 'customKey'; sessionKey = "={{ `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; contextWindowLength = 15; sessionTTL = 259200 }
-    id = 'bff6d1ec-1a12-45f2-a96a-327e1edd3f0e'; name = 'Memoria de Chat'; type = '@n8n/n8n-nodes-langchain.memoryRedisChat'; typeVersion = 1.6; position = @(2040,400)
-    credentials = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para Cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $detectarAprobacionCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2200,220); id = 'aa11bb22-cc33-4170-9aaa-aprobacion001'; name = 'Detectar Aprobación'
-  },
-  [ordered]@{
-    # Fuera de horario: la operacion completa queda 'en_espera' (no se publica). Ver el codigo.
-    parameters = @{ jsCode = $armarFilasNocheCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2160,-128); id = 'a1b2c3d4-0012-4e00-9a00-horario000012'; name = 'Armar Filas Noche'
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    # Agrupa las filas nocturnas en un solo paquete para "Bot JK - Publicar y Registrar Operacion".
-    parameters = @{ jsCode = "// Agrupa las filas nocturnas en un solo paquete para `"Bot JK - Publicar y Registrar Operacion`".`nconst filas = `$input.all().map(i => i.json).filter(Boolean);`nif (!filas.length) return [];`nreturn [{ json: { modoPublicar: 'noche', filas } }];" }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2380,-128); id = 'e1f2a3b4-0003-4c00-9c00-pubnoche0001'; name = 'Empaquetar Noche'
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    # FASE 2: le pasa aprobar / correccion / noche al workflow "Bot JK - Publicar y Registrar Operacion" sin esperarlo.
-    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $OPERACION_PUBLICAR_WORKFLOW_ID; mode = 'id' }
-                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
-                    mode = 'once'; options = @{ waitForSubWorkflow = $false } }
-    id = 'e1f2a3b4-0004-4c00-9c00-publicar0001'; name = 'Ejecutar Publicacion'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2900,320)
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    parameters = @{ name = 'calculadora_remesas'; description = 'Convierte montos de dinero entre paises/monedas con las tasas oficiales del dia de JK Remesas. Usala para cualquier conversion de monto, para cruces entre dos paises, o cuando intervengan dolares, USDT o euros. Devuelve el resultado exacto.'; language = 'javaScript'; jsCode = $toolCode; specifyInputSchema = $true; schemaType = 'manual'; inputSchema = $inputSchema }
-    type = '@n8n/n8n-nodes-langchain.toolCode'; typeVersion = 1.1; position = @(2200,400); id = 'b1f2c3d4-0000-4a00-9000-aabbccddeeff'; name = 'Calculadora de Conversion'
   }
 )
 
@@ -3306,34 +3167,12 @@ $connections = [ordered]@{
   'Combinar'               = @{ main = @( ,@( @{ node='Consultar Admins'; type='main'; index=0 } ) ) }
   'Consultar Admins'       = @{ main = @( ,@( @{ node='Detectar Comando Admin'; type='main'; index=0 } ) ) }
   'Detectar Comando Admin' = @{ main = @( ,@( @{ node='¿Es Comando Admin?'; type='main'; index=0 } ) ) }
-  '¿Es Comando Admin?'     = @{ main = (@( ,@( @{ node='Redis Guardar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) )) }
+  '¿Es Comando Admin?'     = @{ main = (@( ,@( @{ node='Redis Guardar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Preparar Contexto IA'; type='main'; index=0 } ) )) }
   'Redis Guardar Modo Admin' = @{ main = @( ,@( @{ node='¿Solo el Comando?'; type='main'; index=0 } ) ) }
   # true = solo el comando -> avisa y listo. false = venia una pregunta pegada -> sigue y la responde.
-  '¿Solo el Comando?'      = @{ main = (@( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Consultar Tasas'; type='main'; index=0 } ) )) }
+  '¿Solo el Comando?'      = @{ main = (@( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Preparar Contexto IA'; type='main'; index=0 } ) )) }
   'Confirmar Modo Admin'   = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
-  'Consultar Tasas'        = @{ main = @( ,@( @{ node='Consultar Cuentas'; type='main'; index=0 } ) ) }
-  'Consultar Cuentas'      = @{ main = @( ,@( @{ node='Consultar Mayorista'; type='main'; index=0 } ) ) }
-  'Consultar Mayorista'    = @{ main = @( ,@( @{ node='Consultar Cliente'; type='main'; index=0 } ) ) }
-  'Consultar Cliente'      = @{ main = @( ,@( @{ node='Redis Leer Modo Admin'; type='main'; index=0 } ) ) }
-  'Redis Leer Modo Admin'  = @{ main = @( ,@( @{ node='Code in JavaScript'; type='main'; index=0 } ) ) }
-  'Code in JavaScript'     = @{ main = @( ,@( @{ node='Redis Leer Operacion'; type='main'; index=0 } ) ) }
-  'Redis Leer Operacion'   = @{ main = @( ,@( @{ node='Redis Leer Pregunta'; type='main'; index=0 } ) ) }
-  'Redis Leer Pregunta'    = @{ main = @( ,@( @{ node='Consultar Operaciones WhatsApp'; type='main'; index=0 } ) ) }
-  'Consultar Operaciones WhatsApp' = @{ main = @( ,@( @{ node='Revisar Operacion'; type='main'; index=0 } ) ) }
-  'Revisar Operacion'      = @{ main = @( ,@( @{ node='Redis Guardar Operacion'; type='main'; index=0 } ) ) }
-  'Redis Guardar Operacion' = @{ main = @( ,@( @{ node='¿Qué Responder?'; type='main'; index=0 }, @{ node='Armar Filas Noche'; type='main'; index=0 }, @{ node='Preparar Vigilancia Monto'; type='main'; index=0 }, @{ node='Preparar Correccion'; type='main'; index=0 } ) ) }
-  'Preparar Vigilancia Monto' = @{ main = @( ,@( @{ node='Vigilar Monto'; type='main'; index=0 } ) ) }
-  'Preparar Correccion'    = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
-  'Armar Filas Noche'      = @{ main = @( ,@( @{ node='Empaquetar Noche'; type='main'; index=0 } ) ) }
-  'Empaquetar Noche'       = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
-  '¿Qué Responder?'        = @{ main = (@( ,@( @{ node='Sticker A Su Orden'; type='main'; index=0 } ) ) + @( ,@() ) + @( ,@( @{ node='AI Agent'; type='main'; index=0 } ) )) }
-  'OpenAI Model'           = @{ ai_languageModel = @( ,@( @{ node='AI Agent'; type='ai_languageModel'; index=0 } ) ) }
-  'Memoria de Chat'        = @{ ai_memory = @( ,@( @{ node='AI Agent'; type='ai_memory'; index=0 } ) ) }
-  'Calculadora de Conversion' = @{ ai_tool = @( ,@( @{ node='AI Agent'; type='ai_tool'; index=0 } ) ) }
-  'AI Agent'               = @{ main = @( ,@( @{ node='Separar Respuesta'; type='main'; index=0 }, @{ node='Detectar Asesor'; type='main'; index=0 }, @{ node='Detectar Aprobación'; type='main'; index=0 }, @{ node='Redis Marcar Pregunta'; type='main'; index=0 } ) ) }
-  'Separar Respuesta'      = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
-  'Detectar Asesor'        = @{ main = @( ,@( @{ node='Notificar Asesor'; type='main'; index=0 } ) ) }
-  'Detectar Aprobación'    = @{ main = @( ,@( @{ node='Ejecutar Publicacion'; type='main'; index=0 } ) ) }
+  'Preparar Contexto IA'   = @{ main = @( ,@( @{ node='Ejecutar IA'; type='main'; index=0 } ) ) }
 }
 
 $body = [ordered]@{ name = 'Bot WhatsApp CAMBIOS JK'; nodes = $nodes; connections = $connections; settings = @{ executionOrder = 'v1' } }

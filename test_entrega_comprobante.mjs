@@ -16,9 +16,11 @@ const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
 const codeOp = n => wfOp.nodes.find(x => x.name === n).parameters.jsCode;
 const codePub = n => wfPub.nodes.find(x => x.name === n).parameters.jsCode;
+const codeIa = n => wfIa.nodes.find(x => x.name === n).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -180,12 +182,14 @@ console.log('=== 6) El id del mensaje con la cuenta viaja hasta el final ===');
   const detectar = (mensajes) => {
     const combinado = mensajes.map(m => m.texto).join(SALTO + SALTO);
     const $ = (n) => {
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: combinado, mensajes, body: { data: {
+        key: { remoteJid: CLIENTE }, pushName: 'Maigre Herrera' } } } }) };
       if (n === 'Combinar') return { item: { json: { mensajeCombinado: combinado, mensajes } } };
       if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
         key: { remoteJid: CLIENTE }, pushName: 'Maigre Herrera' } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
-    return new Function('$', code('Detectar Aprobación'))($);
+    return new Function('$', codeIa('Detectar Aprobación'))($);
   };
 
   const r = detectar([

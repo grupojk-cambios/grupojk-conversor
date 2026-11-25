@@ -13,7 +13,8 @@ import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n);
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -37,6 +38,7 @@ function revisar(mensajes, op) {
   try {
     const $ = (n) => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal' } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);
@@ -58,6 +60,8 @@ function prep(texto) {
 function detectar(ro) {
   const $ = (n) => {
     if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [], body: { data: {
+      key: { remoteJid: '584120000000@s.whatsapp.net' }, pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
     if (n === 'Combinar') return { item: { json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [] } } };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
       key: { remoteJid: '584120000000@s.whatsapp.net' }, pushName: 'Ana' } } } }) };
@@ -634,7 +638,7 @@ console.log('=== 5f) LA CUENTA VIENE EN EL PIE DE LA FOTO (caso real del 24/11) 
 console.log('');
 console.log('=== 6) COMO QUEDA CABLEADO ===');
 {
-  const c = wf.connections;
+  const c = wfIa.connections;
   const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node).join(',');
   chk(sig('Code in JavaScript') === 'Redis Leer Operacion', 'Code in JavaScript -> Redis Leer Operacion');
   chk(sig('Redis Leer Operacion') === 'Redis Leer Pregunta' && sig('Redis Leer Pregunta') === 'Consultar Operaciones WhatsApp'

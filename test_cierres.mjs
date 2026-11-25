@@ -18,7 +18,8 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -45,6 +46,7 @@ function revisar(textos, op, ex) {
     const $ = (n) => {
       if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', sessionId: 'chat',
         nombreCliente: (ex.nombre === undefined ? 'Ana Prueba' : ex.nombre) } }) };
+      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
       if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       if (n === 'Redis Leer Pregunta') {
@@ -197,6 +199,7 @@ console.log('=== 8) Code in JavaScript: el pais por el prefijo (solo por defecto
     const $ = (n) => {
       if (n === 'Consultar Tasas') return uno({ data: TASAS });
       if (n === 'Consultar Cuentas') return uno({ data: CUENTAS });
+      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: jid } } }, nombreCargado: nombre || '' });
       if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: jid } } } });
       if (n === 'Solo Estos Numeros') return uno({ nombreCargado: nombre || '' });
       if (n === 'Consultar Cliente') return { first: () => ({ json: (historial || [])[0] || {} }), all: () => (historial || []).map(json => ({ json })) };
@@ -229,7 +232,11 @@ console.log('=== 8) Code in JavaScript: el pais por el prefijo (solo por defecto
 console.log('');
 console.log('=== 9) Como quedo conectado ===');
 {
-  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const saleV12 = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const sale = (n, i) => ((((wfIa.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  chk(saleV12('¿Es Comando Admin?', 1).join() === 'Preparar Contexto IA' && saleV12('¿Solo el Comando?', 1).join() === 'Preparar Contexto IA'
+      && saleV12('Preparar Contexto IA').join() === 'Ejecutar IA' && sale('Cuando lo Llama el Bot').join() === 'Consultar Tasas',
+      'v12 -> Preparar Contexto IA -> Ejecutar IA -> Cuando lo Llama el Bot -> Consultar Tasas');
   chk(sale('Redis Leer Operacion').join() === 'Redis Leer Pregunta', 'Redis Leer Operacion -> Redis Leer Pregunta', '-> ' + sale('Redis Leer Operacion'));
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp' && sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion',
       'Redis Leer Pregunta -> Consultar Operaciones WhatsApp -> Revisar Operacion');
@@ -247,7 +254,7 @@ console.log('=== 9) Como quedo conectado ===');
 
   const st = nodo('Sticker A Su Orden');
   chk(/sticker-a-su-orden\.webp/.test(st.parameters.jsonBody), 'el sticker es el de A SU ORDEN');
-  chk(/Prep Debounce/.test(st.parameters.jsonBody) && /sendSticker/.test(st.parameters.url), 'se manda al chat del cliente');
+  chk(/Cuando lo Llama el Bot/.test(st.parameters.jsonBody) && /sendSticker/.test(st.parameters.url), 'se manda al chat del cliente');
   chk(!!(st.credentials && st.credentials.httpHeaderAuth), 'con la credencial de Evolution (sin apikey en el codigo)');
 
   const leer = nodo('Redis Leer Pregunta'), marcar = nodo('Redis Marcar Pregunta');

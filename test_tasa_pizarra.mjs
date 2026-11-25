@@ -12,7 +12,7 @@
 import { readFileSync } from 'fs';
 import { calcularConversion, calcularConversionInversa } from './src/motor.js';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const code = wf.nodes.find(n => n.name === 'Calculadora de Conversion').parameters.jsCode;
 
 const pais = (nombre, codigo, envio, recibo, extra) => Object.assign({ nombre, codigo, moneda: codigo, tasaProveedorEnvio: envio, margenEnvio: 6,

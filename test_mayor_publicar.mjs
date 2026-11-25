@@ -301,7 +301,8 @@ console.log('');
 console.log('=== 10) EL HORARIO ES EL MISMO DEL BOT DEL DETAL ===');
 {
   const sacar = js => { const i = js.indexOf('// ===== HORARIO DE ATENCION'); const f = js.indexOf('\n}\n', js.indexOf('function horarioDe')); return js.slice(i, f + 3); };
-  const delBot = sacar(nodo(bot, 'Revisar Operacion').parameters.jsCode), delMayor = sacar(code('Decidir Publicacion'));
+  const botIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
+  const delBot = sacar(nodo(botIa, 'Revisar Operacion').parameters.jsCode), delMayor = sacar(code('Decidir Publicacion'));
   chk(delBot.length > 500 && delBot === delMayor, 'el bloque de horario es identico al de "Revisar Operacion" del bot', '-> ' + delBot.length + ' / ' + delMayor.length);
 }
 

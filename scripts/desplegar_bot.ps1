@@ -30,7 +30,7 @@ if($LASTEXITCODE -ne 0){
 }
 
 Publish-N8nWorkflow (Get-N8nCtx) 'NWmStkbNexV7s5xY' (Join-Path $raiz 'workflow_bot_whatsapp_v12.json') `
-  @('Eres asistente de *Cambios JK', 'tarifa MAYOR ', 'tu comprobante! ')
+  @('Preparar Contexto IA', 'Ejecutar IA', 'Solo Estos Numeros')
 
 Write-Host ''
 Write-Host 'LISTO. El bot de WhatsApp quedo igual de activo/inactivo que estaba antes.'
