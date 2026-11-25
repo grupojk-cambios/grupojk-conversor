@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba el SELLO DE FECHA que el bot de WhatsApp le pone a la cuenta del dia.
 //
 // La cuenta rota cada dia, asi que al cliente hay que decirle que la que recibe
@@ -10,7 +18,7 @@
 import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json','utf8').replace(/^\uFEFF/,''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json','utf8').replace(/^\uFEFF/,''));
-const codigo = wfIa.nodes.find(n=>n.name==='Code in JavaScript').parameters.jsCode;
+const codigo = _findNode(wfIa.nodes, 'Code in JavaScript').parameters.jsCode;
 const CSV='https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const tasas = await (await fetch(CSV+'&n='+Date.now())).text();
 
@@ -28,10 +36,10 @@ function correr(iso){
   const real = Date.now; Date.now = () => new Date(iso).getTime();
   try {
     const $ = (n) => { const uno = j => ({first:()=>({json:j}),all:()=>[{json:j}]});
-      if(n==='Consultar Tasas') return uno({data:tasas});
-      if(n==='Consultar Cuentas') return uno({data:cuentasCSV});
-      if(n==='Cuando lo Llama el Bot') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
-      if(n==='Webhook Evolution API') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
+      const s = _strip(n); if(s==='Consultar Tasas') return uno({data:tasas});
+      if(s==='Consultar Cuentas') return uno({data:cuentasCSV});
+      if(s==='Cuando lo Llama el Bot') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
+      if(s==='Webhook Evolution API') return uno({body:{data:{key:{remoteJid:'584121112233@s.whatsapp.net'}}}});
       return {first:()=>({json:{}}),all:()=>[]}; };
     return new Function('$',codigo)($)[0].json;
   } finally { Date.now = real; }
@@ -73,7 +81,7 @@ ok(r.sessionId === '584121112233@s.whatsapp.net', 'el agente recibe sessionId (e
 // sin respuesta. Cada ejecucion trae UN solo mensaje, asi que .first() da lo mismo y nunca se pierde.
 const conItem = [...wf.nodes, ...wfIa.nodes].filter(n => /Webhook Evolution API'\)\.item|Cuando lo Llama el Bot'\)\.item/.test(JSON.stringify(n.parameters || {}))).map(n => n.name);
 ok(conItem.length === 0, 'ningun nodo lee el webhook con .item (se usa .first())', '-> ' + conItem.join(', '));
-const mem = wfIa.nodes.find(n => n.name === 'Memoria de Chat');
+const mem = _findNode(wfIa.nodes, 'Memoria de Chat');
 ok(/Cuando lo Llama el Bot'\)\.first\(\)\.json\.body\.data\.key\.remoteJid/.test(mem.parameters.sessionKey || ''), 'la llave de la memoria usa .first()', '-> ' + mem.parameters.sessionKey);
 console.log('');
 console.log(f ? ('FALLARON '+f) : 'TODO OK');

@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 const SHEET = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?gid=908170655&single=true&output=csv";
 const Q = '"';
 function parseCSV(text){

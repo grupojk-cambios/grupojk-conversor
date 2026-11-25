@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la aprobacion: comprobante + cuenta destino.
 //
 // El caso real del 19/11 con Maigreth, que es lo que destapo el problema:
@@ -18,7 +26,7 @@ const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').rep
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n)).parameters.jsCode;
+const code = n => (_findNode(wf.nodes, n) || _findNode(wfMed.nodes, n) || _findNode(wfIa.nodes, n) || _findNode(wfDeb.nodes, n)).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -29,10 +37,10 @@ const chk = (ok, etiqueta, detalle) => {
 // Corre "Detectar Aprobacion" con el texto ya combinado que le llegaria.
 function detectar(mensajeCombinado) {
   const $ = (n) => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado, body: { data: {
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado, body: { data: {
       key: { remoteJid: '593962907849@s.whatsapp.net' }, pushName: 'Maigre Herrera' } } } }) };
-    if (n === 'Combinar') return { item: { json: { mensajeCombinado } } };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
+    if (n === 'Combinar' || _strip(n) === 'Combinar') return { item: { json: { mensajeCombinado } } };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
       key: { remoteJid: '593962907849@s.whatsapp.net' }, pushName: 'Maigre Herrera' } } } }) };
     return { item: { json: {} }, first: () => ({ json: {} }) };
   };
@@ -148,13 +156,13 @@ console.log('=== 5) Cuanto espera antes de contestar ===');
   chk(normal.espera === 30, 'un mensaje normal sigue en 30s', '-> ' + normal.espera);
   chk(normal.esComprobante === false, 'y no dispara el sticker');
 
-  const sigV12 = n => (((wf.connections[n] && wf.connections[n].main) || [])[0] || []).map(c => c.node).join();
-  const sigDeb = n => (((wfDeb.connections[n] && wfDeb.connections[n].main) || [])[0] || []).map(c => c.node).join();
-  const ejDeb = wf.nodes.find(x => x.name === 'Ejecutar Debounce');
+  const sigV12 = n => (((wf.connections[n] && wf.connections[n].main) || [])[0] || []).map(c => _strip(c.node)).join();
+  const sigDeb = n => (((_getConn(wfDeb.connections, n) && _getConn(wfDeb.connections, n).main) || [])[0] || []).map(c => _strip(c.node)).join();
+  const ejDeb = _findNode(wf.nodes, 'Ejecutar Debounce');
   chk(!!ejDeb && ejDeb.type === 'n8n-nodes-base.executeWorkflow' && ejDeb.parameters?.workflowId?.value === 'lUfmCp6cNHVcaVrh'
       && ejDeb.parameters?.options?.waitForSubWorkflow === false && sigV12('Es mensaje de cliente?') === 'Ejecutar Debounce',
       'v12: Es mensaje de cliente? -> Ejecutar Debounce (lUfmCp6cNHVcaVrh, sin esperar)');
-  const ej = wfDeb.nodes.find(x => x.name === 'Ejecutar Media');
+  const ej = _findNode(wfDeb.nodes, 'Ejecutar Media');
   chk(!!ej && ej.type === 'n8n-nodes-base.executeWorkflow' && ej.parameters?.workflowId?.value === 'UMQqyE6H4HVrIDoy',
       'Ejecutar Media apunta a UMQqyE6H4HVrIDoy');
   chk(ej && ej.parameters?.options?.waitForSubWorkflow === true, 'espera al sub-workflow de Media (sincrono, sin Wait)');

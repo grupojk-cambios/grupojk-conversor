@@ -42,7 +42,7 @@ function appParse(csv){
 // la comparacion mintiera. Ahora se lee tal cual del JSON que se despliega.
 import { readFileSync } from 'fs';
 const WF = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^\uFEFF/, ''));
-const NODO = WF.nodes.find(n => n.name === 'Calculadora de Conversion');
+const NODO = WF.nodes.find(n => n.name === 'Calculadora de Conversion' || n.name.endsWith('Calculadora de Conversion'));
 if (!NODO) throw new Error('No encontre el nodo "Calculadora de Conversion" en el workflow');
 const CODIGO_NODO = NODO.parameters.jsCode || NODO.parameters.code || '';
 

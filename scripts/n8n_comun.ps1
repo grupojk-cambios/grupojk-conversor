@@ -177,10 +177,16 @@ function Publish-N8nWorkflow($ctx, $wfId, $jsonPath, $anclas) {
   $new = $txt | ConvertFrom-Json
   $rp=0; $rc=0; $nuevos=0
   foreach($n in $new.nodes){
-    if($pos.ContainsKey($n.name)){ $n.position = $pos[$n.name]; $rp++ } else { $nuevos++ }
+    $clean = $n.name -replace '^\d+[\w\.]*\s*', ''
+    # Si el nodo ya tiene posicion en el JSON nuevo, respetamos la del JSON nuevo; si no, la del vivo
+    if(-not $n.position -and $pos.ContainsKey($n.name)){ $n.position = $pos[$n.name]; $rp++ }
+    elseif(-not $n.position -and $pos.ContainsKey($clean)){ $n.position = $pos[$clean]; $rp++ }
+    else { $rp++ }
+
     $tieneCred = ($n.PSObject.Properties.Name -contains 'credentials') -and $n.credentials
-    if(-not $tieneCred -and $creds.ContainsKey($n.name)){
-      $n | Add-Member -NotePropertyName credentials -NotePropertyValue $creds[$n.name] -Force
+    $credKey = if($creds.ContainsKey($n.name)){ $n.name } elseif($creds.ContainsKey($clean)){ $clean } else { $null }
+    if(-not $tieneCred -and $credKey){
+      $n | Add-Member -NotePropertyName credentials -NotePropertyValue $creds[$credKey] -Force
       $rc++
     }
   }

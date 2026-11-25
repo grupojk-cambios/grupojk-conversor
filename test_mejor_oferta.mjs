@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la eleccion de MEJOR OFERTA (nodo "Armar Borrador IA").
 // Criterio del usuario: ENVIO gana el mas ALTO, RECIBO gana el mas BAJO.
 // Se simula la respuesta de OpenAI con los datos REALES de los 3 proveedores del 10/08.
@@ -5,7 +13,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^﻿/, ''));
-const codigo = wf.nodes.find(n => n.name === 'Armar Borrador IA').parameters.jsCode;
+const codigo = _findNode(wf.nodes, 'Armar Borrador IA').parameters.jsCode;
 
 const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const csv = await (await fetch(CSV + '&n=' + Date.now())).text();

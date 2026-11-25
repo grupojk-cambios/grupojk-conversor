@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del CABLEADO del Mayor (Fase 1): como el bot principal le pasa los grupos de clientes al
 // workflow "Mayor: escuchar y registrar", y que NADA de eso pueda mandar un mensaje.
 //
@@ -16,7 +24,7 @@ import { readFileSync } from 'fs';
 
 const bot = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const mayor = JSON.parse(readFileSync('workflow_mayor.json', 'utf8').replace(/^﻿/, ''));
-const nodo = (wf, n) => wf.nodes.find(x => x.name === n);
+const nodo = (wf, n) => _findNode(wf.nodes, n);
 const code = n => nodo(bot, n).parameters.jsCode;
 
 let fallos = 0;
@@ -39,8 +47,8 @@ function filtrar({ jid, fromMe = false, texto = 'hola', mensaje, grupos = [FILA_
   const t = Object.assign({ 'Clientes Detal Permitidos': [{ whatsapp: '593990000050', nombre: 'Cliente Detal' }], 'Clientes Mayor Permitidos': [], 'Perfiles Detal App': [], 'Perfiles Mayor App': [],
                             'Redis Leer Pausa': [{}], 'Redis Leer Aviso': [{}] }, tablas || {});
   const $ = (n) => {
-    if (n === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
-    if (n === 'Grupos Mayor') {
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
+    if (n === 'Grupos Mayor' || _strip(n) === 'Grupos Mayor') {
       if (gruposCaido === 'sin nodo') throw new Error('Node "Grupos Mayor" not executed');
       const filas = gruposCaido ? [{ error: { message: 'Supabase no responde' } }] : (grupos.length ? grupos : [{}]);
       return { all: () => filas.map(json => ({ json })), first: () => ({ json: filas[0] }) };
@@ -104,8 +112,8 @@ console.log('=== 3) Router Pausa y el nodo que llama al workflow ===');
   // Despues de "mayor" se agrego "verificar" (23/11), tambien al final: las de antes no cambian de numero.
   chk(sw.join() === 'seguir,pausar,reanudar,avisar,entregar,recordarFoto,mayor,verificar', 'la salida "mayor" sigue siendo la 7 (las nuevas van despues)', '-> ' + sw.join());
   const salidas = (bot.connections['Router Pausa'] || {}).main || [];
-  chk(salidas.length === 8 && salidas[6].map(c => c.node).join() === 'Mayor Escuchar', 'la salida 7 va solo a "Mayor Escuchar"', '-> ' + (salidas[6] || []).map(c => c.node));
-  chk(salidas.slice(0, 6).map(s => s.map(c => c.node).join()).join('|') === 'Es mensaje de cliente?|Redis Guardar Pausa|Redis Borrar Pausa|Avisar Pausa|Ejecutar Operadoras|Ejecutar Operadoras',
+  chk(salidas.length === 8 && salidas[6].map(c => _strip(c.node)).join() === 'Mayor Escuchar', 'la salida 7 va solo a "Mayor Escuchar"', '-> ' + (salidas[6] || []).map(c => _strip(c.node)));
+  chk(salidas.slice(0, 6).map(s => s.map(c => _strip(c.node)).join()).join('|') === 'Es mensaje de cliente?|Redis Guardar Pausa|Redis Borrar Pausa|Avisar Pausa|Ejecutar Operadoras|Ejecutar Operadoras',
       'las 6 salidas de antes siguen yendo donde iban (entregar y recordarFoto -> Ejecutar Operadoras)');
   const cond = nodo(bot, 'Router Pausa').parameters.rules.values[6].conditions.conditions[0];
   chk(cond.rightValue === 'mayor' && /accionPausa/.test(cond.leftValue), 'la regla compara accionPausa con "mayor"');
@@ -114,7 +122,7 @@ console.log('=== 3) Router Pausa y el nodo que llama al workflow ===');
   chk(e.parameters.workflowId && e.parameters.workflowId.value === 'HIERZLV4lwtuBRbZ', 'apunta al workflow "Mayor: escuchar y registrar"', '-> ' + (e.parameters.workflowId || {}).value);
   chk(e.parameters.options && e.parameters.options.waitForSubWorkflow === false, 'no espera al sub-workflow (el bot no se frena por el mayor)');
   chk(e.onError === 'continueRegularOutput', 'si el sub-workflow falla, el bot sigue');
-  const sale = (n) => (((bot.connections[n] || {}).main || [])[0] || []).map(c => c.node).join();
+  const sale = (n) => (((bot.connections[n] || {}).main || [])[0] || []).map(c => _strip(c.node)).join();
   chk(sale('Mayor Escuchar') === '', 'y no sigue a ningun otro nodo (despues de llamarlo, termina)');
   chk(sale('Perfiles Mayor App') === 'Grupos Mayor' && sale('Grupos Mayor') === 'Redis Leer Pausa', 'Grupos Mayor va entre Perfiles Mayor App y Redis Leer Pausa');
   const g = nodo(bot, 'Grupos Mayor');

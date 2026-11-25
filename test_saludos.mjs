@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de los SALUDOS del bot (pedido de Kelvin, 24/11): "que sepa dar los buenos dias, buenas tardes,
 // buenas noches, y si alguien le saluda que conteste".
 //
@@ -16,7 +24,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 
 let fallos = 0;
@@ -29,10 +37,10 @@ function revisar(textos, op, extra) {
   try {
     const mensajes = textos.map((t, i) => ({ id: 'M' + i, texto: t }));
     const $ = n => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: Object.assign({ cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal', nombreCliente: 'Ana Prueba' }, extra || {}) }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: Object.assign({ cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal', nombreCliente: 'Ana Prueba' }, extra || {}) }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);
     };
     return new Function('$', code('Revisar Operacion'))($)[0].json;

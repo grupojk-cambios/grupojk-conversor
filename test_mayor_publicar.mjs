@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la FASE 2 del mayor: el bot publica los RST/RCT en los grupos de los bancos
 // (reglas de "EJEMPLOS PARA EL BOT/protocolo_rst_rct.md" y de Kelvin, 24/11).
 //
@@ -15,7 +23,7 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_mayor.json', 'utf8').replace(/^﻿/, ''));
 const bot = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = (w, n) => w.nodes.find(x => x.name === n);
+const nodo = (w, n) => _findNode(w.nodes, n);
 const code = n => nodo(wf, n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 

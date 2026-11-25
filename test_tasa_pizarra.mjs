@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba: la tasa que da el bot se escribe COMO EN LA PIZARRA y en el cotizador de la app.
 //
 // Por que existe: el 23/11 el bot le cotizo a una clienta de Venezuela a Ecuador y escribio
@@ -13,7 +21,7 @@ import { readFileSync } from 'fs';
 import { calcularConversion, calcularConversionInversa } from './src/motor.js';
 
 const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const code = wf.nodes.find(n => n.name === 'Calculadora de Conversion').parameters.jsCode;
+const code = _findNode(wf.nodes, 'Calculadora de Conversion').parameters.jsCode;
 
 const pais = (nombre, codigo, envio, recibo, extra) => Object.assign({ nombre, codigo, moneda: codigo, tasaProveedorEnvio: envio, margenEnvio: 6,
   tasaProveedorRecibo: recibo, margenRecibo: 6, margenEnvioMayor: 3, margenReciboMayor: 3, factorEUR: 0, factorUSDT: 0, ciudades: '' }, extra || {});
@@ -64,7 +72,7 @@ for (const modo of ['detal', 'mayor']) {
 console.log('');
 console.log('=== El prompt le dice a la IA como escribir la linea "Tasa:" ===');
 {
-  const agente = wf.nodes.find(n => n.name === 'AI Agent');
+  const agente = _findNode(wf.nodes, 'AI Agent');
   const prompt = JSON.stringify(agente.parameters);
   chk(prompt.includes('tasaCruzada') && prompt.includes('unidadTasa'), 'la regla usa tasaCruzada + unidadTasa de la herramienta');
 }

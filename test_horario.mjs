@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la Entrega 3: el bot fuera de horario.
 //
 // Horario (hora de Ecuador): lunes a sabado 9:00 a 18:00, domingo 10:00 a 14:00.
@@ -16,7 +24,7 @@ import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfIa.nodes, n) || _findNode(wfDeb.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -35,12 +43,12 @@ function revisar(textos, op) {
   const real = Date.now; Date.now = () => reloj;
   try {
     const $ = (n) => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
-      if (n === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
-      if (n === 'Consultar Operaciones WhatsApp') return { all: () => [{ json: {} }] };
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Redis Leer Pregunta' || _strip(n) === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
+      if (n === 'Consultar Operaciones WhatsApp' || _strip(n) === 'Consultar Operaciones WhatsApp') return { all: () => [{ json: {} }] };
       throw new Error('nodo inesperado: ' + n);
     };
     const r = new Function('$', code('Revisar Operacion'))($)[0].json;
@@ -84,11 +92,11 @@ console.log('=== 2) Captura + cuenta de noche: "Recibido", en espera, NO se publ
   chk(r.op.hechos.length === 1, 'recuerda el deposito (si la reenvia, sale repetida)');
 
   const $ = n => {
-    if (n === 'Revisar Operacion') return { first: () => ({ json: r }) };
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: '', mensajes: [], body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
-    if (n === 'Combinar') return { item: { json: { mensajeCombinado: '', mensajes: [] } } };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } } } }) };
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
+    if (n === 'Revisar Operacion' || _strip(n) === 'Revisar Operacion') return { first: () => ({ json: r }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: '', mensajes: [], body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
+    if (n === 'Combinar' || _strip(n) === 'Combinar') return { item: { json: { mensajeCombinado: '', mensajes: [] } } };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net' }, pushName: 'Ana' } } } }) };
+    if (n === 'Solo Estos Numeros' || _strip(n) === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
     return { item: { json: {} }, first: () => ({ json: {} }) };
   };
   const ap = new Function('$', code('Detectar Aprobación'))($);
@@ -101,7 +109,7 @@ console.log('=== 2) Captura + cuenta de noche: "Recibido", en espera, NO se publ
   chk(filas[0].cuentas[0].texto === CUENTA && filas[0].cuentas[0].monto === 60 && filas[0].cuentas[0].id === 'M1', 'la cuenta con su monto y su mensaje', '-> ' + JSON.stringify(filas[0].cuentas[0].monto));
 
   const r2 = revisar([captura('100.00', '44440002'), CUENTA + SALTO + SALTO + CUENTA2]);
-  const $2 = n => n === 'Revisar Operacion' ? { first: () => ({ json: r2 }) } : $(n);
+  const $2 = n => (n === 'Revisar Operacion' || _strip(n) === 'Revisar Operacion') ? { first: () => ({ json: r2 }) } : $(n);
   const f2 = new Function('$', code('Armar Filas Noche'))($2).map(i => i.json);
   chk(f2.length === 2 && f2[1].cuentas[0].monto === 40 && f2[1].notas === 'Cuenta 2 de 2 del mismo deposito', 'dos cuentas en un mensaje: dos filas en espera', '-> ' + f2.length);
 }

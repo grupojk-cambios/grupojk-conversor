@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba el CICLO COMPLETO de la memoria de proveedores, ejecutando el codigo REAL de los nodos
 // tal como quedo en el JSON del workflow, contra los mensajes REALES de Kelvin (25/08 - 07/09).
 //
@@ -12,7 +20,7 @@ import { readFileSync } from 'fs';
 // y al purgarse la prueba reventaba.
 const msgs = JSON.parse(readFileSync('pruebas/mensajes_proveedores.json', 'utf8'));
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^\uFEFF/, ''));
-const cod = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const cod = n => _findNode(wf.nodes, n).parameters.jsCode;
 
 const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const csv = await (await fetch(CSV + '&n=' + Date.now())).text();
@@ -26,11 +34,11 @@ const txt = clave => {
 function interpretar(textoMsg, memoria) {
   const $ = (n) => {
     const uno = (j) => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
-    if (n === 'Telegram Trigger')       return uno({ message: { text: textoMsg, chat: { id: 627887509 } } });
-    if (n === 'Redis Leer Pendiente')   return uno({ pendienteRaw: '' });
-    if (n === 'Redis Leer Proveedores') return uno({ provFormatos: JSON.stringify(memoria) });
-    if (n === 'Leer Paises')            return uno({ data: csv });
-    if (n === 'Combinar Mensajes')      return uno({ textoFinal: textoMsg, mensajes: [textoMsg] });
+    if (n === 'Telegram Trigger' || _strip(n) === 'Telegram Trigger')       return uno({ message: { text: textoMsg, chat: { id: 627887509 } } });
+    if (n === 'Redis Leer Pendiente' || _strip(n) === 'Redis Leer Pendiente')   return uno({ pendienteRaw: '' });
+    if (n === 'Redis Leer Proveedores' || _strip(n) === 'Redis Leer Proveedores') return uno({ provFormatos: JSON.stringify(memoria) });
+    if (n === 'Leer Paises' || _strip(n) === 'Leer Paises')            return uno({ data: csv });
+    if (n === 'Combinar Mensajes' || _strip(n) === 'Combinar Mensajes')      return uno({ textoFinal: textoMsg, mensajes: [textoMsg] });
     return uno({});
   };
   return new Function('$', cod('Interpretar Mensaje'))($);
@@ -40,9 +48,9 @@ function interpretar(textoMsg, memoria) {
 function aprender(itemsIM, respuestasIA, memoria) {
   const items = respuestasIA.map(r => ({ json: { choices: [{ message: { content: JSON.stringify(r) } }] } }));
   const $ = (n) => {
-    if (n === 'Interpretar Mensaje')    return { first: () => itemsIM[0], all: () => itemsIM };
-    if (n === 'Leer Paises')            return { first: () => ({ json: { data: csv } }) };
-    if (n === 'Redis Leer Proveedores') return { first: () => ({ json: { provFormatos: JSON.stringify(memoria) } }) };
+    if (n === 'Interpretar Mensaje' || _strip(n) === 'Interpretar Mensaje')    return { first: () => itemsIM[0], all: () => itemsIM };
+    if (n === 'Leer Paises' || _strip(n) === 'Leer Paises')            return { first: () => ({ json: { data: csv } }) };
+    if (n === 'Redis Leer Proveedores' || _strip(n) === 'Redis Leer Proveedores') return { first: () => ({ json: { provFormatos: JSON.stringify(memoria) } }) };
     return { first: () => ({ json: {} }), all: () => [] };
   };
   const $input = { all: () => items };

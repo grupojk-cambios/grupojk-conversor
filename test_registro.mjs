@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la Entrega 2: el registro de cada operacion en Supabase (tabla transacciones_detal_por_whatsapp).
 //
 //   - al publicarse una operacion en transferir se guarda UNA FILA POR CUENTA destino ('en_proceso')
@@ -16,7 +24,7 @@ const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').rep
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfOp.nodes, n) || _findNode(wfPub.nodes, n) || _findNode(wfIa.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -38,12 +46,12 @@ function revisar(textos, op, historial, ex) {
   const real = Date.now; Date.now = () => reloj;
   try {
     const $ = (n) => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
-      if (n === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
-      if (n === 'Consultar Operaciones WhatsApp') {
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', nombreCliente: '' } }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Redis Leer Pregunta' || _strip(n) === 'Redis Leer Pregunta') return { first: () => ({ json: { pregunta: '0' } }) };
+      if (n === 'Consultar Operaciones WhatsApp' || _strip(n) === 'Consultar Operaciones WhatsApp') {
         if (historial === 'CAIDA') return { all: () => [{ json: { error: { message: 'Supabase no responde' } } }], first: () => ({ json: {} }) };
         const filas = (historial && historial.length) ? historial : [{}];   // asi sale el nodo sin filas
         return { all: () => filas.map(json => ({ json })), first: () => ({ json: filas[0] }) };
@@ -77,10 +85,10 @@ console.log('=== 1) Operacion completa -> lo que se guarda en Supabase ===');
   function armar(ro, ap, separadas, idsGrupo, idFoto) {
     const payload = Object.assign({}, ap, { registro: ro.registro });
     const $ = n => {
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
-      if (n === 'Separar Cuentas') return { all: () => separadas.map(json => ({ json })) };
-      if (n === 'Enviar Cuenta Grupo') return { all: () => idsGrupo.map(id => ({ json: { key: { id } } })) };
-      if (n === 'Enviar Imagen Grupo') return { first: () => ({ json: { key: { id: idFoto } } }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
+      if (n === 'Separar Cuentas' || _strip(n) === 'Separar Cuentas') return { all: () => separadas.map(json => ({ json })) };
+      if (n === 'Enviar Cuenta Grupo' || _strip(n) === 'Enviar Cuenta Grupo') return { all: () => idsGrupo.map(id => ({ json: { key: { id } } })) };
+      if (n === 'Enviar Imagen Grupo' || _strip(n) === 'Enviar Imagen Grupo') return { first: () => ({ json: { key: { id: idFoto } } }) };
       throw new Error('nodo inesperado: ' + n);
     };
     return new Function('$', code('Armar Fila Supabase'))($).map(i => i.json);
@@ -215,9 +223,9 @@ console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviad
   }
   const base = { stanzaId: 'GRUPO1', claveEntregado: 'entregado:GRUPO1', jidGrupo: 'grupo@g.us', idFoto: 'FOTOOP' };
   const $ = n => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
-    if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana', idCuenta: 'CTA1', idCaptura: 'FOTO1' }) } }) };
-    if (n === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
+    if (n === 'Redis Leer Publicacion' || _strip(n) === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana', idCuenta: 'CTA1', idCaptura: 'FOTO1' }) } }) };
+    if (n === 'Redis Leer Entregado' || _strip(n) === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
     return { first: () => ({ json: {} }) };
   };
   const rp = new Function('$', code('Revisar Pedido'))($)[0].json;
@@ -236,8 +244,8 @@ console.log('=== 5) Cuando la operadora devuelve la foto: la fila pasa a "enviad
 console.log('');
 console.log('=== 6) Como quedo conectado ===');
 {
-  const sale = (n, i) => ((((wfIa.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
-  const salePub = (n, i) => ((((wfPub.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const sale = (n, i) => ((((_getConn(wfIa.connections, n) || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
+  const salePub = (n, i) => ((((wfPub.connections[n] || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp', 'Redis Leer Pregunta -> Consultar Operaciones WhatsApp', '-> ' + sale('Redis Leer Pregunta'));
   chk(sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion', 'Consultar Operaciones WhatsApp -> Revisar Operacion');
   chk(sale('Detectar Aprobación').join() === 'Ejecutar Publicacion', 'Detectar Aprobación -> Ejecutar Publicacion');
@@ -248,7 +256,7 @@ console.log('=== 6) Como quedo conectado ===');
       'de noche: Redis Guardar Operacion -> Armar Filas Noche -> Empaquetar Noche -> Ejecutar Publicacion');
   chk(salePub('Router Publicacion', 2).join() === 'Desempacar Filas Noche' && salePub('Desempacar Filas Noche').join() === 'Guardar Operacion en Supabase',
       'sub-workflow noche: Router Publicacion (2) -> Desempacar Filas Noche -> Guardar Operacion en Supabase');
-  const saleOp = (n, i) => ((((wfOp.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const saleOp = (n, i) => ((((wfOp.connections[n] || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
   chk(saleOp('Redis Marcar Entregado').join() === 'Marcar Enviada en Supabase', 'Redis Marcar Entregado -> Marcar Enviada en Supabase');
 
   const leer = nodo('Consultar Operaciones WhatsApp');

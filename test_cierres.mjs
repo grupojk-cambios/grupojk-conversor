@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de los CIERRES de conversacion: "gracias", "ok" sueltos y mensajes sin texto.
 // Tambien: el nombre del cliente una sola vez cada 24 h y el pais por el prefijo del numero.
 //
@@ -20,7 +28,7 @@ import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfIa.nodes, n) || _findNode(wfDeb.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -45,12 +53,12 @@ function revisar(textos, op, ex) {
   const real = Date.now; Date.now = () => reloj;
   try {
     const $ = (n) => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', sessionId: 'chat',
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, modo: 'detal', sessionId: 'chat',
         nombreCliente: (ex.nombre === undefined ? 'Ana Prueba' : ex.nombre) } }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
-      if (n === 'Redis Leer Pregunta') {
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Redis Leer Pregunta' || _strip(n) === 'Redis Leer Pregunta') {
         if (ex.pregunta === 'CAIDA') return { first: () => ({ json: { error: { message: 'Redis no responde' } } }) };
         return { first: () => ({ json: { pregunta: (ex.pregunta === undefined ? null : ex.pregunta) } }) };
       }
@@ -198,12 +206,12 @@ console.log('=== 8) Code in JavaScript: el pais por el prefijo (solo por defecto
   function principal(jid, nombre, historial) {
     const uno = j => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
     const $ = (n) => {
-      if (n === 'Consultar Tasas') return uno({ data: TASAS });
-      if (n === 'Consultar Cuentas') return uno({ data: CUENTAS });
-      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: jid } } }, nombreCargado: nombre || '' });
-      if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: jid } } } });
-      if (n === 'Solo Estos Numeros') return uno({ nombreCargado: nombre || '' });
-      if (n === 'Consultar Cliente') return { first: () => ({ json: (historial || [])[0] || {} }), all: () => (historial || []).map(json => ({ json })) };
+      if (n === 'Consultar Tasas' || _strip(n) === 'Consultar Tasas') return uno({ data: TASAS });
+      if (n === 'Consultar Cuentas' || _strip(n) === 'Consultar Cuentas') return uno({ data: CUENTAS });
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: jid } } }, nombreCargado: nombre || '' });
+      if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: jid } } } });
+      if (n === 'Solo Estos Numeros' || _strip(n) === 'Solo Estos Numeros') return uno({ nombreCargado: nombre || '' });
+      if (n === 'Consultar Cliente' || _strip(n) === 'Consultar Cliente') return { first: () => ({ json: (historial || [])[0] || {} }), all: () => (historial || []).map(json => ({ json })) };
       return { first: () => ({ json: {} }), all: () => [] };
     };
     return new Function('$', '$getWorkflowStaticData', code('Code in JavaScript'))($, () => ({}))[0].json;
@@ -233,9 +241,9 @@ console.log('=== 8) Code in JavaScript: el pais por el prefijo (solo por defecto
 console.log('');
 console.log('=== 9) Como quedo conectado ===');
 {
-  const saleV12 = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
-  const saleDeb = (n, i) => ((((wfDeb.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
-  const sale = (n, i) => ((((wfIa.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const saleV12 = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
+  const saleDeb = (n, i) => ((((_getConn(wfDeb.connections, n) || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
+  const sale = (n, i) => ((((_getConn(wfIa.connections, n) || {}).main || [])[i || 0]) || []).map(c => _strip(c.node));
   chk(saleV12('Es mensaje de cliente?').join() === 'Ejecutar Debounce'
       && saleDeb('¿Es Comando Admin?', 1).join() === 'Preparar Contexto IA' && saleDeb('¿Solo el Comando?', 1).join() === 'Preparar Contexto IA'
       && saleDeb('Preparar Contexto IA').join() === 'Ejecutar IA' && sale('Cuando lo Llama el Bot').join() === 'Consultar Tasas',

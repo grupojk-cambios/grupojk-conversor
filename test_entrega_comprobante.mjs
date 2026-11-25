@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la ENTREGA DEL COMPROBANTE: la operadora responde en el grupo con la foto del
 // envio y el bot se la hace llegar al cliente correcto.
 //
@@ -18,10 +26,10 @@ const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const code = n => (wf.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n)).parameters.jsCode;
-const codeOp = n => wfOp.nodes.find(x => x.name === n).parameters.jsCode;
-const codePub = n => wfPub.nodes.find(x => x.name === n).parameters.jsCode;
-const codeIa = n => wfIa.nodes.find(x => x.name === n).parameters.jsCode;
+const code = n => (_findNode(wf.nodes, n) || _findNode(wfDeb.nodes, n)).parameters.jsCode;
+const codeOp = n => _findNode(wfOp.nodes, n).parameters.jsCode;
+const codePub = n => _findNode(wfPub.nodes, n).parameters.jsCode;
+const codeIa = n => _findNode(wfIa.nodes, n).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -53,7 +61,7 @@ function filtrar({ jid = GRUPO, fromMe = false, conImagen = true, citando = ID_P
     'Redis Leer Pausa': [{}], 'Redis Leer Aviso': [{}]
   };
   const $ = (n) => {
-    if (n === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
     const v = tablas[n];
     if (v === undefined) throw new Error('Node "' + n + '" not executed');
     const its = v.map(json => ({ json }));
@@ -70,10 +78,10 @@ function revisar({ guardado = null, yaEntregado = '', idFoto = ID_FOTO, fotoReco
     claveFoto: 'ultimaFoto:' + GRUPO + ':quien'
   };
   const $ = (n) => {
-    if (n === 'Cuando lo Llama el Bot')  return { first: () => ({ json: base }) };
-    if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: guardado } }) };
-    if (n === 'Redis Leer Entregado')   return { first: () => ({ json: { entregado: yaEntregado } }) };
-    if (n === 'Redis Leer Ultima Foto') return { first: () => ({ json: { ultimaFoto: fotoRecordada } }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot')  return { first: () => ({ json: base }) };
+    if (n === 'Redis Leer Publicacion' || _strip(n) === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: guardado } }) };
+    if (n === 'Redis Leer Entregado' || _strip(n) === 'Redis Leer Entregado')   return { first: () => ({ json: { entregado: yaEntregado } }) };
+    if (n === 'Redis Leer Ultima Foto' || _strip(n) === 'Redis Leer Ultima Foto') return { first: () => ({ json: { ultimaFoto: fotoRecordada } }) };
     throw new Error('Node "' + n + '" not executed');
   };
   return new Function('$', codeOp('Revisar Pedido'))($);
@@ -183,10 +191,10 @@ console.log('=== 6) El id del mensaje con la cuenta viaja hasta el final ===');
   const detectar = (mensajes) => {
     const combinado = mensajes.map(m => m.texto).join(SALTO + SALTO);
     const $ = (n) => {
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: combinado, mensajes, body: { data: {
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: combinado, mensajes, body: { data: {
         key: { remoteJid: CLIENTE }, pushName: 'Maigre Herrera' } } } }) };
-      if (n === 'Combinar') return { item: { json: { mensajeCombinado: combinado, mensajes } } };
-      if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { item: { json: { mensajeCombinado: combinado, mensajes } } };
+      if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
         key: { remoteJid: CLIENTE }, pushName: 'Maigre Herrera' } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
@@ -254,7 +262,7 @@ console.log('=== 9) Cuentas multiples: cabecera, monto y a que mensaje citan ===
   const separar = (mensajes, nombreMostrar) => {
     const ap = { nombreMostrar, nombre: 'Maigre Herrera', datosCuenta: 'algo', idCuenta: 'XX', mensajes };
     const $ = (n) => {
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: ap }), item: { json: ap } };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: ap }), item: { json: ap } };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
     return new Function('$', codePub('Separar Cuentas'))($).map(i => i.json);
@@ -316,8 +324,8 @@ console.log('=== 10) Aviso si los montos no cuadran ===');
 {
   const montos = (lista, total) => {
     const $ = (n) => {
-      if (n === 'Separar Cuentas') return { all: () => lista.map(m => ({ json: { monto: m } })) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { montoComprobante: total } }) };
+      if (n === 'Separar Cuentas' || _strip(n) === 'Separar Cuentas') return { all: () => lista.map(m => ({ json: { monto: m } })) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { montoComprobante: total } }) };
       return { all: () => [], first: () => ({ json: {} }) };
     };
     return new Function('$', codePub('Revisar Montos'))($);
@@ -337,8 +345,8 @@ console.log('=== 10) Aviso si los montos no cuadran ===');
 console.log('');
 console.log('=== 11) Cableado hacia Bot JK - Grupos de Operadoras ===');
 {
-  const sal = (w, n, i) => (((w.connections[n] && w.connections[n].main) || [])[i || 0] || []).map(c => c.node).join();
-  const ej = wf.nodes.find(x => x.name === 'Ejecutar Operadoras');
+  const sal = (w, n, i) => (((w.connections[n] && w.connections[n].main) || [])[i || 0] || []).map(c => _strip(c.node)).join();
+  const ej = _findNode(wf.nodes, 'Ejecutar Operadoras');
   chk(!!ej && ej.type === 'n8n-nodes-base.executeWorkflow' && ej.parameters?.workflowId?.value === 'gav5txTYWq3ARV8H',
       'Ejecutar Operadoras apunta a gav5txTYWq3ARV8H');
   chk(ej && ej.parameters?.options?.waitForSubWorkflow === false, 'no espera al sub-workflow');

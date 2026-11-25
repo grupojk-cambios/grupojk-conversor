@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba la REGLA DE FIN DE SEMANA de las cuentas de Ecuador, con el codigo REAL del nodo
 // "Code in JavaScript" del bot de WhatsApp.
 //
@@ -10,7 +18,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const codigo = wf.nodes.find(n => n.name === 'Code in JavaScript').parameters.jsCode;
+const codigo = _findNode(wf.nodes, 'Code in JavaScript').parameters.jsCode;
 
 const CSV_TASAS = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const tasas = await (await fetch(CSV_TASAS + '&n=' + Date.now())).text();
@@ -35,10 +43,10 @@ function correrEnFecha(iso) {
   try {
     const $ = (n) => {
       const uno = (j) => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
-      if (n === 'Consultar Tasas')   return uno({ data: tasas });
-      if (n === 'Consultar Cuentas') return uno({ data: cuentasCSV });
-      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
-      if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+      if (n === 'Consultar Tasas' || _strip(n) === 'Consultar Tasas')   return uno({ data: tasas });
+      if (n === 'Consultar Cuentas' || _strip(n) === 'Consultar Cuentas') return uno({ data: cuentasCSV });
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+      if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       return { first: () => ({ json: {} }), all: () => [] };
     };
     return new Function('$', codigo)($)[0].json;
@@ -117,10 +125,10 @@ Date.now = () => new Date('2026-11-07T17:00:00Z').getTime();   // sabado
 const r2 = (() => {
   const $ = (n) => {
     const uno = (j) => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
-    if (n === 'Consultar Tasas')   return uno({ data: tasas });
-    if (n === 'Consultar Cuentas') return uno({ data: sinFinde });
-    if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
-    if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+    if (n === 'Consultar Tasas' || _strip(n) === 'Consultar Tasas')   return uno({ data: tasas });
+    if (n === 'Consultar Cuentas' || _strip(n) === 'Consultar Cuentas') return uno({ data: sinFinde });
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
     return { first: () => ({ json: {} }), all: () => [] };
   };
   return new Function('$', codigo)($)[0].json;

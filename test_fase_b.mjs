@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la FASE B: antes de mandarle al cliente la foto que devolvio la operadora, el bot la
 // lee (GPT-4o) y la compara con la cuenta destino de ESA publicacion.
 //   - algun dato coincide (cuenta/telefono, cedula, correo, billetera)  -> se entrega
@@ -13,7 +21,7 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfBot = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfBot.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfBot.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -36,12 +44,12 @@ function revisar(leido, filas, ped) {
   const pedido = Object.assign({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana Prueba', idCuenta: 'MSG-PEDIDO', idCaptura: 'CAP-1',
                                  stanzaId: PUB_A, jidGrupo: GRUPO, idFoto: 'FOTO-OP', forzar: false }, ped || {});
   const $ = n => {
-    if (n === 'Revisar Pedido') return { first: () => ({ json: pedido }) };
-    if (n === 'Leer Comprobante Operadora') {
+    if (n === 'Revisar Pedido' || _strip(n) === 'Revisar Pedido') return { first: () => ({ json: pedido }) };
+    if (n === 'Leer Comprobante Operadora' || _strip(n) === 'Leer Comprobante Operadora') {
       if (leido === 'CAIDA') return { first: () => ({ json: { error: { message: 'OpenAI no responde' } } }) };
       return { first: () => ({ json: { content: typeof leido === 'string' ? leido : '```json\n' + JSON.stringify(leido) + '\n```' } }) };
     }
-    if (n === 'Leer Cuentas de la Operacion') {
+    if (n === 'Leer Cuentas de la Operacion' || _strip(n) === 'Leer Cuentas de la Operacion') {
       if (filas === 'CAIDA') return { all: () => [{ json: { error: { message: 'Supabase no responde' } } }] };
       const f = (filas && filas.length) ? filas : [{}];
       return { all: () => f.map(json => ({ json })) };
@@ -131,8 +139,8 @@ console.log('=== 5) "forzar" ===');
   // Revisar Pedido: si citaron el AVISO, la entrega es de la publicacion original, con la misma foto
   const aviso = JSON.stringify({ jid: '593990000001@s.whatsapp.net', nombre: 'Ana Prueba', idCuenta: 'MSG-1', idCaptura: 'CAP-1', publicacion: PUB_A, idFotoOperadora: 'FOTO-OP' });
   const rp = (forzar, idFoto, pedido) => new Function('$', code('Revisar Pedido'))(n => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { stanzaId: 'AVISO-1', idFoto, jidGrupo: GRUPO, claveEntregado: 'entregado:AVISO-1', forzar } }) };
-    if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido } }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { stanzaId: 'AVISO-1', idFoto, jidGrupo: GRUPO, claveEntregado: 'entregado:AVISO-1', forzar } }) };
+    if (n === 'Redis Leer Publicacion' || _strip(n) === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido } }) };
     return { first: () => ({ json: {} }) };
   });
   const r = rp(true, '', aviso)[0].json;
@@ -148,7 +156,7 @@ console.log('=== 5) "forzar" ===');
 console.log('');
 console.log('=== 6) Como quedo conectado ===');
 {
-  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node).join();
+  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => _strip(c.node)).join();
   const cadena = ['Bajar Foto Operadora', 'Foto Operadora a Binario', 'Leer Comprobante Operadora', 'Leer Cuentas de la Operacion', 'Revisar Comprobante', '¿Cuadra el Comprobante?'];
   for (let i = 0; i < cadena.length - 1; i++) chk(sale(cadena[i]) === cadena[i + 1], cadena[i] + ' -> ' + cadena[i + 1], '-> ' + sale(cadena[i]));
   chk(sale('¿Cuadra el Comprobante?', 0) === 'Enviar Comprobante al Cliente', 'si cuadra -> Enviar Comprobante al Cliente');

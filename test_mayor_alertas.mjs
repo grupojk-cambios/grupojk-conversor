@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de las ALERTAS DE VENCIMIENTO de los RST (protocolo_rst_rct.md, seccion 7) y del cableado de JEP en la mañana.
 //
 // Lo que se vigila:
@@ -15,7 +23,7 @@ import { readFileSync } from 'fs';
 
 const leer = f => JSON.parse(readFileSync(f, 'utf8').replace(/^﻿/, ''));
 const mayor = leer('workflow_mayor.json'), noche = leer('workflow_mayor_noche.json'), alertas = leer('workflow_mayor_alertas.json');
-const nodo = (w, n) => w.nodes.find(x => x.name === n);
+const nodo = (w, n) => _findNode(w.nodes, n);
 const code = (w, n) => nodo(w, n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -225,8 +233,8 @@ console.log('=== 5) EL CABLEADO DEL WORKFLOW DE ALERTAS ===');
   chk(/grupo_jid=eq\./.test(cobro.filterString) && /mensaje_id=eq\./.test(cobro.filterString) && cobro.fieldsUi.fieldValues.map(f => f.fieldId).join() === 'cobro,cobro_en,cobro_emoji', '"Marcar Cobro" actualiza solo ese mensaje de ese grupo', '-> ' + cobro.filterString);
   chk(/cobro=not\.in\.\(verificar,danado\)/.test(cobro.filterString), '"Marcar Cobro" no deja que una X pise un "verificar"/"se dañó"', '-> ' + cobro.filterString);
   const con = mayor.connections;
-  chk(con['Redis Leer Publicacion'].main[0].map(x => x.node).join() === 'Redis Leer Temporal' && con['Redis Leer Temporal'].main[0].map(x => x.node).join() === 'Grupos Destino' && nodo(mayor, 'Redis Leer Temporal').type === 'n8n-nodes-base.redis', 'la clave temporal de Solidario se lee en la cadena (Redis Leer Publicacion -> Redis Leer Temporal -> Grupos Destino)');
-  chk(con['Cuando lo Llama el Bot'].main[0].map(x => x.node).sort().join() === 'Entender Cobro,Entender Mensaje' && con['Redis Marcar Visto'].main[0].map(x => x.node).sort().join() === 'Hace Falta Publicar?,Vigilar Vencimiento', 'el workflow del mayor tiene las dos ramas nuevas (reacciones y vigilancia) sin tocar las de siempre');
+  chk(con['Redis Leer Publicacion'].main[0].map(x => _strip(x.node)).join() === 'Redis Leer Temporal' && con['Redis Leer Temporal'].main[0].map(x => _strip(x.node)).join() === 'Grupos Destino' && nodo(mayor, 'Redis Leer Temporal').type === 'n8n-nodes-base.redis', 'la clave temporal de Solidario se lee en la cadena (Redis Leer Publicacion -> Redis Leer Temporal -> Grupos Destino)');
+  chk(con['Cuando lo Llama el Bot'].main[0].map(x => _strip(x.node)).sort().join() === 'Entender Cobro,Entender Mensaje' && con['Redis Marcar Visto'].main[0].map(x => _strip(x.node)).sort().join() === 'Hace Falta Publicar?,Vigilar Vencimiento', 'el workflow del mayor tiene las dos ramas nuevas (reacciones y vigilancia) sin tocar las de siempre');
   chk(['Fallo la Cita?', 'Reenviar sin Cita'].every(n => con[n].main.flat().some(x => x.node === 'Armar Vigilancia')), 'lo que el bot publica pasa por "Armar Vigilancia" (con o sin cita)');
 }
 

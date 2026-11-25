@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba como el bot de tasas GUARDA y MUESTRA los nombres de los proveedores.
 //
 // Lo que vigila:
@@ -16,7 +24,7 @@ import { readFileSync } from 'fs';
 
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^﻿/, ''));
-const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const code = n => _findNode(wf.nodes, n).parameters.jsCode;
 
 // Saca una funcion suelta del codigo REAL del nodo, contando llaves.
 function extraer(src, nombre) {

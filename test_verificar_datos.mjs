@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de "VERIFICAR DATOS" (pedido de Kelvin, 23/11).
 //
 // Lo que paso: la operadora cito en transferir la cuenta de una clienta con "Verificar datos" (le faltaba
@@ -17,7 +25,7 @@ const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').rep
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfOp.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfOp.nodes, n) || _findNode(wfPub.nodes, n) || _findNode(wfIa.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
@@ -32,8 +40,8 @@ function soloEstos(mensaje, contextInfo) {
   const items = [{ json: { body: { data: { key: { remoteJid: GRUPO_TRANSFERIR, fromMe: false, id: 'A5OPERADORA0001', participant: '111@lid' },
                                           message: mensaje, contextInfo, messageTimestamp: ahora } } } }];
   const $ = n => {
-    if (n === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
-    if (n === 'Grupos Mayor') return { all: () => [] };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
+    if (n === 'Grupos Mayor' || _strip(n) === 'Grupos Mayor') return { all: () => [] };
     return { all: () => [{ json: {} }], first: () => ({ json: {} }) };
   };
   return new Function('$input', '$', code('Solo Estos Numeros'))({ all: () => [{ json: {} }] }, $).map(i => i.json);
@@ -69,8 +77,8 @@ const BASE = soloEstos({ conversation: 'Verificar datos' }, citando())[0];
 const PEDIDO = { jid: CLIENTE, nombre: 'Ana Prueba', idCuenta: 'A5CUENTA01', idCaptura: 'A5CAPTURA01' };
 function prepararCorregir(pedido, base) {
   const $ = n => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base || BASE }) };
-    if (n === 'Redis Leer Publicacion Verificar') return { first: () => ({ json: { pedido: pedido === null ? null : JSON.stringify(pedido) } }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: base || BASE }) };
+    if (n === 'Redis Leer Publicacion Verificar' || _strip(n) === 'Redis Leer Publicacion Verificar') return { first: () => ({ json: { pedido: pedido === null ? null : JSON.stringify(pedido) } }) };
     throw new Error('nodo inesperado: ' + n);
   };
   return new Function('$', code('Preparar Corregir Datos'))($).map(i => i.json);
@@ -87,8 +95,8 @@ function prepararCorregir(pedido, base) {
   chk(re.publicacion === '3EB0ORIGINAL00', 'si citaron una correccion: se sigue usando la publicacion ORIGINAL');
 
   const $m = n => {
-    if (n === 'Preparar Corregir Datos') return { first: () => ({ json: r }) };
-    if (n === 'Redis Leer Op Corregir') return { first: () => ({ json: { operacion: JSON.stringify({ hechos: [{ ref: '1' }], ultimoSaludo: 5 }) } }) };
+    if (n === 'Preparar Corregir Datos' || _strip(n) === 'Preparar Corregir Datos') return { first: () => ({ json: r }) };
+    if (n === 'Redis Leer Op Corregir' || _strip(n) === 'Redis Leer Op Corregir') return { first: () => ({ json: { operacion: JSON.stringify({ hechos: [{ ref: '1' }], ultimoSaludo: 5 }) } }) };
     throw new Error('nodo inesperado: ' + n);
   };
   const m = new Function('$', code('Marcar Corregir Datos'))($m)[0].json;
@@ -104,10 +112,10 @@ function revisar(mensajes, op) {
   const real = Date.now; Date.now = () => reloj;
   try {
     const $ = n => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: [], sessionId: 'chat', modo: 'detal' } }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: { cuentas: [], sessionId: 'chat', modo: 'detal' } }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);
     };
     const r = new Function('$', code('Revisar Operacion'))($)[0].json;
@@ -141,9 +149,9 @@ console.log('=== 4) LA CORRECCION VA A TRANSFERIR ===');
 {
   const ro = revisar([{ id: 'A5NUEVA01', texto: CORREGIDA }], { corregir: CORREGIR, hechos: [] });
   const $ = n => {
-    if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: CLIENTE } }) };
-    if (n === 'Prep Debounce') return { first: () => ({ json: { jid: CLIENTE } }) };
+    if (n === 'Revisar Operacion' || _strip(n) === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: CLIENTE } }) };
+    if (n === 'Prep Debounce' || _strip(n) === 'Prep Debounce') return { first: () => ({ json: { jid: CLIENTE } }) };
     throw new Error('nodo inesperado: ' + n);
   };
   const p = new Function('$', code('Preparar Correccion'))($)[0].json;
@@ -171,10 +179,10 @@ console.log('=== 5) LA FOTO DE LA OPERADORA SOBRE LA CORRECCION LE LLEGA AL CLIE
   const mapa = { jid: CLIENTE, nombre: 'Ana Prueba', idCuenta: 'A5NUEVA01', idCaptura: 'A5CAPTURA01', publicacion: '3EB0PUBLICACION01' };
   const base = { stanzaId: '3EB0CORRECCION01', claveEntregado: 'entregado:3EB0CORRECCION01', idFoto: 'A5FOTO01', jidGrupo: GRUPO_TRANSFERIR };
   const $ = n => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
-    if (n === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify(mapa) } }) };
-    if (n === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
-    if (n === 'Redis Leer Ultima Foto') return { first: () => ({ json: {} }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: base }) };
+    if (n === 'Redis Leer Publicacion' || _strip(n) === 'Redis Leer Publicacion') return { first: () => ({ json: { pedido: JSON.stringify(mapa) } }) };
+    if (n === 'Redis Leer Entregado' || _strip(n) === 'Redis Leer Entregado') return { first: () => ({ json: {} }) };
+    if (n === 'Redis Leer Ultima Foto' || _strip(n) === 'Redis Leer Ultima Foto') return { first: () => ({ json: {} }) };
     throw new Error('nodo inesperado: ' + n);
   };
   const r = new Function('$', code('Revisar Pedido'))($)[0].json;
@@ -189,7 +197,7 @@ console.log('=== 6) CABLEADO ===');
   const cOp = wfOp.connections;
   const cPub = wfPub.connections;
   const cIa = wfIa.connections;
-  const sig = (n, i, mapa) => { const m = mapa || c; return ((m[n] && m[n].main && m[n].main[i || 0]) || []).map(x => x.node).join(','); };
+  const sig = (n, i, mapa) => { const m = mapa || c; const conn = _getConn(m, n); return ((conn && conn.main && conn.main[i || 0]) || []).map(x => _strip(x.node)).join(','); };
   const reglas = nodo('Router Pausa').parameters.rules.values.map(v => v.outputKey);
   chk(reglas[7] === 'verificar' && sig('Router Pausa', 7) === 'Ejecutar Operadoras', 'Router Pausa: la salida "verificar" (la ultima) -> Ejecutar Operadoras');
   chk(sig('Router Operadoras', 2, cOp) === 'Redis Leer Publicacion Verificar', 'Router Operadoras: salida "verificar" (2) -> Redis Leer Publicacion Verificar');

@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba el comando "modo mayor"/"modo detal" del bot de WhatsApp, ejecutando el codigo REAL
 // del nodo "Detectar Comando Admin" tal como quedo en el JSON del workflow.
 //
@@ -7,16 +15,16 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const codigo = wf.nodes.find(n => n.name === 'Detectar Comando Admin').parameters.jsCode;
+const codigo = _findNode(wf.nodes, 'Detectar Comando Admin').parameters.jsCode;
 
 const ADMIN = '593961230380';   // numero con role=admin en Supabase
 
 function correr(textoCombinado, numero = ADMIN) {
   const $ = (n) => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
-    if (n === 'Consultar Admins')      return { all: () => [{ json: { whatsapp: '+' + ADMIN, role: 'admin' } }] };
-    if (n === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
+    if (n === 'Consultar Admins' || _strip(n) === 'Consultar Admins')      return { all: () => [{ json: { whatsapp: '+' + ADMIN, role: 'admin' } }] };
+    if (n === 'Combinar' || _strip(n) === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };
     return { first: () => ({ json: {} }), all: () => [], item: { json: {} } };
   };
   return new Function('$', codigo)($)[0].json;
@@ -76,10 +84,10 @@ for (const txt of [
 // Version que permite simular la lista de admins que devuelve Supabase
 function correrCon(textoCombinado, numero, listaAdmins) {
   const $ = (n) => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
-    if (n === 'Consultar Admins')      return { all: () => listaAdmins.map(w => ({ json: { whatsapp: w } })) };
-    if (n === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
+    if (n === 'Consultar Admins' || _strip(n) === 'Consultar Admins')      return { all: () => listaAdmins.map(w => ({ json: { whatsapp: w } })) };
+    if (n === 'Combinar' || _strip(n) === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };
     return { first: () => ({ json: {} }), all: () => [], item: { json: {} } };
   };
   return new Function('$', codigo)($)[0].json;

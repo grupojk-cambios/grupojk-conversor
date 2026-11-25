@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del workflow "Avisar deposito que no cuadra" (pedido de Kelvin, 23/11).
 //
 // Cuando el deposito no cuadra con la suma de las cuentas, el bot no pasa la operacion a transferir
@@ -17,7 +25,7 @@ const bot = leer('workflow_bot_whatsapp_v12.json');
 const vig = leer('workflow_vigilar_monto.json');
 const med = leer('workflow_media.json');
 const ia = leer('workflow_ia_atencion.json');
-const nodoDe = (wf, n) => wf.nodes.find(x => x.name === n);
+const nodoDe = (wf, n) => _findNode(wf.nodes, n);
 const GRUPO_AVISOS = '120363413942097019@g.us';
 const GRUPO_TRANSFERIR = '593961230380-1601657528@g.us';
 
@@ -26,7 +34,7 @@ const chk = (ok, etiqueta, detalle) => { if (!ok) fallos++; console.log('  ' + (
 
 function correr(nodo, entrada, operaciones) {
   const $ = n => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: entrada }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: entrada }) };
     if (n === 'Redis Leer Operacion' || n === 'Redis Leer Operacion 2') return { first: () => ({ json: { operacion: (operaciones || {})[n] === undefined ? (operaciones || {}).todas : operaciones[n] } }) };
     throw new Error('nodo inesperado: ' + n);
   };
@@ -34,11 +42,11 @@ function correr(nodo, entrada, operaciones) {
 }
 function preparar(ro) {
   const $ = n => {
-    if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net', body: { data: { pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
-    if (n === 'Prep Debounce') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net' } }) };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { pushName: 'Ana' } } } }) };
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
+    if (n === 'Revisar Operacion' || _strip(n) === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net', body: { data: { pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
+    if (n === 'Prep Debounce' || _strip(n) === 'Prep Debounce') return { first: () => ({ json: { jid: '593990000001@s.whatsapp.net' } }) };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { pushName: 'Ana' } } } }) };
+    if (n === 'Solo Estos Numeros' || _strip(n) === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
     throw new Error('nodo inesperado: ' + n);
   };
   return new Function('$', nodoDe(ia, 'Preparar Vigilancia Monto').parameters.jsCode)($);
@@ -92,7 +100,7 @@ console.log('');
 console.log('=== 4) EL WORKFLOW ===');
 {
   const c = vig.connections;
-  const sig = (n, i) => ((c[n] && c[n].main && c[n].main[i || 0]) || []).map(x => x.node).join(',');
+  const sig = (n, i) => ((c[n] && c[n].main && c[n].main[i || 0]) || []).map(x => _strip(x.node)).join(',');
   chk(sig('Cuando lo Llama el Bot') === 'Es Escalar?' && sig('Es Escalar?', 0) === 'Armar Aviso Transferir' && sig('Armar Aviso Transferir') === 'Avisar en Transferir'
       && sig('Es Escalar?', 1) === 'Esperar 5 min', 'escalar -> aviso en transferir; si no -> vigilar');
   chk(sig('Esperar 5 min') === 'Redis Leer Operacion' && sig('Redis Leer Operacion') === 'Decidir Recordatorio' && sig('Decidir Recordatorio') === 'Recordar al Cliente'
@@ -110,7 +118,7 @@ console.log('');
 console.log('=== 5) EL BOT LO LLAMA Y NO LO ESPERA ===');
 {
   const c = ia.connections;
-  const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node);
+  const sig = n => (((_getConn(c, n) && _getConn(c, n).main && _getConn(c, n).main[0]) || [])).map(x => _strip(x.node));
   chk(sig('Redis Guardar Operacion').includes('Preparar Vigilancia Monto') && sig('Preparar Vigilancia Monto').join() === 'Vigilar Monto',
       'Redis Guardar Operacion -> Preparar Vigilancia Monto -> Vigilar Monto');
   chk(sig('Redis Guardar Operacion')[0] === '¿Qué Responder?', 'la respuesta al cliente sigue siendo la primera rama');

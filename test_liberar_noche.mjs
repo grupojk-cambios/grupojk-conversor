@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del workflow "Liberar operaciones de la noche" (lo genera build_liberar_noche.ps1).
 //
 // A las 9:05 (domingo 10:05) toma las operaciones 'en_espera' de Supabase y, una por una, publica
@@ -11,7 +19,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_liberar_noche.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -57,8 +65,8 @@ console.log('=== 2) Publicar una operacion ===');
                filas: [{ filaId: 10, idCuenta: 'C1', monto: 40, cuenta: 'Ana Prueba - $40\n\n' + CTA_A },
                        { filaId: 11, idCuenta: 'C1', monto: 60, cuenta: 'Ana Prueba - $60\n\n' + CTA_B }] };
   const $ = n => {
-    if (n === 'Una por Una') return { first: () => ({ json: op }) };
-    if (n === 'Publicar Captura') return { first: () => ({ json: { key: { id: 'G-FOTO' } } }) };
+    if (n === 'Una por Una' || _strip(n) === 'Una por Una') return { first: () => ({ json: op }) };
+    if (n === 'Publicar Captura' || _strip(n) === 'Publicar Captura') return { first: () => ({ json: { key: { id: 'G-FOTO' } } }) };
     throw new Error('nodo inesperado: ' + n);
   };
   const separadas = new Function('$', code('Separar Cuentas de la Operacion'))($).map(i => i.json);
@@ -78,8 +86,8 @@ console.log('=== 2) Publicar una operacion ===');
   chk(evalExpr(marca.key, $, { key: { id: 'G-FOTO' } }) === 'grupoMsg:G-FOTO' && marca.ttl === 172800, 'llave grupoMsg:<id>, 48 h');
 
   const $2 = n => {
-    if (n === 'Separar Cuentas de la Operacion') return { all: () => separadas.map(json => ({ json })), item: { json: separadas[1] } };
-    if (n === 'Publicar Cuenta') return { all: () => [{ json: { key: { id: 'G-A' } } }, { json: { data: { key: { id: 'G-B' } } } }] };
+    if (n === 'Separar Cuentas de la Operacion' || _strip(n) === 'Separar Cuentas de la Operacion') return { all: () => separadas.map(json => ({ json })), item: { json: separadas[1] } };
+    if (n === 'Publicar Cuenta' || _strip(n) === 'Publicar Cuenta') return { all: () => [{ json: { key: { id: 'G-A' } } }, { json: { data: { key: { id: 'G-B' } } } }] };
     return $(n);
   };
   const vc = JSON.parse(evalExpr(nodo('Marcar Publicacion Cuenta').parameters.value, $2, {}));
@@ -104,7 +112,7 @@ console.log('=== 3) Horario, conexiones y seguridad ===');
   const cron = nodo('Cada Mañana').parameters.rule.interval.map(i => i.expression).join(' | ');
   chk(cron === '0 5 9 * * 1-6 | 0 5 10 * * 0', 'lunes a sabado 9:05 y domingo 10:05', '-> ' + cron);
   chk(wf.settings.timezone === 'America/Guayaquil', 'hora de Ecuador');
-  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node).join();
+  const sale = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => _strip(c.node)).join();
   chk(sale('Una por Una', 0) === '' && sale('Una por Una', 1) === 'Bajar Captura', 'una operacion por vuelta');
   chk(sale('Marcar En Proceso') === 'Una por Una', 'al terminar una, vuelve por la siguiente');
   const orden = ['Cada Mañana', 'Leer Operaciones en Espera', 'Agrupar Operaciones'];

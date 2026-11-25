@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del BOT DE CUENTAS con el codigo REAL de los nodos del workflow.
 //
 // Vigila los errores que reporto Kelvin:
@@ -15,7 +23,7 @@
 // Correr con:  node test_bot_cuentas.mjs
 import { readFileSync } from 'fs';
 const wf = JSON.parse(readFileSync('workflow_cuentas_v1.json','utf8').replace(/^\uFEFF/,''));
-const code = n => wf.nodes.find(x=>x.name===n).parameters.jsCode;
+const code = n => _findNode(wf.nodes, n).parameters.jsCode;
 const correr = (nombre, ctx) => new Function('$', code(nombre))(
   (n) => ({ first: () => ({ json: ctx[n] || {} }), all: () => [{ json: ctx[n] || {} }] })
 );

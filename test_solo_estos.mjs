@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del filtro "a quien le contesta el bot" (nodo "Solo Estos Numeros",
 // el primero despues del webhook en el bot de WhatsApp).
 //
@@ -18,7 +26,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
-const nodo = wf.nodes.find(n => n.name === 'Solo Estos Numeros');
+const nodo = _findNode(wf.nodes, 'Solo Estos Numeros');
 if (!nodo) { console.log('FALLO: no existe el nodo "Solo Estos Numeros"'); process.exit(1); }
 
 let fallos = 0;
@@ -63,7 +71,7 @@ function correr(lista, modo, jids, tablas, edadMin, extra) {
   };
   const $ = (n) => {
     // El mensaje de WhatsApp se busca en el webhook, no en $input.
-    if (n === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
     const v = porNodo[n];
     if (v === undefined) throw new Error('Node "' + n + '" not executed');
     const filas = (v === 'CAIDA')
@@ -284,7 +292,7 @@ console.log('=== 12) No contesta mensajes viejos ===');
   // Sin fecha no se descarta: ante la duda, mejor contestar de mas.
   const js = nodo.parameters.jsCode;
   const $ = (n) => {
-    if (n === 'Webhook Evolution API') return { all: () => [{ json: { body: { data: {
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => [{ json: { body: { data: {
       key: { remoteJid: KELVIN } } } } }] };
     const v = { 'Clientes Detal Permitidos': [{ whatsapp: '593961230380' }],
                 'Clientes Mayor Permitidos': [], 'Perfiles Detal App': [],

@@ -1,9 +1,17 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Extrae el jsCode REAL de la calculadora desde el workflow desplegado
 // y lo ejecuta simulando cómo n8n/el agente lo invoca.
 import { readFile } from "node:fs/promises";
 
 const wf = JSON.parse((await readFile(new URL("./workflow_ia_atencion.json", import.meta.url), "utf8")).replace(/^﻿/, ""));
-const tool = wf.nodes.find((n) => n.name === "Calculadora de Conversion");
+const tool = _findNode(wf.nodes, "Calculadora de Conversion");
 const code = tool.parameters.jsCode;
 
 // Simula $getWorkflowStaticData VACÍO para forzar el camino de fetch (peor caso).

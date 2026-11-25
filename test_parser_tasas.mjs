@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del parser del bot de tasas (formatos A + B) contra los mensajes REALES que Kelvin
 // mando por Telegram entre el 4 y el 10 de agosto, mas los formatos nuevos.
 // Extrae el codigo del nodo "Interpretar Mensaje" directo del JSON generado por el build.
@@ -5,7 +13,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^﻿/, ''));
-const codigo = wf.nodes.find(n => n.name === 'Interpretar Mensaje').parameters.jsCode;
+const codigo = _findNode(wf.nodes, 'Interpretar Mensaje').parameters.jsCode;
 
 // Paises reales de la hoja
 const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';

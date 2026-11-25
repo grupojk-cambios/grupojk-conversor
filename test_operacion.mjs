@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de "Revisar Operacion": captura y cuenta en cualquier orden, y capturas repetidas.
 //
 // Lo que destapo el problema (20/11): una clienta mando la cuenta destino y 14 minutos despues
@@ -15,7 +23,7 @@ const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8'
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
 const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n) || _findNode(wfPub.nodes, n) || _findNode(wfMed.nodes, n) || _findNode(wfIa.nodes, n) || _findNode(wfDeb.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -38,10 +46,10 @@ function revisar(mensajes, op) {
   const real = Date.now; Date.now = () => reloj;
   try {
     const $ = (n) => {
-      if (n === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal' } }) };
-      if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Combinar') return { first: () => ({ json: { mensajes } }) };
-      if (n === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
+      if (n === 'Code in JavaScript' || _strip(n) === 'Code in JavaScript') return { first: () => ({ json: { cuentas: NUESTRAS, sessionId: 'chat', modo: 'detal' } }) };
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Combinar' || _strip(n) === 'Combinar') return { first: () => ({ json: { mensajes } }) };
+      if (n === 'Redis Leer Operacion' || _strip(n) === 'Redis Leer Operacion') return { first: () => ({ json: { operacion: op ? JSON.stringify(op) : null } }) };
       throw new Error('nodo inesperado: ' + n);
     };
     const r = new Function('$', code('Revisar Operacion'))($)[0].json;
@@ -60,13 +68,13 @@ function prep(texto) {
 
 function detectar(ro) {
   const $ = (n) => {
-    if (n === 'Revisar Operacion') return { first: () => ({ json: ro }) };
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [], body: { data: {
+    if (n === 'Revisar Operacion' || _strip(n) === 'Revisar Operacion') return { first: () => ({ json: ro }) };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [], body: { data: {
       key: { remoteJid: '584120000000@s.whatsapp.net' }, pushName: 'Ana' } }, nombreCargado: 'Ana Prueba' } }) };
-    if (n === 'Combinar') return { item: { json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [] } } };
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
+    if (n === 'Combinar' || _strip(n) === 'Combinar') return { item: { json: { mensajeCombinado: 'NO DEBE USARSE', mensajes: [] } } };
+    if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: {
       key: { remoteJid: '584120000000@s.whatsapp.net' }, pushName: 'Ana' } } } }) };
-    if (n === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
+    if (n === 'Solo Estos Numeros' || _strip(n) === 'Solo Estos Numeros') return { first: () => ({ json: { nombreCargado: 'Ana Prueba' } }) };
     return { item: { json: {} }, first: () => ({ json: {} }) };
   };
   return new Function('$', code('Detectar Aprobación'))($);
@@ -75,7 +83,7 @@ function detectar(ro) {
 function separar(ro, ap) {
   const payload = Object.assign({}, ap, { mensajesAprobar: ro.mensajesAprobar, registro: ro.registro });
   const $ = (n) => {
-    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
+    if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return { first: () => ({ json: payload }), item: { json: payload } };
     return { item: { json: {} }, first: () => ({ json: {} }) };
   };
   return new Function('$', code('Separar Cuentas'))($).map(i => i.json);
@@ -315,7 +323,7 @@ console.log('=== 5) HUELLA DE LA FOTO (Texto de Imagen) ===');
 {
   const leer = (sha) => {
     const $ = (n) => {
-      if (n === 'Leer Imagen') return { item: { json: { content: '{"tipo":"comprobante","resumen":"Monto: $60.00, Referencia: 123456"}' } } };
+      if (n === 'Leer Imagen' || _strip(n) === 'Leer Imagen') return { item: { json: { content: '{"tipo":"comprobante","resumen":"Monto: $60.00, Referencia: 123456"}' } } };
       if (n === 'Cuando lo Llama el Bot' || n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id: 'IMG1' }, message: { imageMessage: { fileSha256: sha } } } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
@@ -591,7 +599,7 @@ console.log('=== 5f) LA CUENTA VIENE EN EL PIE DE LA FOTO (caso real del 24/11) 
   const PIE = 'Tipo de cuenta: VES' + SALTO + '01020000000000012345' + SALTO + 'V11111111' + SALTO + '200$';
   const imagen = (resumen, caption, id) => {
     const $ = (n) => {
-      if (n === 'Leer Imagen') return { item: { json: { content: JSON.stringify({ tipo: 'comprobante', resumen }) } } };
+      if (n === 'Leer Imagen' || _strip(n) === 'Leer Imagen') return { item: { json: { content: JSON.stringify({ tipo: 'comprobante', resumen }) } } };
       if (n === 'Cuando lo Llama el Bot' || n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { id }, message: { imageMessage: { caption } } } } } }) };
       return { item: { json: {} }, first: () => ({ json: {} }) };
     };
@@ -670,15 +678,15 @@ console.log('');
 console.log('=== 6) COMO QUEDA CABLEADO ===');
 {
   const c = wfIa.connections;
-  const sig = n => ((c[n] && c[n].main && c[n].main[0]) || []).map(x => x.node).join(',');
+  const sig = n => ((_getConn(c, n) && _getConn(c, n).main && _getConn(c, n).main[0]) || []).map(x => _strip(x.node)).join(',');
   chk(sig('Code in JavaScript') === 'Redis Leer Operacion', 'Code in JavaScript -> Redis Leer Operacion');
   chk(sig('Redis Leer Operacion') === 'Redis Leer Pregunta' && sig('Redis Leer Pregunta') === 'Consultar Operaciones WhatsApp'
       && sig('Consultar Operaciones WhatsApp') === 'Revisar Operacion',
       'Redis Leer Operacion -> Leer Pregunta -> Consultar Operaciones -> Revisar Operacion');
   chk(sig('Revisar Operacion') === 'Redis Guardar Operacion', 'Revisar Operacion -> Redis Guardar Operacion');
   // Entre los dos esta "¿Qué Responder?" (gracias -> sticker, ok suelto -> nada); lo demas, a la IA.
-  const respaldo = ((c['¿Qué Responder?'] || {}).main || [])[2] || [];
-  chk(sig('Redis Guardar Operacion').split(',')[0] === '¿Qué Responder?' && respaldo.map(x => x.node).join() === 'AI Agent',
+  const respaldo = ((_getConn(c, "¿Qué Responder?") || {}).main || [])[2] || [];
+  chk(sig('Redis Guardar Operacion').split(',')[0] === '¿Qué Responder?' && respaldo.map(x => _strip(x.node)).join() === 'AI Agent',
       'Redis Guardar Operacion -> ¿Qué Responder? -> AI Agent');
   const txt = nodo('AI Agent').parameters.text;
   chk(/notaIA/.test(txt) && /Huella/.test(txt), 'el agente recibe la nota y no ve la huella');

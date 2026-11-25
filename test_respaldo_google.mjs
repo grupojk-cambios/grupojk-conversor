@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba del RESPALDO cuando Google Sheets no contesta (pedido de Kelvin, 23/11).
 //
 // Lo que paso: el bot lee las tasas y las cuentas del dia de la hoja de Google, y ese dia Google tardo
@@ -14,7 +22,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n);
 const codigo = nodo('Code in JavaScript').parameters.jsCode;
 
 let fallos = 0;
@@ -38,10 +46,10 @@ function correr(iso, tasas, cuentas, memoria) {
   try {
     const $ = n => {
       const uno = j => ({ first: () => ({ json: j }), all: () => [{ json: j }] });
-      if (n === 'Consultar Tasas') return uno(tasas === null ? {} : { data: tasas });
-      if (n === 'Consultar Cuentas') return uno(cuentas === null ? {} : { data: cuentas });
-      if (n === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
-      if (n === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+      if (n === 'Consultar Tasas' || _strip(n) === 'Consultar Tasas') return uno(tasas === null ? {} : { data: tasas });
+      if (n === 'Consultar Cuentas' || _strip(n) === 'Consultar Cuentas') return uno(cuentas === null ? {} : { data: cuentas });
+      if (n === 'Cuando lo Llama el Bot' || _strip(n) === 'Cuando lo Llama el Bot') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
+      if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return uno({ body: { data: { key: { remoteJid: '584121112233@s.whatsapp.net' } } } });
       return { first: () => ({ json: {} }), all: () => [] };
     };
     return new Function('$', '$getWorkflowStaticData', codigo)($, () => memoria)[0].json;
@@ -94,7 +102,7 @@ console.log('=== 3) LA COPIA SOLO VALE UNAS HORAS ===');
   chk(c2.respaldo.cuentas === false && c2.cuentas.length === 0 && c2.lista.length === 3, 'pasadas 24 horas: sin cuentas, pero las tasas (de Google) siguen', '-> ' + JSON.stringify(c2.respaldo));
   const sin = correr('2026-11-23T18:00:00Z', null, null, {});
   chk(sin.lista.length === 0 && /No se recibieron datos de tasas/.test(sin.error), 'sin ninguna copia (bot recien reiniciado): avisa que no pudo cargar, como siempre', '-> ' + sin.error);
-  const sinMem = new Function('$', codigo)(n => ({ first: () => ({ json: n === 'Consultar Tasas' ? { data: TASAS } : {} }), all: () => [] }));
+  const sinMem = new Function('$', codigo)(n => ({ first: () => ({ json: (n === 'Consultar Tasas' || _strip(n) === 'Consultar Tasas') ? { data: TASAS } : {} }), all: () => [] }));
   chk(sinMem[0].json.lista.length === 3, 'si la memoria del bot no esta disponible: sigue funcionando con Google');
 }
 

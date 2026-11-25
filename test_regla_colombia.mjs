@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de la REGLA DE RECIBO AUTOMATICO de Colombia (Caballo, +25 puntos).
 //
 // Es la misma idea que ya existia para Venezuela con Jesus (+20): hay proveedores que
@@ -22,7 +30,7 @@ import { readFileSync } from 'fs';
 
 const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_tasas_proveedores.json', 'utf8').replace(/^﻿/, ''));
-const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const code = n => _findNode(wf.nodes, n).parameters.jsCode;
 
 const CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv';
 const csv = await (await fetch(CSV + '&n=' + Date.now())).text();

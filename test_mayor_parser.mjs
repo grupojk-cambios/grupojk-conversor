@@ -1,3 +1,11 @@
+
+const _strip = s => s ? String(s).replace(/^\d+[\w\.]*\s*/, '') : '';
+const _findNode = (nodes, n) => (nodes || []).find(x => x.name === n || _strip(x.name) === _strip(n));
+const _getConn = (conns, n) => {
+  if (!conns) return null;
+  const k = Object.keys(conns).find(x => x === n || _strip(x) === _strip(n));
+  return k ? Reflect.get(conns, k) : null;
+};
 // Prueba de "Entender Mensaje" (Mayor, Fase 1): como el bot entiende lo que escriben en los grupos de clientes.
 //
 // Las muestras son INVENTADAS pero imitan los formatos reales que se vieron en los grupos (el repositorio
@@ -15,7 +23,7 @@
 import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_mayor.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n);
+const nodo = n => _findNode(wf.nodes, n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -280,7 +288,7 @@ console.log('=== 11) Mensajes repetidos (dedupe) ===');
   const decidir = (visto) => new Function('$', code('Decidir'))(nn => nn === 'Entender Mensaje' ? { first: () => ({ json: fila }) } : { first: () => ({ json: { visto } }) });
   chk(decidir(undefined).length === 1 && decidir('').length === 1, 'un mensaje nuevo pasa');
   chk(decidir('1').length === 0, 'un mensaje que ya se vio se descarta');
-  const sale = (nombre) => ((((wf.connections[nombre] || {}).main || [])[0]) || []).map(c => c.node).join();
+  const sale = (nombre) => ((((wf.connections[nombre] || {}).main || [])[0]) || []).map(c => _strip(c.node)).join();
   chk(nodo('Redis Leer Visto').parameters.key.indexOf('mayorMsg:') !== -1 && nodo('Redis Marcar Visto').parameters.ttl === 24 * 7 * 3600, 'llave mayorMsg:<id>, 7 dias');
   chk(sale('Decidir') === 'Guardar en Supabase' && sale('Guardar en Supabase') === 'Redis Marcar Visto', 'se guarda y despues se marca como visto');
 }
