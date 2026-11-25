@@ -1,0 +1,800 @@
+{
+    "name":  "Bot JK - Publicar y Registrar Operacion",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "content":  "## Bot JK - Publicar y Registrar Operacion\n\nEjecuta las publicaciones en el grupo de TRANSFERIR y registros en Supabase cuando lo llama el bot principal:\n- **aprobar**: manda sticker Pedido Aprobado, re-descarga y publica la captura, separa y envía las cuentas, revisa montos y guarda cada cuenta en Supabase.\n- **correccion**: publica los datos corregidos en TRANSFERIR y actualiza la fila en Supabase.\n- **noche**: desempaca y guarda las filas nocturnas (`en_espera`) en Supabase.\n\nSe mantiene inactivo hasta que Kelvin lo publique manualmente en n8n.",
+                                         "height":  320,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "id":  "pub22000-0000-4a00-9a00-pubnota00001",
+                      "name":  "Nota",
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1900,
+                                       -100
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "inputSource":  "passthrough"
+                                     },
+                      "id":  "pub22000-0001-4a00-9a00-pubtrig00001",
+                      "name":  "Cuando lo Llama el Bot",
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       1900,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "pub-aprobar",
+                                                                                                                    "leftValue":  "={{ $json.modoPublicar }}",
+                                                                                                                    "rightValue":  "aprobar",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "aprobar"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "pub-correccion",
+                                                                                                                    "leftValue":  "={{ $json.modoPublicar }}",
+                                                                                                                    "rightValue":  "correccion",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "correccion"
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "typeValidation":  "loose",
+                                                                                                             "leftValue":  "",
+                                                                                                             "caseSensitive":  true
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "pub-noche",
+                                                                                                                    "leftValue":  "={{ $json.modoPublicar }}",
+                                                                                                                    "rightValue":  "noche",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "string"
+                                                                                                                                 }
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "noche"
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "id":  "pub22000-0002-4a00-9a00-pubswitch001",
+                      "name":  "Router Publicacion",
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       2120,
+                                       300
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Desempaca las filas nocturnas enviadas por \"Armar Filas Noche\" para guardarlas 1 a 1 en Supabase.\nconst filas = Array.isArray($json.filas) ? $json.filas : [];\nreturn filas.map(row =\u003e ({ json: row }));"
+                                     },
+                      "id":  "pub22000-0003-4a00-9a00-pubnoche0001",
+                      "name":  "Desempacar Filas Noche",
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2360,
+                                       740
+                                   ]
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Avisa en el grupo si los montos de las cuentas no suman lo que dice el comprobante.\n// Solo avisa cuando esta SEGURO: si no se pudo leer el monto del comprobante, o si alguna\n// cuenta no traia monto, se queda callado. Una falsa alarma cada dos por tres haria que\n// nadie le haga caso.\nlet cuentas = [];\ntry { cuentas = $(\u0027Separar Cuentas\u0027).all().map(i =\u003e i.json); } catch(e){}\nif (cuentas.length \u003c 2) return [];                       // con una sola cuenta no hay nada que sumar\n\nlet total = null;\ntry { total = $(\u0027Cuando lo Llama el Bot\u0027).first().json.montoComprobante; } catch(e){}\nif (total === null || total === undefined) return [];    // no se leyo el monto del comprobante\n\nif (cuentas.some(c =\u003e c.monto === null || c.monto === undefined)) return [];  // falta algun monto\n\nconst suma = cuentas.reduce((a, c) =\u003e a + Number(c.monto), 0);\nconst dif = Math.round((Number(total) - suma) * 100) / 100;\nif (Math.abs(dif) \u003c 0.01) return [];                     // cuadra\n\nconst redondo = (n) =\u003e (Math.round(n * 100) / 100);\nreturn [{ json: { aviso:\n  \u0027OJO: el comprobante dice $\u0027 + redondo(total) + \u0027 y las \u0027 + cuentas.length +\n  \u0027 cuentas suman $\u0027 + redondo(suma) + \u0027. Diferencia: $\u0027 + redondo(Math.abs(dif)) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       3460,
+                                       400
+                                   ],
+                      "id":  "d0e1f2a3-0000-4b00-9000-revisarmont01",
+                      "name":  "Revisar Montos",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "specifyBody":  "json",
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: \"593961230380-1601657528@g.us\", text: $json.aviso }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-avisarmonto01",
+                      "name":  "Avisar Montos",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       3640,
+                                       400
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: \"593961230380-1601657528@g.us\", text: $json.texto }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "c9d0e1f2-0002-4a00-9c00-correccion02",
+                      "name":  "Publicar Correccion",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       2336,
+                                       736
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\"Cuando lo Llama el Bot\").first().json.jid, nombre: $(\"Cuando lo Llama el Bot\").first().json.nombre, idCuenta: $(\"Cuando lo Llama el Bot\").first().json.idCuenta, idCaptura: $(\"Cuando lo Llama el Bot\").first().json.idCaptura, publicacion: $(\"Cuando lo Llama el Bot\").first().json.publicacion }) }}",
+                                         "expire":  true,
+                                         "ttl":  172800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "c9d0e1f2-0003-4a00-9c00-correccion03",
+                      "name":  "Redis Guardar Publicacion Correccion",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2512,
+                                       736
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// La fila de esa cuenta en Supabase queda con los datos corregidos: asi, cuando la operadora devuelva la\n// foto, la Fase B la compara con los datos BUENOS. Solo van las columnas que se cambian.\nconst v = $(\u0027Cuando lo Llama el Bot\u0027).first().json;\nreturn [{ json: {\n  cuentas: [{ id: v.idCuenta || \u0027\u0027, texto: v.datos, monto: v.monto }],\n  notas: \u0027Datos corregidos por el cliente (la operadora pidio: \u0027 + (v.nota || \u0027verificar\u0027) + \u0027)\u0027\n} }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2688,
+                                       736
+                                   ],
+                      "id":  "c9d0e1f2-0004-4a00-9c00-correccion04",
+                      "name":  "Datos Correccion Supabase"
+                  },
+                  {
+                      "parameters":  {
+                                         "inputsToIgnore":  "",
+                                         "tableId":  "transacciones_detal_por_whatsapp",
+                                         "filterString":  "={{ \"id_msgs_grupo=cs.\" + JSON.stringify([ $(\"Cuando lo Llama el Bot\").first().json.publicacion || \"sin-dato\" ]) + \"\u0026estado=in.(en_proceso,en_espera)\" }}",
+                                         "resource":  "row",
+                                         "filterType":  "string",
+                                         "operation":  "update",
+                                         "dataToSend":  "autoMapInputData"
+                                     },
+                      "id":  "c9d0e1f2-0005-4a00-9c00-correccion05",
+                      "name":  "Corregir Cuenta en Supabase",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2864,
+                                       736
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "key":  "={{ \u0027lastimg:\u0027 + $(\u0027Cuando lo Llama el Bot\u0027).first().json.jid }}",
+                                         "keyType":  "string",
+                                         "propertyName":  "imgKeyId",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2380,
+                                       220
+                                   ],
+                      "id":  "bb22cc33-dd44-4271-9bbb-redisimg0001",
+                      "name":  "Redis Leer ID Imagen",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"message\": { \"key\": { \"id\": \"{{ $(\"Cuando lo Llama el Bot\").first().json.idImagen || $json.imgKeyId }}\" } }, \"convertToMp4\": false }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "cc33dd44-ee55-4282-9ccc-redownload001",
+                      "name":  "Re-descargar Imagen",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       2560,
+                                       220
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendMedia/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: \"593961230380-1601657528@g.us\", mediatype: \"image\", mimetype: ($json.mimetype || \"image/jpeg\"), media: $json.base64, caption: (\"Cliente: \" + $(\"Cuando lo Llama el Bot\").first().json.nombreMostrar) }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "dd44ee55-ff66-4393-9ddd-sendimg0001",
+                      "name":  "Enviar Imagen Grupo",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       2740,
+                                       220
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={ \"number\": \"{{ $(\"Cuando lo Llama el Bot\").first().json.jid }}\", \"sticker\": \"https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-pedido-aprobado.webp\" }",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "ee55ff66-aa77-4404-9eee-sendsticker01",
+                      "name":  "Enviar Sticker Cliente",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       2920,
+                                       220
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Cuando lo Llama el Bot\u0027).first().json.jid, nombre: $(\u0027Cuando lo Llama el Bot\u0027).first().json.nombreMostrar, idCuenta: $(\u0027Cuando lo Llama el Bot\u0027).first().json.idCuenta, idCaptura: $(\u0027Cuando lo Llama el Bot\u0027).first().json.idImagen }) }}",
+                                         "expire":  true,
+                                         "ttl":  172800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-marcapubimg1",
+                      "name":  "Marcar Publicacion Imagen",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2740,
+                                       60
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "value":  "={{ JSON.stringify({ jid: $(\u0027Cuando lo Llama el Bot\u0027).first().json.jid, nombre: $(\u0027Cuando lo Llama el Bot\u0027).first().json.nombreMostrar, idCuenta: ($(\u0027Separar Cuentas\u0027).item.json.idCuenta || $(\u0027Cuando lo Llama el Bot\u0027).first().json.idCuenta), idCaptura: $(\u0027Cuando lo Llama el Bot\u0027).first().json.idImagen }) }}",
+                                         "expire":  true,
+                                         "ttl":  172800,
+                                         "keyType":  "string",
+                                         "key":  "={{ \u0027grupoMsg:\u0027 + (($json.key \u0026\u0026 $json.key.id) || ($json.data \u0026\u0026 $json.data.key \u0026\u0026 $json.data.key.id) || \u0027nada\u0027) }}",
+                                         "operation":  "set"
+                                     },
+                      "id":  "d0e1f2a3-0000-4b00-9000-marcapubcta1",
+                      "name":  "Marcar Publicacion Cuenta",
+                      "type":  "n8n-nodes-base.redis",
+                      "typeVersion":  1,
+                      "position":  [
+                                       3280,
+                                       400
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "redis":  {
+                                                        "id":  "SKkvpS5A65SOcmJs",
+                                                        "name":  "Redis memoria para Cambios JK"
+                                                    }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Una publicacion por cada cuenta que mando el cliente, con una cabecera que diga de quien\n// es y por cuanto. Antes salia el bloque pelado y la operadora no sabia de quien era.\nconst ap = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {};\nconst nombre = ap.nombreMostrar || ap.nombre || \u0027Cliente\u0027;\n\nlet lista = (ap.mensajesAprobar !== undefined) ? (ap.mensajesAprobar || []) : (ap.mensajes || []);\n\n// ===== CUENTAS DESTINO, UNA POR BLOQUE (lo usan \"Separar Cuentas\", \"Armar Filas Noche\" y \"Revisar Operacion\") =====\n// Los nombres son propios (montoDelBloque, limpiarNotasBot...) para no chocar con los de \"Revisar Operacion\".\n// Las notas que escribe el propio bot al leer una imagen no son cuentas del cliente.\nfunction limpiarNotasBot(t){\n  return String(t || \u0027\u0027)\n    .replace(/\\[El cliente envio un COMPROBANTE[^\\]]*\\]/gi, \u0027\u0027)\n    .replace(/\\[El cliente envio una imagen que no parece[^\\]]*\\]/gi, \u0027\u0027)\n    .replace(/\\[El cliente envio una imagen con una CUENTA bancaria\\.?\\s*Datos:\\s*([^\\]]*)\\]/gi, \u0027Cuenta (imagen): $1\u0027)\n    .trim();\n}\n\n// Monto del bloque: \"$30\", \"30$\", \"30 usd\", \"$30,50\". Si no hay, null.\n// Primero se busca \"$30\" y despues \"30$\" EN LA MISMA LINEA. Con el salto de linea permitido, una\n// cedula con \"$60\" en la linea de abajo salia como monto (\"Ci 11111111 / $60\" -\u003e $11111111).\nfunction montoDelBloque(t){\n  const s = String(t);\n  const m = s.match(/\\$[ \\t]*([0-9]+(?:[.,][0-9]{1,2})?)/) || s.match(/([0-9]+(?:[.,][0-9]{1,2})?)[ \\t]*(?:\\$|usd|dolares|dolar)/i);\n  if (!m) return null;\n  const v = parseFloat(String(m[1]).replace(\u0027,\u0027, \u0027.\u0027));\n  return isNaN(v) ? null : v;\n}\n\nconst CLAVES_CUENTA = [\u0027bancolombia\u0027,\u0027nequi\u0027,\u0027pago movil\u0027,\u0027banco\u0027,\u0027cuenta\u0027,\u0027titular\u0027,\u0027cedula\u0027,\u0027cc \u0027,\u0027 ci \u0027,\n                \u0027swift\u0027,\u0027interbank\u0027,\u0027binance\u0027,\u0027zelle\u0027,\u0027pichincha\u0027,\u0027guayaquil\u0027,\u0027produbanco\u0027,\u0027pacifico\u0027,\n                \u0027bancolombia\u0027,\u0027ahorro\u0027,\u0027corriente\u0027,\u0027banesco\u0027,\u0027mercantil\u0027,\u0027provincial\u0027,\u0027bdv\u0027,\u0027bicentenario\u0027,\n                \u0027bancamiga\u0027,\u0027davivienda\u0027,\u0027daviplata\u0027,\u0027plin\u0027,\u0027yape\u0027,\u0027paypal\u0027,\u0027usdt\u0027,\u0027wallet\u0027,\u0027billetera\u0027];\n// Un bloque tambien es una cuenta si trae un numero largo o un correo, aunque no diga \"banco\":\n// asi no se pierde el caso del 20/11 (pais, cuenta de 20 digitos, titular, cedula, monto).\nfunction esBloqueCuenta(bloque){\n  const bajo = \u0027 \u0027 + bloque.toLowerCase() + \u0027 \u0027;\n  if (CLAVES_CUENTA.some(k =\u003e bajo.indexOf(k) !== -1)) return true;\n  if (/[0-9]{10,}/.test(bajo.replace(/([0-9])[ .-](?=[0-9])/g, \u0027$1\u0027))) return true;\n  return /[^ @]+@[^ @]+\\.[a-z]{2,}/.test(bajo);\n}\n\n// ---------- cuantas cuentas trae un mensaje ----------\n// Antes se partia el mensaje en cada renglon vacio. Pero muchos clientes escriben UNA cuenta con\n// renglones vacios en el medio (\"Banco / (vacio) / numero / (vacio) / titular y cedula / (vacio) / $60\"),\n// y al grupo iban 2 o 3 publicaciones sin monto (revision de los chats reales, 21/11). Ahora las cuentas\n// se cuentan por lo que las identifica: un numero de cuenta o telefono, un correo o una billetera.\n// La cedula NO cuenta: \"C.I: 0900000001\" tiene 10 digitos pero no es otra cuenta.\nfunction tieneIdentificador(p){\n  for (const l of String(p).split(\u0027\\n\u0027)){\n    // Tampoco un telefono de contacto (\"Contactanos al 09...\", \"WhatsApp 09...\").\n    const sinCedula = l.replace(/(c\\.?\\s?i\\b\\.?|c\\.?\\s?c\\b\\.?|c[eé]d(ula)?\\b\\.?|rif\\b|dni\\b|pasaporte|\\b[ve]-)\\s*:?\\s*[0-9][0-9 .\\-]*/gi, \u0027 \u0027)\n                       .replace(/(cont[aá]ct\\w*|whats?app|wsp)\\s*(al|:)?\\s*\\+?[0-9][0-9 .\\-]*/gi, \u0027 \u0027);\n    if (/[0-9]{10,}/.test(sinCedula.replace(/([0-9])[ .\\-](?=[0-9])/g, \u0027$1\u0027))) return true;\n    if (/[^\\s@]+@[^\\s@]+\\.[a-z]{2,}/i.test(l)) return true;\n    if (/(^|\\s)[A-Za-z0-9]{26,}(\\s|$)/.test(l)) return true;\n  }\n  return false;\n}\n// Con que suele empezar una cuenta (para saber donde empieza la siguiente).\nconst BANCOS_INICIO = /(banco|bank|bancolombia|nequi|daviplata|pago\\s*m[oó]vil|zelle|binance|pichincha|guayaquil|produbanco|pac[ií]fico|banesco|mercantil|provincial|bdv|bicentenario|bancamiga|bnc|davivienda|interbank|bcp|scotiabank|yape|plin|paypal|usdt)/i;\n// Un pedazo que es solo el monto (\"$60\", \"40$\", \"Monto 25 usd\").\nconst soloMonto = p =\u003e String(p).length \u003c= 30 \u0026\u0026 montoDelBloque(p) !== null \u0026\u0026 !/[0-9]{6,}/.test(String(p).replace(/[ .,\\-]/g, \u0027\u0027));\n// Un pedazo que parece el nombre del titular (pocas palabras, solo letras). La charla no (\"gracias amigo\").\nconst CHARLA = /\\b(hola|buen[oa]s?|d[ií]as|tardes|noches|gracias|porfa|favor|amig[oa]|herman[oa]|ok|listo|dale|saludos|bendiciones|av[ií]same|avisa|espero|cuando|llegue)\\b/i;\nconst nombreProbable = p =\u003e /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü .\u0027]{3,60}$/.test(String(p)) \u0026\u0026 String(p).trim().split(/\\s+/).length \u003c= 5 \u0026\u0026 !CHARLA.test(p);\nfunction cuentasDelMensaje(t){\n  const partes = String(t).split(/\\n\\s*\\n+/).map(x =\u003e x.trim()).filter(Boolean);\n  const sirve = p =\u003e esBloqueCuenta(p) || soloMonto(p) || nombreProbable(p);\n  // De cada cuenta se quita lo que viene antes de sus datos (el saludo) y la charla.\n  const armar = piezas =\u003e { const d = piezas.findIndex(p =\u003e esBloqueCuenta(p)); return d === -1 ? \u0027\u0027 : piezas.slice(d).filter(sirve).join(\u0027\\n\u0027); };\n  const conId = partes.filter(tieneIdentificador).length;\n  if (conId \u003c= 1) return [armar(partes)].filter(Boolean);          // UNA sola cuenta, aunque traiga renglones vacios\n  // VARIAS cuentas: cada una empieza con su banco o su numero; el titular, la cedula y el monto que vienen\n  // despues son de esa misma cuenta.\n  const grupos = [];\n  let actual = null;\n  for (const p of partes){\n    const id = tieneIdentificador(p);\n    const otra = actual \u0026\u0026 actual.id \u0026\u0026 (id || (BANCOS_INICIO.test(p) \u0026\u0026 !soloMonto(p)));\n    if (!actual || otra){ actual = { piezas: [], id: false }; grupos.push(actual); }\n    actual.piezas.push(p);\n    if (id) actual.id = true;\n  }\n  return grupos.map(g =\u003e armar(g.piezas)).filter(Boolean);\n}\n\n// Un bloque por cuenta, con la cabecera \"nombre - $monto\". Se recorre mensaje por mensaje para que\n// cada bloque conserve el id del mensaje del que salio (para citarselo al cliente despues).\n// Si no se reconoce ningun bloque (lo escribio de una forma rara), va todo junto, como antes: es\n// preferible a dejar a la operadora sin la cuenta.\n// El monto del deposito: la suma de las capturas, solo si se les leyo el monto a TODAS (si no, el de\n// respaldo, o nada). Sirve para la cabecera cuando el cliente mando UNA sola cuenta sin monto.\nfunction montoDelDeposito(ro, respaldo){\n  const cs = ((ro \u0026\u0026 ro.registro) || {}).capturas || [];\n  if (cs.length \u0026\u0026 cs.every(c =\u003e typeof c.monto === \u0027number\u0027 \u0026\u0026 !isNaN(c.monto))) return Math.round(cs.reduce((a, c) =\u003e a + c.monto, 0) * 100) / 100;\n  return (typeof respaldo === \u0027number\u0027 \u0026\u0026 !isNaN(respaldo)) ? respaldo : null;\n}\n\nfunction bloquesDeCuentas(lista, nombre, todoSiNada, idTodo, montoDeposito){\n  const out = [];\n  for (const m of (lista || [])){\n    const t = limpiarNotasBot(m \u0026\u0026 m.texto);\n    if (!t) continue;\n    for (const bloque of cuentasDelMensaje(t)){\n      const monto = montoDelBloque(bloque);\n      out.push({ cuenta: nombre + (monto !== null ? \u0027 - $\u0027 + monto : \u0027\u0027) + \u0027\\n\\n\u0027 + bloque, idCuenta: (m \u0026\u0026 m.id) || \u0027\u0027, monto, texto: bloque });\n    }\n  }\n  if (!out.length){\n    const todo = String(todoSiNada || \u0027\u0027).trim();\n    if (todo) out.push({ cuenta: nombre + \u0027\\n\\n\u0027 + todo, idCuenta: idTodo || \u0027\u0027, monto: null, texto: todo });\n  }\n  // UNA sola cuenta y sin monto: va con el monto del deposito (21/11: la clienta mando banco, cedula y\n  // telefono, y en transferir la cuenta salio sin precio). Con varias cuentas no se reparte nada.\n  if (out.length === 1 \u0026\u0026 out[0].monto === null \u0026\u0026 typeof montoDeposito === \u0027number\u0027 \u0026\u0026 !isNaN(montoDeposito)){\n    out[0].monto = montoDeposito;\n    out[0].cuenta = nombre + \u0027 - $\u0027 + montoDeposito + \u0027\\n\\n\u0027 + out[0].texto;\n  }\n  return out;\n}\nreturn bloquesDeCuentas(lista, nombre, ap.datosCuenta, ap.idCuenta, montoDelDeposito(ro, ap.montoComprobante)).map(b =\u003e ({ json: b }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2920,
+                                       400
+                                   ],
+                      "id":  "ff66aa77-bb88-4505-9fff-separarctas1",
+                      "name":  "Separar Cuentas"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin",
+                                         "options":  {
+
+                                                     },
+                                         "specifyBody":  "json",
+                                         "method":  "POST",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "value":  "application/json",
+                                                                                         "name":  "Content-Type"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "sendHeaders":  true,
+                                         "jsonBody":  "={{ JSON.stringify({ number: \"593961230380-1601657528@g.us\", text: $json.cuenta }) }}",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "authentication":  "genericCredentialType"
+                                     },
+                      "id":  "aa77bb88-cc99-4616-9aaa-sendcuenta01",
+                      "name":  "Enviar Cuenta Grupo",
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4,
+                      "position":  [
+                                       3100,
+                                       400
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "70cMtifwmTdIqY1l",
+                                                                 "name":  "Evolution apikey Kelvin 0380"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Arma UNA fila de reporte por cada operacion aprobada (comprobante + cuenta destino).\n// Orden de columnas (debe coincidir con la tabla de Excel): Fecha, Cliente, Numero, CuentaDestino, Comprobante, Tipo.\nfunction p2(n){ return String(n).padStart(2,\u00270\u0027); }\nconst d = new Date(Date.now() - 5*3600000); // hora Ecuador (UTC-5)\nconst fecha = d.getUTCFullYear()+\u0027-\u0027+p2(d.getUTCMonth()+1)+\u0027-\u0027+p2(d.getUTCDate())+\u0027 \u0027+p2(d.getUTCHours())+\u0027:\u0027+p2(d.getUTCMinutes());\nlet a = {};\ntry { a = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {}; } catch(e){}\nconst cliente = a.nombre || \u0027Cliente\u0027;\nconst numero = a.numero ? (\u0027+\u0027+a.numero) : \u0027\u0027;\nconst cuenta = String(a.datosCuenta || \u0027\u0027).replace(/\\n+/g,\u0027 | \u0027).trim();\nlet comprobante = \u0027\u0027;\nconst mc = String(a.mensajeCombinado || \u0027\u0027);\nconst m = mc.match(/datos leidos:\\s*([^\\]]*)\\]/i);\nif (m) comprobante = m[1].trim(); else comprobante = \u0027(ver comprobante en grupo)\u0027;\nlet tipo = \u0027detal\u0027;\ntipo = a.modoTarifa || \u0027detal\u0027;\nconst fila = [fecha, cliente, numero, cuenta, comprobante, tipo];\nreturn [{ json: { Fecha:fecha, Cliente:cliente, Numero:numero, CuentaDestino:cuenta, Comprobante:comprobante, Tipo:tipo, fila } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2380,
+                                       340
+                                   ],
+                      "id":  "bb88cc99-dd00-4727-9bbb-registrarop1",
+                      "name":  "Registrar Operación",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// ===== LAS FILAS PARA SUPABASE (tabla transacciones_detal_por_whatsapp), DE DIA =====\n// UNA FILA POR CUENTA DESTINO: cada cuenta tiene su propio estado y pasa a \u0027enviada\u0027 cuando la\n// operadora devuelve la foto de ESA cuenta (pedido de Kelvin, 20/11). Las cuentas de un mismo\n// deposito comparten id_msg_captura. Corre DESPUES de publicar en el grupo, asi cada fila guarda el\n// id de su publicacion (id_msgs_grupo): con eso \"Marcar Enviada en Supabase\" encuentra la fila.\n// Los campos se llaman EXACTAMENTE como las columnas: el nodo siguiente los guarda tal cual.\n// Lo comun a todas las cuentas de un deposito: quien, cuanto, referencia, banco y las capturas.\nfunction filaBase(reg, numeroOJid, nombre, idImagen){\n  reg = reg || {};\n  const capturas = Array.isArray(reg.capturas) ? reg.capturas : [];\n  const montos = capturas.map(c =\u003e c.monto).filter(m =\u003e typeof m === \u0027number\u0027 \u0026\u0026 !isNaN(m));\n  const unicos = a =\u003e a.filter((x, i) =\u003e x \u0026\u0026 a.indexOf(x) === i);\n  return {\n    whatsapp: String(numeroOJid || \u0027\u0027).split(\u0027@\u0027)[0].replace(/\\D/g, \u0027\u0027),\n    nombre_cliente: nombre || null,\n    monto_deposito: montos.length ? Math.round(montos.reduce((a, b) =\u003e a + b, 0) * 100) / 100 : null,\n    ref_deposito: unicos(capturas.map(c =\u003e c.ref)).join(\u0027, \u0027) || null,\n    banco_origen: unicos(capturas.map(c =\u003e c.banco)).join(\u0027, \u0027) || null,\n    huella_foto: (capturas.find(c =\u003e c.huella) || {}).huella || null,\n    id_msg_captura: idImagen || (capturas[0] || {}).id || null,\n    capturas\n  };\n}\nconst ap = $(\u0027Cuando lo Llama el Bot\u0027).first().json || {};\nconst reg = ap.registro || {};\nconst idDe = j =\u003e String((j \u0026\u0026 j.key \u0026\u0026 j.key.id) || (j \u0026\u0026 j.data \u0026\u0026 j.data.key \u0026\u0026 j.data.key.id) || \u0027\u0027);\nlet separadas = [], enviadas = [], idFoto = \u0027\u0027;\ntry { separadas = $(\u0027Separar Cuentas\u0027).all().map(i =\u003e i.json); } catch(e){}\ntry { enviadas = $(\u0027Enviar Cuenta Grupo\u0027).all().map(i =\u003e i.json); } catch(e){}\ntry { idFoto = idDe($(\u0027Enviar Imagen Grupo\u0027).first().json); } catch(e){}\nconst base = filaBase(reg, ap.numero || ap.jid, ap.nombreMostrar || ap.nombre, ap.idImagen);\nconst ahoraIso = new Date().toISOString();\nreturn separadas.map((c, i) =\u003e ({ json: Object.assign({}, base, {\n  estado: \u0027en_proceso\u0027,\n  cuentas: [{ id: c.idCuenta || \u0027\u0027, texto: c.texto || c.cuenta || \u0027\u0027, monto: (c.monto === undefined ? null : c.monto) }],\n  // La foto de la captura va con la primera cuenta: si la operadora responde a la foto, es esa.\n  id_msgs_grupo: [idDe(enviadas[i]), i === 0 ? idFoto : \u0027\u0027].filter(Boolean),\n  fuera_de_horario: false,\n  publicado_en: ahoraIso,\n  notas: separadas.length \u003e 1 ? (\u0027Cuenta \u0027 + (i + 1) + \u0027 de \u0027 + separadas.length + \u0027 del mismo deposito\u0027) : null\n}) }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       3728,
+                                       208
+                                   ],
+                      "id":  "a1b2c3d4-0009-4e00-9a00-registro00009",
+                      "name":  "Armar Fila Supabase",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "tableId":  "transacciones_detal_por_whatsapp",
+                                         "operation":  "create",
+                                         "resource":  "row",
+                                         "inputsToIgnore":  "",
+                                         "dataToSend":  "autoMapInputData"
+                                     },
+                      "id":  "a1b2c3d4-0010-4e00-9a00-registro00010",
+                      "name":  "Guardar Operacion en Supabase",
+                      "type":  "n8n-nodes-base.supabase",
+                      "typeVersion":  1,
+                      "position":  [
+                                       3904,
+                                       208
+                                   ],
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "id":  "JCvvp9JkZ15OpA9E",
+                                                              "name":  "Supabase Cambios JK"
+                                                          }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "Cuando lo Llama el Bot":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Router Publicacion",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Router Publicacion":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Redis Leer ID Imagen",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    },
+                                                                    {
+                                                                        "node":  "Enviar Sticker Cliente",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    },
+                                                                    {
+                                                                        "node":  "Registrar Operación",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "node":  "Publicar Correccion",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "node":  "Desempacar Filas Noche",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Desempacar Filas Noche":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Guardar Operacion en Supabase",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Publicar Correccion":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Redis Guardar Publicacion Correccion",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Redis Guardar Publicacion Correccion":  {
+                                                                     "main":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "Datos Correccion Supabase",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                                 },
+                        "Datos Correccion Supabase":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Corregir Cuenta en Supabase",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Armar Fila Supabase":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Guardar Operacion en Supabase",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Redis Leer ID Imagen":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Re-descargar Imagen",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Re-descargar Imagen":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Enviar Imagen Grupo",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Enviar Imagen Grupo":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Separar Cuentas",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     },
+                                                                     {
+                                                                         "node":  "Marcar Publicacion Imagen",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Separar Cuentas":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Enviar Cuenta Grupo",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Enviar Cuenta Grupo":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "node":  "Marcar Publicacion Cuenta",
+                                                                         "type":  "main",
+                                                                         "index":  0
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Marcar Publicacion Cuenta":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Revisar Montos",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           },
+                                                                           {
+                                                                               "node":  "Armar Fila Supabase",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Revisar Montos":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Avisar Montos",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "timezone":  "America/Guayaquil"
+                 }
+}
