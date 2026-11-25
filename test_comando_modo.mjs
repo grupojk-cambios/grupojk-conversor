@@ -6,13 +6,14 @@
 
 import { readFileSync } from 'fs';
 
-const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
+const wf = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
 const codigo = wf.nodes.find(n => n.name === 'Detectar Comando Admin').parameters.jsCode;
 
 const ADMIN = '593961230380';   // numero con role=admin en Supabase
 
 function correr(textoCombinado, numero = ADMIN) {
   const $ = (n) => {
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
     if (n === 'Consultar Admins')      return { all: () => [{ json: { whatsapp: '+' + ADMIN, role: 'admin' } }] };
     if (n === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };
@@ -75,6 +76,7 @@ for (const txt of [
 // Version que permite simular la lista de admins que devuelve Supabase
 function correrCon(textoCombinado, numero, listaAdmins) {
   const $ = (n) => {
+    if (n === 'Cuando lo Llama el Bot') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
     if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: numero + '@s.whatsapp.net' } } } } }) };
     if (n === 'Consultar Admins')      return { all: () => listaAdmins.map(w => ({ json: { whatsapp: w } })) };
     if (n === 'Combinar')              return { item: { json: { mensajeCombinado: textoCombinado } } };

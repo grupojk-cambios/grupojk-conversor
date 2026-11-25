@@ -17,7 +17,8 @@ const SALTO = String.fromCharCode(10);
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n)).parameters.jsCode;
+const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
+const code = n => (wf.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n)).parameters.jsCode;
 
 let fallos = 0;
 const chk = (ok, etiqueta, detalle) => {
@@ -147,13 +148,18 @@ console.log('=== 5) Cuanto espera antes de contestar ===');
   chk(normal.espera === 30, 'un mensaje normal sigue en 30s', '-> ' + normal.espera);
   chk(normal.esComprobante === false, 'y no dispara el sticker');
 
-  const sig = n => (((wf.connections[n] && wf.connections[n].main) || [])[0] || []).map(c => c.node).join();
-  const ej = wf.nodes.find(x => x.name === 'Ejecutar Media');
+  const sigV12 = n => (((wf.connections[n] && wf.connections[n].main) || [])[0] || []).map(c => c.node).join();
+  const sigDeb = n => (((wfDeb.connections[n] && wfDeb.connections[n].main) || [])[0] || []).map(c => c.node).join();
+  const ejDeb = wf.nodes.find(x => x.name === 'Ejecutar Debounce');
+  chk(!!ejDeb && ejDeb.type === 'n8n-nodes-base.executeWorkflow' && ejDeb.parameters?.workflowId?.value === 'lUfmCp6cNHVcaVrh'
+      && ejDeb.parameters?.options?.waitForSubWorkflow === false && sigV12('Es mensaje de cliente?') === 'Ejecutar Debounce',
+      'v12: Es mensaje de cliente? -> Ejecutar Debounce (lUfmCp6cNHVcaVrh, sin esperar)');
+  const ej = wfDeb.nodes.find(x => x.name === 'Ejecutar Media');
   chk(!!ej && ej.type === 'n8n-nodes-base.executeWorkflow' && ej.parameters?.workflowId?.value === 'UMQqyE6H4HVrIDoy',
       'Ejecutar Media apunta a UMQqyE6H4HVrIDoy');
   chk(ej && ej.parameters?.options?.waitForSubWorkflow === true, 'espera al sub-workflow de Media (sincrono, sin Wait)');
-  chk(sig('Es mensaje de cliente?') === 'Ejecutar Media' && sig('Ejecutar Media') === 'Prep Debounce',
-      'Es mensaje de cliente? -> Ejecutar Media -> Prep Debounce');
+  chk(sigDeb('Cuando lo Llama el Bot') === 'Ejecutar Media' && sigDeb('Ejecutar Media') === 'Prep Debounce',
+      'Debounce: Cuando lo Llama el Bot -> Ejecutar Media -> Prep Debounce');
 }
 
 console.log('');

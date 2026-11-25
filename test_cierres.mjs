@@ -19,7 +19,8 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
+const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -233,10 +234,12 @@ console.log('');
 console.log('=== 9) Como quedo conectado ===');
 {
   const saleV12 = (n, i) => ((((wf.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
+  const saleDeb = (n, i) => ((((wfDeb.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
   const sale = (n, i) => ((((wfIa.connections[n] || {}).main || [])[i || 0]) || []).map(c => c.node);
-  chk(saleV12('¿Es Comando Admin?', 1).join() === 'Preparar Contexto IA' && saleV12('¿Solo el Comando?', 1).join() === 'Preparar Contexto IA'
-      && saleV12('Preparar Contexto IA').join() === 'Ejecutar IA' && sale('Cuando lo Llama el Bot').join() === 'Consultar Tasas',
-      'v12 -> Preparar Contexto IA -> Ejecutar IA -> Cuando lo Llama el Bot -> Consultar Tasas');
+  chk(saleV12('Es mensaje de cliente?').join() === 'Ejecutar Debounce'
+      && saleDeb('¿Es Comando Admin?', 1).join() === 'Preparar Contexto IA' && saleDeb('¿Solo el Comando?', 1).join() === 'Preparar Contexto IA'
+      && saleDeb('Preparar Contexto IA').join() === 'Ejecutar IA' && sale('Cuando lo Llama el Bot').join() === 'Consultar Tasas',
+      'v12 -> Ejecutar Debounce -> Preparar Contexto IA -> Ejecutar IA -> Consultar Tasas');
   chk(sale('Redis Leer Operacion').join() === 'Redis Leer Pregunta', 'Redis Leer Operacion -> Redis Leer Pregunta', '-> ' + sale('Redis Leer Operacion'));
   chk(sale('Redis Leer Pregunta').join() === 'Consultar Operaciones WhatsApp' && sale('Consultar Operaciones WhatsApp').join() === 'Revisar Operacion',
       'Redis Leer Pregunta -> Consultar Operaciones WhatsApp -> Revisar Operacion');

@@ -14,7 +14,8 @@ const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').rep
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfMed = JSON.parse(readFileSync('workflow_media.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
+const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfPub.nodes.find(x => x.name === n) || wfMed.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -51,7 +52,7 @@ function revisar(mensajes, op) {
 
 function prep(texto) {
   const $ = (n) => {
-    if (n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: '584120000000@s.whatsapp.net', id: 'ID1' } } } } }) };
+    if (n === 'Cuando lo Llama el Bot' || n === 'Webhook Evolution API') return { first: () => ({ json: { body: { data: { key: { remoteJid: '584120000000@s.whatsapp.net', id: 'ID1' } } } } }) };
     return { item: { json: {} }, first: () => ({ json: {} }) };
   };
   return new Function('$json', '$', code('Prep Debounce'))({ texto }, $)[0].json;

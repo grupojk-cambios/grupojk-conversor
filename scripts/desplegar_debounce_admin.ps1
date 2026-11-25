@@ -30,7 +30,7 @@ if($ya.Count -gt 1){ throw ('Hay ' + $ya.Count + ' workflows con ese nombre. Bor
 
 if($ya.Count -eq 1){
   Write-Host ('Ya existe (id=' + $ya[0].id + '): se actualiza.')
-  Publish-N8nWorkflow $ctx $ya[0].id $jsonPath $null
+  Publish-N8nWorkflow $ctx $ya[0].id $jsonPath @('Preparar Contexto IA', 'Ejecutar IA', 'Prep Debounce')
   Write-Host ''
   Write-Host ('LISTO. Workflow id=' + $ya[0].id + ' (activo=' + $ya[0].active + ').')
 } else {

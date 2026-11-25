@@ -17,7 +17,8 @@ const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').rep
 const wfOp = JSON.parse(readFileSync('workflow_operadoras.json', 'utf8').replace(/^﻿/, ''));
 const wfPub = JSON.parse(readFileSync('workflow_operacion_publicar.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const code = n => wf.nodes.find(x => x.name === n).parameters.jsCode;
+const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
+const code = n => (wf.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n)).parameters.jsCode;
 const codeOp = n => wfOp.nodes.find(x => x.name === n).parameters.jsCode;
 const codePub = n => wfPub.nodes.find(x => x.name === n).parameters.jsCode;
 const codeIa = n => wfIa.nodes.find(x => x.name === n).parameters.jsCode;

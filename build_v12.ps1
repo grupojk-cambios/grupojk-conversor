@@ -159,6 +159,10 @@ $MEDIA_WORKFLOW_ID = 'UMQqyE6H4HVrIDoy'
 # Atiende consultas de tasas/cuentas, deteccion de operaciones/aprobaciones y AI Agent con Calculadora.
 $IA_WORKFLOW_ID = 'OjALXRrfveeGpdtd'
 
+# FASE 5 (Debounce y Admin): el workflow "Bot JK - Debounce y Admin" (scripts\desplegar_debounce_admin.ps1).
+# Procesa Media, acumula mensajes en Redis (Wait 30s/100s), atiende comandos admin y delega a Atencion e IA.
+$DEBOUNCE_ADMIN_WORKFLOW_ID = 'lUfmCp6cNHVcaVrh'
+
 # ¿EL DEPOSITO CUADRA CON LAS CUENTAS? (pedido de Kelvin, 23/11). La suma de las cuentas tiene que dar
 # EXACTO lo que dice la captura, en la misma moneda (tolerancia 0: "que sea exacta"). Si no cuadra, NO
 # se pasa a transferir: se le pide al cliente que confirme. El workflow "Avisar deposito que no cuadra"
@@ -3022,110 +3026,13 @@ $nodes = @(
     id = '4c9f6989-54ed-4990-89d5-283dd59b7ce2'; name = 'Es mensaje de cliente?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(-200,128)
   },
   [ordered]@{
-    # Llego un comprobante? Entonces se le manda el sticker de "verificando su deposito"
-    # enseguida, sin esperar, para que el cliente sepa que se recibio.
-    parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ $json.stickerVerificando }}'; value2 = '={{true}}' } ) } }
-    id = 'd0e1f2a3-0000-4b00-9000-escomprob0001'; name = 'Llego un Comprobante?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(300,-120)
-  },
-  [ordered]@{
-    parameters = @{ method = 'POST'; url = 'http://evolution-api:8080/message/sendSticker/BOT%20JK%20Kelvin'; authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true; headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'; jsonBody = '={ "number": "{{ $("Prep Debounce").first().json.jid }}", "sticker": "https://grupojk-cambios.github.io/grupojk-conversor/logos/sticker-verificando-su-deposito.webp" }'; options = @{} }
-    id = 'd0e1f2a3-0000-4b00-9000-stickerverif1'; name = 'Sticker Verificando'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(460,-120)
-    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
-    credentials = @{ httpHeaderAuth = @{ id = '70cMtifwmTdIqY1l'; name = 'Evolution apikey Kelvin 0380' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $prepCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(140,128); id = 'c1a2b3c4-1111-4a11-9111-prep00000001'; name = 'Prep Debounce'
-  },
-  [ordered]@{
-    # FASE 3 (Media): convierte audio, imagen/comprobante o texto en { texto } (sin Wait: sincrono seguro).
-    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $MEDIA_WORKFLOW_ID; mode = 'id' }
-                    workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
-                    mode = 'once'; options = @{ waitForSubWorkflow = $true } }
-    id = 'e1f2a3b4-0005-4c00-9c00-procmedia001'; name = 'Ejecutar Media'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(-60,128)
-    onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'push'; list = "={{ `$('Prep Debounce').item.json.keyBuf }}"; messageData = "={{ JSON.stringify({ id: `$('Prep Debounce').item.json.idMensaje, texto: `$('Prep Debounce').item.json.texto }) }}"; tail = $true }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(160,128); id = 'c2a2b3c4-2222-4a22-9222-rpush0000001'; name = 'Redis Guardar Msg'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ `$('Prep Debounce').item.json.keyTok }}"; value = "={{ `$('Prep Debounce').item.json.miTs }}"; keyType = 'string'; expire = $true; ttl = 120 }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(340,128); id = 'c3a2b3c4-3333-4a33-9333-rset00000001'; name = 'Redis Marcar Token'; credentials = $redisCred
-  },
-  [ordered]@{
-    # Los segundos los decide "Prep Debounce": mas si llego un comprobante.
-    parameters = @{ amount = "={{ `$('Prep Debounce').first().json.espera }}"; unit = 'seconds' }
-    type = 'n8n-nodes-base.wait'; typeVersion = 1.1; position = @(520,128); id = 'd2b3c4d5-4444-4a44-9444-wait00000001'; name = 'Esperar 30s'; webhookId = 'e7c1a2b3-5555-4a55-9555-waithook0001'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'get'; key = "={{ `$('Prep Debounce').item.json.keyTok }}"; propertyName = 'tokenActual'; keyType = 'string'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(700,128); id = 'c4a2b3c4-6666-4a66-9666-rget00000001'; name = 'Redis Leer Token'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $filtrarCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(880,128); id = 'f3c4d5e6-7777-4a77-9777-filtrar00001'; name = 'Filtrar Ultimo'
-  },
-  [ordered]@{
-    parameters = @{ operation = 'get'; key = "={{ `$('Prep Debounce').item.json.keyBuf }}"; propertyName = 'mensajes'; keyType = 'list'; options = @{} }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1060,128); id = 'c5a2b3c4-8888-4a88-9888-rgetlist0001'; name = 'Redis Leer Mensajes'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ operation = 'delete'; key = "={{ `$('Prep Debounce').item.json.keyBuf }}" }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1240,128); id = 'c6a2b3c4-9999-4a99-9999-rdel00000001'; name = 'Redis Borrar Buffer'; credentials = $redisCred
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $combinarCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1420,128); id = 'a7b8c9d0-aaaa-4aaa-9aaa-combinar0001'; name = 'Combinar'
-  },
-  [ordered]@{
-    # Trae TODOS los perfiles con role='admin' en perfiles_detal (Kelvin, Dario, quien se agregue despues).
-    # Se usa para el comando "modo mayor"/"modo detal" (Detectar Comando Admin). Nunca afecta a clientes.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_detal'; returnAll = $false; limit = 20; filterType = 'string'; filterString = 'role=eq.admin' }
-    id = 'f3a4b5c6-1234-4d99-9e11-supaadmin0001'; name = 'Consultar Admins'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1420,300)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $detectarComandoAdminCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1490,300); id = 'f4a5b6c7-2345-4d10-9e22-detcomando01'; name = 'Detectar Comando Admin'
-  },
-  [ordered]@{
-    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'admin-cond-1'; leftValue = '={{ $json.esComandoModo }}'; rightValue = $true; operator = @{ type = 'boolean'; operation = 'equals' } } ); combinator = 'and' } }
-    id = 'f5a6b7c8-3456-4d21-9e33-escomando001'; name = '¿Es Comando Admin?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(1560,300)
-  },
-  [ordered]@{
-    parameters = @{ operation = 'set'; key = "={{ 'modoAdmin:' + `$json.jid }}"; value = '={{ $json.modoElegido }}'; keyType = 'string'; expire = $true; ttl = 2592000 }
-    type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1630,220); id = 'f6a7b8c9-4567-4d32-9e44-rsetmodo0001'; name = 'Redis Guardar Modo Admin'; credentials = $redisCred
-  },
-  [ordered]@{
-    # ¿El mensaje era SOLO el comando, o venia con una pregunta pegada?
-    # Si venia algo mas, se sigue al flujo normal y se responde con la tarifa recien guardada
-    # (el modo se lee mas adelante, en "Redis Leer Modo Admin", asi que ya toma el valor nuevo).
-    parameters = @{ conditions = @{ options = @{ caseSensitive = $true; leftValue = ''; typeValidation = 'loose' }; conditions = @( [ordered]@{ id = 'solo-cmd-1'; leftValue = "={{ `$('Detectar Comando Admin').first().json.soloComando }}"; rightValue = $true; operator = @{ type = 'boolean'; operation = 'equals' } } ); combinator = 'and' } }
-    id = 'f9a0b1c2-7890-4d65-9e77-solocomando1'; name = '¿Solo el Comando?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(1700,150)
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $confirmarModoAdminCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1700,220); id = 'f7a8b9c0-5678-4d43-9e55-confmodo0001'; name = 'Confirmar Modo Admin'
-  },
-  [ordered]@{
-    parameters = @{ jsCode = $prepararContextoIaCode }
-    type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1900,128); id = 'e1f2a3b4-0006-4c00-9c00-prepctxia001'; name = 'Preparar Contexto IA'
-  },
-  [ordered]@{
-    # FASE 4 (Atencion e IA): delega tasas/cuentas/operaciones/IA al workflow "Bot JK - Atencion al Cliente e IA" sin esperarlo.
-    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $IA_WORKFLOW_ID; mode = 'id' }
+    # FASE 5 (Debounce y Admin): delega el mensaje del cliente al workflow "Bot JK - Debounce y Admin" sin esperarlo.
+    # Recibe el item completo de "Es mensaje de cliente?" ({ body, accionPausa, nombreCargado, tarifaCargada }).
+    parameters = @{ source = 'database'; workflowId = @{ __rl = $true; value = $DEBOUNCE_ADMIN_WORKFLOW_ID; mode = 'id' }
                     workflowInputs = @{ mappingMode = 'defineBelow'; value = @{}; matchingColumns = @(); schema = @(); attemptToConvertTypes = $false; convertFieldsToString = $true }
                     mode = 'once'; options = @{ waitForSubWorkflow = $false } }
-    id = 'e1f2a3b4-0006-4c00-9c00-ejecutaria01'; name = 'Ejecutar IA'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(2120,128)
+    id = 'e1f2a3b4-0007-4c00-9c00-debadmin0001'; name = 'Ejecutar Debounce'; type = 'n8n-nodes-base.executeWorkflow'; typeVersion = 1.3; position = @(-20,128)
     onError = 'continueRegularOutput'
-  },
-  [ordered]@{
-    parameters = @{ resource = 'messages-api'; instanceName = 'BOT JK Kelvin'; remoteJid = "={{ `$('Webhook Evolution API').first().json.body.data.key.remoteJid }}"; messageText = '={{ $json.output }}'; options_message = @{} }
-    type = 'n8n-nodes-evolution-api.evolutionApi'; typeVersion = 1; position = @(2320,128); id = '02d01e05-a9f8-4caa-a02e-37a660aa662c'; name = 'Enviar texto a WhatsApp'
-    retryOnFail = $true; maxTries = 4; waitBetweenTries = 5000
-    credentials = @{ evolutionApi = @{ id = 'iUIvc9Sd8diFJaGU'; name = 'Evolution PARA n8n cambios JK' } }
   }
 )
 
@@ -3150,29 +3057,7 @@ $connections = [ordered]@{
       @( ,@( @{ node='Mayor Escuchar';        type='main'; index=0 } ) ) +
       @( ,@( @{ node='Ejecutar Operadoras';   type='main'; index=0 } ) )
     ) }
-  'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Ejecutar Media'; type='main'; index=0 } ) ) }
-  'Ejecutar Media'         = @{ main = @( ,@( @{ node='Prep Debounce';  type='main'; index=0 } ) ) }
-  'Prep Debounce'          = @{ main = @( ,@(
-      @{ node='Redis Guardar Msg';      type='main'; index=0 },
-      @{ node='Llego un Comprobante?';  type='main'; index=0 }
-    ) ) }
-  'Llego un Comprobante?'  = @{ main = @( ,@( @{ node='Sticker Verificando'; type='main'; index=0 } ) ) }
-  'Redis Guardar Msg'      = @{ main = @( ,@( @{ node='Redis Marcar Token'; type='main'; index=0 } ) ) }
-  'Redis Marcar Token'     = @{ main = @( ,@( @{ node='Esperar 30s'; type='main'; index=0 } ) ) }
-  'Esperar 30s'            = @{ main = @( ,@( @{ node='Redis Leer Token'; type='main'; index=0 } ) ) }
-  'Redis Leer Token'       = @{ main = @( ,@( @{ node='Filtrar Ultimo'; type='main'; index=0 } ) ) }
-  'Filtrar Ultimo'         = @{ main = @( ,@( @{ node='Redis Leer Mensajes'; type='main'; index=0 } ) ) }
-  'Redis Leer Mensajes'    = @{ main = @( ,@( @{ node='Redis Borrar Buffer'; type='main'; index=0 } ) ) }
-  'Redis Borrar Buffer'    = @{ main = @( ,@( @{ node='Combinar'; type='main'; index=0 } ) ) }
-  'Combinar'               = @{ main = @( ,@( @{ node='Consultar Admins'; type='main'; index=0 } ) ) }
-  'Consultar Admins'       = @{ main = @( ,@( @{ node='Detectar Comando Admin'; type='main'; index=0 } ) ) }
-  'Detectar Comando Admin' = @{ main = @( ,@( @{ node='¿Es Comando Admin?'; type='main'; index=0 } ) ) }
-  '¿Es Comando Admin?'     = @{ main = (@( ,@( @{ node='Redis Guardar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Preparar Contexto IA'; type='main'; index=0 } ) )) }
-  'Redis Guardar Modo Admin' = @{ main = @( ,@( @{ node='¿Solo el Comando?'; type='main'; index=0 } ) ) }
-  # true = solo el comando -> avisa y listo. false = venia una pregunta pegada -> sigue y la responde.
-  '¿Solo el Comando?'      = @{ main = (@( ,@( @{ node='Confirmar Modo Admin'; type='main'; index=0 } ) ) + @( ,@( @{ node='Preparar Contexto IA'; type='main'; index=0 } ) )) }
-  'Confirmar Modo Admin'   = @{ main = @( ,@( @{ node='Enviar texto a WhatsApp'; type='main'; index=0 } ) ) }
-  'Preparar Contexto IA'   = @{ main = @( ,@( @{ node='Ejecutar IA'; type='main'; index=0 } ) ) }
+  'Es mensaje de cliente?' = @{ main = @( ,@( @{ node='Ejecutar Debounce'; type='main'; index=0 } ) ) }
 }
 
 $body = [ordered]@{ name = 'Bot WhatsApp CAMBIOS JK'; nodes = $nodes; connections = $connections; settings = @{ executionOrder = 'v1' } }

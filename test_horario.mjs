@@ -15,7 +15,8 @@ import { readFileSync } from 'fs';
 
 const wf = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
 const wfIa = JSON.parse(readFileSync('workflow_ia_atencion.json', 'utf8').replace(/^﻿/, ''));
-const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n);
+const wfDeb = JSON.parse(readFileSync('workflow_debounce_admin.json', 'utf8').replace(/^﻿/, ''));
+const nodo = n => wf.nodes.find(x => x.name === n) || wfIa.nodes.find(x => x.name === n) || wfDeb.nodes.find(x => x.name === n);
 const code = n => nodo(n).parameters.jsCode;
 const SALTO = String.fromCharCode(10);
 
@@ -154,7 +155,7 @@ console.log('=== 6) Sticker de "verificando": solo en horario ===');
   function prep(texto, cuando) {
     const real = Date.now; Date.now = () => cuando;
     try {
-      const $ = n => (n === 'Webhook Evolution API') ? { first: () => ({ json: { body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net', id: 'X' } } } } }) } : { first: () => ({ json: {} }) };
+      const $ = n => (n === 'Webhook Evolution API' || n === 'Cuando lo Llama el Bot') ? { first: () => ({ json: { body: { data: { key: { remoteJid: '593990000001@s.whatsapp.net', id: 'X' } } } } }) } : { first: () => ({ json: {} }) };
       return new Function('$json', '$', code('Prep Debounce'))({ texto }, $)[0].json;
     } finally { Date.now = real; }
   }
