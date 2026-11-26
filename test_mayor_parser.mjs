@@ -103,7 +103,15 @@ console.log('=== 3) RST y RCT (retiros de los bancos de Ecuador) ===');
     // el $ al final de una linea no se pega al numero de la linea siguiente
     ['Guayaquil\nmonto 250$\n1 3333\n2 4444\n0990000015', { banco: 'Guayaquil', usd: 250, cod: ['3333', '4444'], tel: '0990000015' }],
     // un monto escrito todo con emojis sigue siendo un numero (no es el rotulo de un codigo)
-    ['Pichincha Tlf 0990000016 Código 5478 Monto 1️⃣0️⃣0️⃣$', { banco: 'Pichincha', usd: 100, cod: ['5478'] }]
+    ['Pichincha Tlf 0990000016 Código 5478 Monto 1️⃣0️⃣0️⃣$', { banco: 'Pichincha', usd: 100, cod: ['5478'] }],
+    // 26/11 (Antonio): "codi" a medio escribir. Antes solo valian "cod" y "codigo" exactos, asi que de este
+    // Guayaquil se leia SOLO el segundo codigo y el bot avisaba que faltaba uno estando los dos.
+    ['Banco Guayaquil\nMonto: 100\nprimer codi: 1648\nsegundo cod: 3394\nCel: 0963967672',
+      { banco: 'Guayaquil', usd: 100, cod: ['1648', '3394'], tel: '0963967672' }],
+    ['Guayaquil\nmonto 80$\ncodig: 5151\ncodig: 6262\n0990000017', { banco: 'Guayaquil', usd: 80, cod: ['5151', '6262'], tel: '0990000017' }],
+    ['Pichincha\ncodigos: 7788\nTlf 0990000018\nmonto 90$', { banco: 'Pichincha', usd: 90, cod: ['7788'], tel: '0990000018' }],
+    // sin separador el codigo no se parte: "cod" no se puede comer los digitos
+    ['Pichincha Tlf 0990000019 cod1648 Monto 70$', { banco: 'Pichincha', usd: 70, cod: ['1648'], tel: '0990000019' }]
   ];
   for (const [texto, esp] of casos) {
     const r = entender(texto);

@@ -66,7 +66,14 @@ const textoCrudo = String(msg.conversation || (msg.extendedTextMessage && msg.ex
   || (msg.imageMessage && msg.imageMessage.caption) || (msg.videoMessage && msg.videoMessage.caption)
   || (msg.documentMessage && msg.documentMessage.caption) || '').trim();
 const esImagen = !!msg.imageMessage, esAudio = !!msg.audioMessage;
-if (!textoCrudo && !esImagen && !esAudio) return [];
+// Una EDICION de un mensaje llega como secretEncryptedMessage: trae el id del mensaje original en
+// targetMessageKey y el texto nuevo CIFRADO. Evolution no lo descifra, asi que NO hay forma de leer lo que
+// quedo escrito; lo unico que se sabe es CUAL mensaje cambio. Paso el 26/11: una clienta edito el codigo de
+// su RST en vez de reenviarlo y el bot se quedo con el viejo, sin enterarse. Se registra la edicion para que
+// la Fase 2 le pida que lo mande de nuevo.
+const editado = (msg.secretEncryptedMessage && msg.secretEncryptedMessage.targetMessageKey && msg.secretEncryptedMessage.targetMessageKey.id)
+  ? String(msg.secretEncryptedMessage.targetMessageKey.id) : '';
+if (!textoCrudo && !esImagen && !esAudio && !editado) return [];
 
 // Los numeros escritos con emojis ("6️⃣6️⃣5️⃣") se vuelven digitos. PERO un emoji de numero SOLO al inicio de una linea y
 // separado por un espacio ("1️⃣ 2403" / "2️⃣ 2790", como los manda Julio) es el ROTULO del codigo 1 y el codigo 2 de
@@ -219,7 +226,11 @@ function codigosDe(b){
   const t = b.replace(/\bc\.?\s?([12])\s*[:.]?\s*/g, 'codigo ').replace(/\b([12])\s?(?:er|ro|do|ero|da)\b/g, 'codigo ');
   const out = [];
   // Hasta 8 digitos: el codigo de Bolivariano puede tener 6 u 8 (protocolo, seccion 9).
-  for (const m of t.matchAll(/(?:clave|codigo|cod\.?|primero|segundo)\s*[:.]?\s*(\d{3,8})(?!\d)/g)) out.push(m[1]);
+  // "cod" lleva [a-z]* para aguantar como lo escriba cada quien: cod, cod., codi, codig, codigo, codigos.
+  // Antes solo valia "cod" o "codigo" exactos y "primer codi: 1648" se perdia entero (Antonio, 26/11):
+  // de un Guayaquil con sus dos codigos solo se leia el segundo y el bot avisaba que faltaba uno.
+  // Solo letras, no \w: con \w* un "cod1648" pegado se comeria los digitos del propio codigo.
+  for (const m of t.matchAll(/(?:clave|c[oó]d[a-z]*|primero|segundo)\s*[:.]?\s*(\d{3,8})(?!\d)/g)) out.push(m[1]);
   return out;
 }
 // Un RST a veces trae su codigo sin etiqueta ("Banco Pichincha 7396 Tlf ... Monto 500"): se toma el
@@ -464,6 +475,8 @@ if (grupo.tipo === 'tasas'){
     if (q){ fila.tipo = 'pregunta'; fila.datos = Object.assign(fila.datos, q); }
   }
 }
+// Una edicion manda sobre el tipo: el mensaje no trae texto, asi que arriba habria quedado en "otro".
+if (editado){ fila.tipo = 'edicion'; fila.datos.editado_id = editado; }
 // A que mensaje responde (la cita): sirve para reconocer cuando un banco responde a UNA publicacion nuestra.
 try {
   const ctx = ev.contextInfo || (msg.extendedTextMessage && msg.extendedTextMessage.contextInfo) || (msg.imageMessage && msg.imageMessage.contextInfo) || {};
@@ -508,6 +521,9 @@ const delCliente = fila.autor_rol === 'cliente' || fila.autor_rol === 'operador_
 const t = String(fila.texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // (un mensaje con UN numero de 6 digitos puede ser la clave temporal de Solidario que el cobrador pidio: "Decidir Publicacion" lo confirma)
 if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto))) return [{ json: { motivo: 'cliente' } }];
+// El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
+// "Decidir Publicacion" contra los mensajes recientes del grupo.
+if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
 if (grupo.tipo === 'destino' && d.cita_id && /verific|correg|corrij|\bdan(o|ado)\b|salio dan|se dano/.test(t)) return [{ json: { motivo: 'banco' } }];
 if (grupo.tipo === 'destino' && d.cita_id && /\bjep\b/.test(quitar(grupo.nombre)) && cobradorListo(fila.texto)) return [{ json: { motivo: 'jep' } }];
 if (grupo.tipo === 'destino' && d.cita_id && pideTemporal(fila.texto)) return [{ json: { motivo: 'temporal' } }];
@@ -539,6 +555,7 @@ const TEXTO_FOTO = 'Por favor envíe todos los datos en texto escrito para poder
 const TEXTO_BANCO_VERIFICAR = 'ok, procedo a mandar a verificar y corregir';
 const TEXTO_CLIENTE_VERIFICAR = 'Por favor verifique, corrija y envíe nuevamente todos los datos en un solo texto.';
 const TEXTO_CLIENTE_DANADO = 'Estimado cliente, su código se dañó / no pudo ser cobrado. Por favor genere un nuevo código de retiro para poder saldar el saldo pendiente.';
+const TEXTO_CLIENTE_EDITO = 'Vimos que editó su mensaje, pero WhatsApp no nos deja leer las ediciones. Por favor envíe los datos de nuevo, completos y en un solo texto.';
 
 const ent = $('Cuando lo Llama el Bot').first().json || {};
 const grupo = ent.grupo || {};
@@ -560,11 +577,55 @@ const destinos = {};          // nombre del grupo (sin acentos) -> su id, solo l
 try { for (const it of $('Grupos Destino').all()){ const g = it.json || {}; if (g.grupo_jid && g.nombre && g.activo !== false) destinos[quitar(g.nombre)] = g.grupo_jid; } } catch(e){}
 const abierto = horarioDe(Date.now()).abierto;
 const nombre = String(fila.cliente_nombre || 'Cliente');
+// ---------- RST REPETIDO (revision diaria del 25/11) ----------
+// Un cliente mando dos veces el mismo Pichincha (mismo monto y mismo codigo, con otro telefono) en 1 minuto: parece una
+// correccion, pero en modo real se publicaria DOS veces en el banco. Un codigo de retiro se cobra UNA sola vez: si un retiro
+// completo trae el mismo banco y los mismos codigos que otro retiro completo de este grupo de los ultimos 30 minutos
+// ("Retiros Recientes"), NO se publica otra vez y se avisa en avisos para que una persona lo revise.
+// No cuentan los que el banco devolvio con "Verificar" o "se dañó": ahi el cliente lo reenvia corregido a proposito.
+const codigosDeReg = r => ((r && r.datos && Array.isArray(r.datos.codigos)) ? r.datos.codigos : []).map(String).filter(Boolean).sort().join(',');
+const recientes = [];
+try {
+  for (const it of $('Retiros Recientes').all()){
+    const r = it.json || {};
+    if (!r.mensaje_id || r.mensaje_id === fila.mensaje_id || r.estado === 'verificar' || r.estado === 'danado') continue;
+    let d = r.datos;
+    if (typeof d === 'string'){ try { d = JSON.parse(d); } catch(e){ d = {}; } }
+    for (const x of ((d && Array.isArray(d.registros)) ? d.registros : [])){
+      if ((x.tipo !== 'rst' && x.tipo !== 'rct') || faltan(x).length || revisar(x).length) continue;
+      const cods = codigosDeReg(x);
+      if (cods) recientes.push({ banco: claveBanco(x), cods, ts: Date.parse(r.fecha_mensaje) || 0 });
+    }
+  }
+} catch(e){}
+// JEP no entra: su RST se queda esperando hasta que el cobrador este en el cajero, y ahi el cliente lo vuelve a mandar a proposito.
+const repetidoDe = reg => { const cods = codigosDeReg(reg), k = claveBanco(reg); return (cods && k !== 'jep') ? (recientes.find(x => x.banco === k && x.cods === cods) || null) : null; };
 
 const envios = [];
 let estadoFila = '', grupoDestinoFila = '', real = false;
 
-if (grupo.tipo === 'cliente'){
+// ---------- EL CLIENTE EDITO UN MENSAJE SUYO (26/11) ----------
+// WhatsApp manda las ediciones CIFRADAS: se sabe cual mensaje cambio, nunca que dice ahora. Si lo que edito
+// fue un retiro o una cuenta, el dato guardado quedo viejo y no hay forma de saber en que. Se le pide que lo
+// mande de nuevo y la fila vieja pasa a 'verificar': asi no cuenta como repetida cuando llegue el reenvio
+// (mismo banco y mismo codigo) ni se le avisa de vencimiento a un codigo que va a ser reemplazado.
+let filaEditada = 0;
+if (fila.tipo === 'edicion'){
+  const idEditado = String(datos.editado_id || '');
+  let orig = null;
+  try { orig = $('Retiros Recientes').all().map(i => i.json).find(r => r && r.id && String(r.mensaje_id) === idEditado) || null; } catch(e){}
+  if (!orig) return [];                      // edito un saludo, una foto o algo viejo: no hay nada que corregir
+  real = (MODO === 'real') && grupo.publicar === true;
+  filaEditada = orig.id;
+  estadoFila = 'verificar';
+  envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto: TEXTO_CLIENTE_EDITO, citar: idEditado,
+                vista: '➡️ al cliente (citando el mensaje que editó): "' + TEXTO_CLIENTE_EDITO + '"' });
+  const queEs = (orig.tipo === 'beneficiario') ? 'una cuenta' : 'un retiro';
+  const aviso = '✏️ ' + nombre + ' editó ' + queEs + ' que ya había mandado' + (orig.banco ? ' (' + orig.banco + ')' : '') +
+                '. WhatsApp no deja leer las ediciones, así que se le pidió que lo mande de nuevo; la fila ' + orig.id + ' queda en verificar.';
+  envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
+}
+else if (grupo.tipo === 'cliente'){
   // ---------- un retiro del cliente ----------
   real = (MODO === 'real') && grupo.publicar === true;
   // Una charla NO es un pedido ("¿que tanto demora en retirar los rst de guayaquil?", "el Pichincha esta fallando la
@@ -574,7 +635,7 @@ if (grupo.tipo === 'cliente'){
   const hayDatos = r => (r.monto_usd !== null && r.monto_usd !== undefined) || (r.tipo !== 'rct' && !!(r.datos && (r.datos.telefono || r.datos.cedula || r.datos.clave || (r.datos.codigos || []).length)));
   const regs = (Array.isArray(datos.registros) ? datos.registros : []).filter(r => r.tipo === 'rst' || r.tipo === 'rct')
     .filter(r => (r.tipo === 'rct' ? !preguntando || faltan(r).length === 0 : hayDatos(r) && (!preguntando || faltan(r).length === 0)));
-  const incompletos = [], sinGrupo = [], publicados = [], jepMontos = [];
+  const incompletos = [], sinGrupo = [], publicados = [], jepMontos = [], repetidos = [];
   const enCajero = !!(jepEstado && jepEstado.estado === 'en_cajero');          // el cobrador ya avisó que está en el cajero
   const jepEsperando = !!(jepEstado && jepEstado.estado === 'esperando');       // ya se le pidió al cobrador, todavía no avisa
   let jepPide = false;
@@ -605,6 +666,8 @@ if (grupo.tipo === 'cliente'){
     if (k === 'jep' && reg.tipo === 'rst' && !enCajero){ jepPide = true; if (reg.monto_usd !== null && reg.monto_usd !== undefined) jepMontos.push(reg.monto_usd); continue; }
     const f = faltan(reg), rv = revisar(reg);                                // lo que falta y lo que viene con el largo equivocado
     if (f.length || rv.length){ incompletos.push({ reg, f, rv }); continue; }
+    const rep = repetidoDe(reg);
+    if (rep){ const ahoraMsg = Date.parse(fila.fecha_mensaje) || Date.now(); repetidos.push({ reg, min: rep.ts ? Math.max(1, Math.round((ahoraMsg - rep.ts) / 60000)) : 0 }); continue; }
     const dueno = GRUPO_DEL_BANCO[k];
     const conPermisoJep = (k === 'jep' && reg.tipo === 'rst' && enCajero);     // el cobrador ya esta ahi: va directo a JEP, sea la hora que sea
     const enBanco = abierto || conPermisoJep;                                   // en el grupo del banco (y no en COBRAR MAÑANA)
@@ -689,6 +752,14 @@ if (grupo.tipo === 'cliente'){
     envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
     if (!estadoFila) estadoFila = 'sin_grupo';
   }
+  for (const r of repetidos){
+    const monto = (r.reg.monto_usd !== null && r.reg.monto_usd !== undefined) ? ' ' + fmtMonto(r.reg.monto_usd) + '$' : '';
+    const aviso = '⚠️ ' + nombre + ': llegó otra vez un ' + (r.reg.tipo === 'rct' ? 'retiro con tarjeta' : 'RST') + ' de ' + r.reg.banco + monto
+      + ' con el MISMO código que uno de ' + (r.min ? 'hace ' + r.min + ' min' : 'hace un rato') + '. NO lo publiqué otra vez. '
+      + 'Si es una corrección (otro teléfono u otro dato), pásale tú el cambio al banco. Su mensaje está en ' + (grupo.nombre || 'su grupo') + '.';
+    envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
+    if (!estadoFila) estadoFila = 'repetido';
+  }
 } else if (grupo.tipo === 'destino' && pub && pub.cliente_jid && datos.cita_id){
   // ---------- el banco responde a UNA publicacion nuestra ----------
   // (solo existe si el bot publico de verdad; si el modo volvio a 'ensayo', no se manda nada)
@@ -722,13 +793,16 @@ if (grupo.tipo === 'cliente'){
 }
 
 if (!envios.length) return [];
-// La fila a la que se le anota el estado: la del cliente (en una respuesta del banco, la del RST original).
-const filaDestino = (grupo.tipo === 'destino' && pub && pub.fila_id) ? pub.fila_id : filaId;
+// La fila a la que se le anota el estado: la del cliente (en una respuesta del banco, la del RST original;
+// en una edicion, la del mensaje que edito, no la de la edicion en si).
+const filaDestino = filaEditada || ((grupo.tipo === 'destino' && pub && pub.fila_id) ? pub.fila_id : filaId);
 
 if (!real){
   // ENSAYO: nada sale a bancos ni a clientes. Una sola vista previa en el grupo de avisos.
   const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + envios.map(e => e.vista).filter(Boolean).join('\n\n');
-  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: 'ensayo', grupo_destino: '' } }];
+  // En una edicion el estado SI se anota aunque sea ensayo: 'verificar' es lo que hace que el reenvio del
+  // cliente no se rechace despues como "repetido" (mismo banco y mismo codigo). No se ve desde afuera.
+  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (filaEditada ? estadoFila : 'ensayo'), grupo_destino: '' } }];
 }
 return envios.map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
 '@
@@ -865,6 +939,8 @@ El bot principal le pasa a este workflow cada mensaje de los **grupos del mayor*
 
 **Solidario, clave temporal**: el cobrador cita el RST en el grupo de Solidario y escribe "temporal"; el bot se la pide al cliente, le dice "Ok, recibido" y se la entrega al grupo citando el RST.
 
+**Si el cliente EDITA un mensaje** (26/11): WhatsApp manda las ediciones cifradas, asi que el bot sabe CUAL mensaje cambio pero nunca que dice ahora. Si lo editado fue un retiro o una cuenta de los ultimos 30 minutos, se le pide que lo mande de nuevo y la fila vieja queda en **verificar** (asi el reenvio no se rechaza como repetido ni se le avisa de vencimiento a un codigo que va a ser reemplazado). Editar un saludo o una foto no dispara nada.
+
 **Alertas de vencimiento** (filas de abajo): cada RST que esta en el grupo de su banco se anota en `vigilancia_rst_mayor` con su hora de vencimiento (los pegados a mano y los del bot). Las reacciones de los cobradores (cualquier emoji menos la X = cobrado) se anotan alli. El workflow "Mayor: alertas de vencimiento" avisa en el grupo del banco, citando el RST, cuando falta 1 hora (5 min en JEP) y nadie lo marco como cobrado.
 
 Se ejecuta cuando el bot lo llama, **sin activarlo**. Credenciales: Redis memoria para Cambios JK, Supabase Cambios JK.
@@ -931,6 +1007,15 @@ $nodes = @(
     parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'grupos_mayor'; returnAll = $true; filterType = 'string'; filterString = 'tipo=eq.destino' }
     id = 'c1d2e3f4-0012-4b00-8b00-mayor0000012'; name = 'Grupos Destino'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1408,300)
     onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
+  },
+  [ordered]@{
+    # Los retiros de este mismo grupo de los ultimos 30 minutos (sin el mensaje de ahora): para no publicar DOS veces el mismo
+    # codigo cuando el cliente lo manda repetido o corregido (revision diaria del 25/11). executeOnce: "Grupos Destino" sale con
+    # una fila por banco y esta consulta se hace UNA sola vez.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_mayor_por_whatsapp'; returnAll = $false; limit = 30; filterType = 'string'
+                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid + "&tipo=in.(rst,rct,mixto,beneficiario)&fecha_mensaje=gte." + new Date(Date.now() - 30 * 60000).toISOString() + "&mensaje_id=neq." + $("Decidir").first().json.mensaje_id }}' }
+    id = 'c1d2e3f4-0027-4b00-8b00-mayor0000027'; name = 'Retiros Recientes'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1496,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
   },
   [ordered]@{
     parameters = @{ jsCode = $decidirPublicacionCode }
@@ -1038,7 +1123,8 @@ $connections = [ordered]@{
   'Hace Falta Publicar?'   = @{ main = @( ,@( @{ node='Redis Leer Publicacion'; type='main'; index=0 } ) ) }
   'Redis Leer Publicacion' = @{ main = @( ,@( @{ node='Redis Leer Temporal'; type='main'; index=0 } ) ) }
   'Redis Leer Temporal'    = @{ main = @( ,@( @{ node='Grupos Destino'; type='main'; index=0 } ) ) }
-  'Grupos Destino'         = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
+  'Grupos Destino'         = @{ main = @( ,@( @{ node='Retiros Recientes'; type='main'; index=0 } ) ) }
+  'Retiros Recientes'      = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
   'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 } ) ) }
   'Enviar'                 = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
   'Fallo la Cita?'         = @{ main = (

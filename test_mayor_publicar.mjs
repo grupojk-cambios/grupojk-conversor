@@ -73,6 +73,7 @@ function correr(texto, opciones) {
       if (nombre === 'Redis Leer Publicacion') return { first: () => ({ json: { pub: (o.pub || o.jep) ? JSON.stringify(o.pub || o.jep) : null } }) };
       if (nombre === 'Redis Leer Temporal') return { first: () => ({ json: { temporal: o.temporal ? JSON.stringify(o.temporal) : null } }) };
       if (nombre === 'Grupos Destino') return { all: () => (o.destinos || DESTINOS).map(json => ({ json })) };
+      if (nombre === 'Retiros Recientes') return { all: () => (o.recientes || []).map(json => ({ json })) };
       throw new Error('nodo inesperado: ' + nombre);
     };
     const pasa = new Function('$', code('Hace Falta Publicar?'))($).length > 0;
@@ -545,6 +546,101 @@ console.log('=== 15) SOLIDARIO: la CLAVE TEMPORAL en vivo (seccion 9 del manual)
   // 3) lo que dejaba pasar el filtro
   chk(correr('919180', { modo: 'real', temporal: TEMP }).pasa && correr(SMS, { modo: 'real' }).pasa, 'el filtro deja pasar un mensaje con un numero de 6 digitos (despues se confirma si esperaban esa clave)');
   chk(!correr('hola buenas tardes', { modo: 'real', temporal: TEMP }).pasa, 'y no deja pasar una charla');
+}
+
+console.log('=== 16) RST REPETIDO: el mismo codigo dos veces en poco tiempo NO se publica dos veces (revision diaria 25/11) ===');
+{
+  // Caso real (datos inventados): el cliente mando un Pichincha y al minuto el mismo, con el mismo codigo pero otro telefono.
+  const PICH = ['Pichincha', 'Código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO);
+  const PICH_OTRO_TEL = ['Pichincha', 'Código: 5478', 'Teléfono: 0990000044', 'Monto: $200'].join(SALTO);
+  // una fila de "Retiros Recientes": un retiro de este mismo grupo, de hace 2 minutos
+  const antes = (texto, extra) => Object.assign({ mensaje_id: 'ANTES' + (++n), estado: 'publicado',
+    fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 2 * 60000).toISOString(), datos: entender(texto).datos }, extra || {});
+  const avisos = r => r.envios.filter(e => e.etapa === 'aviso' && e.jid === AVISOS);
+
+  let p = real(PICH_OTRO_TEL, { recientes: [antes(PICH)] });
+  chk(bancos(p).length === 0, 'mismo banco y mismo codigo de hace 2 min -> NO se publica otra vez en el banco', '-> ' + bancos(p).length);
+  chk(avisos(p).length === 1 && /MISMO código/.test(avisos(p)[0].texto) && /corrección/.test(avisos(p)[0].texto), '...y se avisa en avisos que parece una corrección', '-> ' + JSON.stringify(avisos(p).map(e => e.texto)));
+  chk(!avisos(p).some(e => /5478/.test(e.texto)), '...sin escribir el codigo en el aviso');
+  chk(sticker(p).length === 0 && clienteTxt(p).length === 0, '...y al cliente no se le manda nada (ni sticker)');
+  chk(p.envios.every(e => e.estado_fila === 'repetido'), '...la fila queda en estado "repetido"', '-> ' + JSON.stringify(p.envios.map(e => e.estado_fila)));
+
+  p = real(PICH, { recientes: [antes(PICH)] });
+  chk(bancos(p).length === 0 && avisos(p).length === 1, 'el MISMO mensaje mandado dos veces (otro id) -> tampoco se publica dos veces');
+
+  p = real(PICH_OTRO_TEL, { recientes: [antes(PICH, { estado: 'verificar' })] });
+  chk(bancos(p).length === 1 && avisos(p).length === 0, 'si el banco lo devolvio con "Verificar", el corregido SI se publica (es a proposito)');
+
+  p = real(PICH, { recientes: [antes(['Pichincha', 'Código: 5478', 'Monto: $200'].join(SALTO))] });
+  chk(bancos(p).length === 1, 'si el de antes estaba INCOMPLETO (le faltaba el telefono), el completo SI se publica');
+
+  p = real(PICH, { recientes: [antes(['Pichincha', 'Código: 1111', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO))] });
+  chk(bancos(p).length === 1, 'otro codigo (aunque sea el mismo banco y monto) -> SI se publica');
+
+  p = real(PICH, { recientes: [antes(['Produbanco', 'C.I: 1700000001', 'Código: 5478', 'Monto: 200$'].join(SALTO))] });
+  chk(bancos(p).length === 1, 'el mismo numero en OTRO banco -> SI se publica');
+
+  const GYE = c2 => ['Banco: Guayaquil', 'C1: 2403', 'C2: ' + c2, 'Teléfono: +593 99 000 0005', 'Monto: 500'].join(SALTO);
+  p = real(GYE('9999'), { recientes: [antes(GYE('2790'))] });
+  chk(bancos(p).length === 1, 'Guayaquil con UNO solo de los dos codigos igual -> SI se publica (son otros codigos)');
+  p = real(GYE('2790'), { recientes: [antes(GYE('2790'))] });
+  chk(bancos(p).length === 0 && avisos(p).length === 1, 'Guayaquil con los DOS codigos iguales -> no se publica otra vez');
+
+  p = real(PICH, { recientes: [antes(PICH), { mensaje_id: 'ROTA', estado: 'publicado', fecha_mensaje: 'x', datos: '{no es json' }] });
+  chk(bancos(p).length === 0 && avisos(p).length === 1, 'una fila rara en "Retiros Recientes" no rompe nada');
+
+  const JEP = ['BANCO: Jep', 'Monto: $300', 'OTP: 796988', 'CI: 2100000006', 'Clave: 1111'].join(SALTO);
+  p = real(JEP, { jep: CAJERO, recientes: [antes(JEP)] });
+  chk(bancos(p).length === 1, 'JEP: el RST que espero al cobrador y se reenvia con el mismo codigo SI se publica');
+
+  p = correr(PICH_OTRO_TEL, { recientes: [antes(PICH)] });
+  chk(p.envios.length === 1 && p.envios[0].etapa === 'ensayo' && /MISMO código/.test(p.envios[0].texto) && !/iría a PICHINCHA/.test(p.envios[0].texto),
+      'en ENSAYO la vista previa muestra el aviso de repetido (y no "iría a PICHINCHA")');
+}
+
+console.log('');
+console.log('=== 17) EL CLIENTE EDITA UN MENSAJE: WhatsApp manda la edicion cifrada (26/11) ===');
+{
+  // Una edicion llega como secretEncryptedMessage: trae el id del mensaje original y el texto CIFRADO.
+  // El bot no puede leer lo que quedo escrito, asi que pide que lo manden de nuevo.
+  const editar = idOriginal => ({ extra: { mensaje: { secretEncryptedMessage: { targetMessageKey: { id: idOriginal } } } } });
+  const PICH = ['Banco: Pichincha', 'Código: 4321', 'Teléfono: 0990000009', 'Monto: 150'].join(SALTO);
+  const filaRst = { id: 931, mensaje_id: 'MSGRST1', tipo: 'rst', banco: 'Pichincha', estado: 'publicado',
+                    fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 60000).toISOString(),
+                    datos: { n_registros: 1, registros: [{ tipo: 'rst', banco: 'Pichincha', monto_usd: 150, datos: { codigos: ['4321'], telefono: '0990000009' } }] } };
+
+  const f = entender('', editar('MSGRST1').extra);
+  chk(!!f && f.tipo === 'edicion' && f.datos.editado_id === 'MSGRST1', 'la edicion se registra con el id del mensaje que cambio', '-> ' + JSON.stringify(f && [f.tipo, f.datos.editado_id]));
+
+  let p = correr('', Object.assign({ recientes: [filaRst] }, editar('MSGRST1')));
+  chk(p.pasa, 'una edicion de un RST reciente llega a Decidir Publicacion');
+  chk(p.envios.length === 1 && p.envios[0].etapa === 'ensayo' && /editó un retiro/.test(p.envios[0].texto) && /Pichincha/.test(p.envios[0].texto),
+      'en ENSAYO sale la vista previa avisando que edito un retiro', '-> ' + JSON.stringify(p.envios.map(e => String(e.texto).slice(0, 70))));
+  chk(p.envios[0].fila_id === 931 && p.envios[0].estado_fila === 'verificar',
+      'el estado va a la fila del RST ORIGINAL (931) y queda en "verificar", aun en ensayo', '-> ' + JSON.stringify([p.envios[0].fila_id, p.envios[0].estado_fila]));
+
+  const r = correr('', Object.assign({ recientes: [filaRst], modo: 'real' }, editar('MSGRST1')));
+  const alCliente = r.envios.filter(e => e.etapa === 'cliente');
+  chk(alCliente.length === 1 && alCliente[0].citar === 'MSGRST1' && /envíe los datos de nuevo/.test(alCliente[0].texto),
+      'en REAL se le escribe al cliente citando el mensaje que edito', '-> ' + JSON.stringify(alCliente.map(e => String(e.texto).slice(0, 60))));
+  chk(r.envios.some(e => e.etapa === 'aviso' && e.jid === AVISOS), 'y queda un aviso para que una persona lo revise');
+  chk(!r.envios.some(e => DEST_DE(e.jid)), 'una edicion NUNCA publica nada en un grupo de banco');
+
+  // Lo que se edita puede no ser un retiro: ahi no hay nada que corregir.
+  chk(!correr('', Object.assign({ recientes: [filaRst] }, editar('OTRO-MSG'))).envios.length, 'si edito un mensaje que no es RST ni cuenta: el bot no dice nada');
+  chk(!correr('', Object.assign({ recientes: [] }, editar('MSGRST1'))).envios.length, 'si no hay nada reciente que casar: el bot no dice nada');
+
+  const cuenta = { id: 940, mensaje_id: 'MSGCTA1', tipo: 'beneficiario', banco: 'Venezuela', estado: 'visto',
+                   fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 60000).toISOString(), datos: {} };
+  p = correr('', Object.assign({ recientes: [cuenta] }, editar('MSGCTA1')));
+  chk(p.envios.length === 1 && /editó una cuenta/.test(p.envios[0].texto) && p.envios[0].fila_id === 940,
+      'si lo que edito fue una CUENTA, el aviso lo dice y apunta a esa fila', '-> ' + JSON.stringify(p.envios.map(e => String(e.texto).slice(0, 70))));
+
+  // El reenvio corregido no se puede rechazar como "repetido": por eso la fila vieja queda en 'verificar'.
+  const viejaVerificar = Object.assign({}, filaRst, { estado: 'verificar' });
+  const reenvio = correr(PICH, { modo: 'real', recientes: [viejaVerificar] });
+  chk(reenvio.envios.some(e => DEST_DE(e.jid)), 'el RST que el cliente reenvia despues SI se publica (la fila vieja esta en verificar)',
+      '-> ' + JSON.stringify(reenvio.envios.map(e => DEST_DE(e.jid)).filter(Boolean)));
 }
 
 console.log('');

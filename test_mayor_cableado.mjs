@@ -166,8 +166,16 @@ console.log('=== 5) El workflow del mayor ===');
   const g = nodo(mayor, 'Guardar en Supabase').parameters;
   chk(g.tableId === 'transacciones_mayor_por_whatsapp' && g.operation === 'create' && g.dataToSend === 'autoMapInputData', 'guarda en transacciones_mayor_por_whatsapp');
   for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto']) chk(!!nodo(mayor, n).credentials, n + ': con credencial (sin claves en el codigo)');
-  for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto', 'Redis Leer Publicacion', 'Grupos Destino', 'Enviar', 'Reenviar sin Cita', 'Actualizar Fila', 'Redis Guardar Publicacion'])
+  for (const n of ['Redis Leer Visto', 'Guardar en Supabase', 'Redis Marcar Visto', 'Redis Leer Publicacion', 'Grupos Destino', 'Retiros Recientes', 'Enviar', 'Reenviar sin Cita', 'Actualizar Fila', 'Redis Guardar Publicacion'])
     chk(nodo(mayor, n).onError === 'continueRegularOutput', n + ': si falla, no se cae');
+  // RST repetido (revision 25/11): los retiros recientes del MISMO grupo, una sola consulta aunque "Grupos Destino" traiga muchas filas
+  const rr = nodo(mayor, 'Retiros Recientes');
+  chk(rr.executeOnce === true && rr.alwaysOutputData === true && !!rr.credentials && rr.parameters.tableId === 'transacciones_mayor_por_whatsapp'
+      && /grupo_jid=eq\./.test(rr.parameters.filterString) && /mensaje_id=neq\./.test(rr.parameters.filterString),
+      '"Retiros Recientes": una sola consulta, del mismo grupo y sin el mensaje de ahora (y sigue aunque no haya filas)');
+  const sale = n => (((mayor.connections[n] || {}).main || [])[0] || []).map(c => c.node);
+  chk(JSON.stringify(sale('Grupos Destino')) === '["Retiros Recientes"]' && JSON.stringify(sale('Retiros Recientes')) === '["Decidir Publicacion"]',
+      'el orden es Grupos Destino -> Retiros Recientes -> Decidir Publicacion');
   chk(!!nodo(mayor, 'Nota') && /FASE 2/.test(nodo(mayor, 'Nota').parameters.content) && /ENSAYO/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 2 y el modo ensayo');
 }
 
