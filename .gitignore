@@ -40,3 +40,6 @@ sql/privado/
 
 # Datos privados de la revision diaria (llave de Evolution, chats de clientes): NUNCA se suben (el repositorio es publico)
 privado/
+
+# Entrenamiento del bot: informes diarios con textos de clientes. NUNCA se sube (el repositorio es publico)
+Entrenamiento para el bot/

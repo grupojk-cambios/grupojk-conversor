@@ -2032,7 +2032,9 @@ REGLAS:
 - IMAGEN DE CUENTA: si ves "[El cliente envio una imagen con una CUENTA bancaria...]", trata esos datos como la cuenta destino para su remesa.
 - BENEFICIARIOS: nunca ofrezcas cuentas guardadas ni listas de beneficiarios. Si el cliente no manda los datos de la cuenta destino, pideselos simple: banco, numero de cuenta, titular y cedula (y el monto de cada una si son varias).
 - YA LLEGO? / COMO VA MI ENVIO? / YA SALIO?: contesta corto con la ULTIMA OPERACION DEL CLIENTE de arriba. EN PROCESO -> "Ya está en proceso 👍 Apenas salga te paso el comprobante por aquí." Si salio solo una parte (ej. "ya salio 1 de 2") -> "Ya salió 1 de 2 ✅ La otra está en proceso, apenas salga te paso el comprobante." ENVIADA -> "Sí, ya salió <cuando> ✅ Te pasé el comprobante por aquí." EN ESPERA -> "Se procesa a partir de las 9:00 am 👍". Si arriba NO hay ULTIMA OPERACION DEL CLIENTE -> "Déjame revisar con un asesor y te confirmo enseguida." NUNCA digas que ya llegó si no dice ENVIADA.
-- Fuera de tema: "Solo remesas de JK."
+- Fuera de tema (piden algo que NO es remesas ni cambio de divisas: prestamos, venta de cosas, trabajo, temas personales): responde EXACTAMENTE "Solo remesas de JK." y nada mas: sin emoji, sin "si necesitas ayuda...", sin otra frase.
+- IMAGEN SIN DATOS: si solo ves "[El cliente envio una imagen que no parece comprobante ni cuenta de banco]" (y no escribio nada mas), NO es fuera de tema: responde SOLO "Recibí la imagen 👍 Dime, ¿qué necesitas?".
+- LA CHARLA CORTA NO ES FUERA DE TEMA: "De verdad?", "En serio?", "Ah ok", "Jajaja", "Que bueno", "Uff" son reacciones a lo que venian hablando. Contesta corto y natural, como una persona, segun lo ultimo que se dijo (ej. "Sí, así es 👍"). A eso NUNCA le respondas "Solo remesas de JK.".
 - Quejas o problema con un giro: "Un asesor te contacta enseguida."
 - Nunca pidas claves, cuentas ni documentos. No des consejo financiero.
 - Ver todas las tasas: {{ $node["Code in JavaScript"].json.appUrl }}
@@ -2055,6 +2057,8 @@ Ejemplos (cliente -> tu):
 - "Ya deposite" (sin captura) -> "Listo, pásame la captura porfa."
 - "Puedo dividir en varias cuentas?" -> "Sí, claro. Pásame cada cuenta con el monto que va a cada una."
 - "Disculpa la demora" -> "Tranquilo, sin problema."
+- "De verdad?" / "En serio?" (sobre lo que le acabas de decir) -> "Sí, así es 👍"
+- "Me prestas 50?" -> "Solo remesas de JK."
 
 MULTI-COTIZACION: si das varias cotizaciones (ej. desde Venezuela Y desde Ecuador), separa cada cotizacion con una linea que diga solamente "---" (tres guiones, sin nada mas, en una linea propia). Asi cada cotizacion sale como mensaje aparte en WhatsApp. Una sola cotizacion = sin "---".
 '@
@@ -2256,10 +2260,19 @@ return (async () => { try { const res = await fetch(_url + '&nocache=' + Date.no
 // Separa la respuesta en mensajes: cada COTIZACION (lineas que terminan en "Tasa: X") = 1 mensaje aparte.
 // Si la respuesta no tiene cotizaciones (no aparece "Tasa:"), va como un solo mensaje.
 // Esto cumple lo que pidio el usuario: 1 cotizacion = 1 mensaje, sin depender del modelo.
-const out = String($json.output || '').trim();
+// Antes, una limpieza fija que tampoco depende del modelo (revision diaria del 25/11):
+//  - "Solo remesas de JK." va SOLO: el modelo a veces le pegaba "Si necesitas ayuda con transferencias o tasas, aqui estoy. 😊",
+//    o lo decia a su manera ("Lo siento, solo manejo remesas de JK. Si necesitas ayuda con eso, aqui estoy. 😊").
+//  - El 😊 no va nunca (asi no escribe Kelvin): se quita.
+let out = String($json.output || '').trim();
+if (/^(?:lo siento|disculpa|perd[oó]n)?[,.!]?\s*(?:aqu[ií]\s+)?solo\s+(?:manejo|manejamos|hacemos|atiendo|atendemos|trabajo|trabajamos)?\s*(?:con\s+)?remesas\b/i.test(out)) out = 'Solo remesas de JK.';
+const sinCarita = out.replace(/[ \t]*😊[ \t]*/gu, ' ').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+if (sinCarita) out = sinCarita;
 if (!out) return [{ json: $json }];
-if (!/tasa\s*:/i.test(out)) return [{ json: $json }];
-const lineas = out.split(/\n/).map(l => l.trim()).filter(l => l.length);
+const base = { ...$json, output: out };
+if (!/tasa\s*:/i.test(out)) return [{ json: base }];
+// El "---" que separa las cotizaciones (lo pide el prompt) no se le manda al cliente: llegaba al inicio del 2do mensaje.
+const lineas = out.split(/\n/).map(l => l.trim()).filter(l => l.length && !/^-{3,}$/.test(l));
 const mensajes = [];
 let buf = [];
 for (const l of lineas) {
@@ -2267,8 +2280,8 @@ for (const l of lineas) {
   if (/tasa\s*:/i.test(l)) { mensajes.push(buf.join('\n')); buf = []; }
 }
 if (buf.length) mensajes.push(buf.join('\n')); // cola sin "Tasa:" (preguntas/cierre)
-if (mensajes.length <= 1) return [{ json: $json }];
-return mensajes.map(m => ({ json: { ...$json, output: m } }));
+if (mensajes.length <= 1) return [{ json: base }];
+return mensajes.map(m => ({ json: { ...base, output: m } }));
 '@
     }
     type = 'n8n-nodes-base.code'

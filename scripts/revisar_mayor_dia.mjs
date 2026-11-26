@@ -13,7 +13,7 @@
 //
 // Las llaves salen de privado/evo.env (Evolution) y de C:\Users\USER\.claude.json (n8n). La lista de grupos sale de
 // sql/privado/mayor_*.sql (los INSERT de grupos_mayor). Nada de eso se sube a GitHub. El informe queda en
-// privado/revision/AAAA-MM-DD_mayor.md; trae textos de clientes, asi que los numeros largos y los correos se tapan.
+// Entrenamiento para el bot/informes/AAAA-MM-DD_mayor.md; trae textos de clientes, asi que los numeros largos y los correos se tapan.
 
 import fs from 'fs';
 import os from 'os';
@@ -239,7 +239,7 @@ L.push('## Últimas vistas previas del ensayo en avisos (códigos ya tapados por
 if (avisos === null || !previas.length) L.push('- (ninguna)');
 for (const a of previas.slice(-12)) L.push('- ' + hhmm(a.ts) + ' ' + limpio(a.t, 260));
 L.push('');
-const carpeta = path.join(raiz, 'privado', 'revision');
+const carpeta = path.join(raiz, 'Entrenamiento para el bot', 'informes');
 fs.mkdirSync(carpeta, { recursive: true });
 const salida = path.join(carpeta, dia(ahora) + '_mayor.md');
 fs.writeFileSync(salida, L.join('\n'), 'utf8');

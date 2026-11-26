@@ -12,7 +12,7 @@
 //
 // La llave de Evolution se lee de privado/evo.env (EVO_URL, EVO_INST, EVO_KEY) y la de n8n de
 // C:\Users\USER\.claude.json (la misma que usan los scripts de despliegue). La carpeta privado/ NO se sube
-// a GitHub (es publico). El informe queda en privado/revision/AAAA-MM-DD.md; trae textos de clientes, asi que
+// a GitHub (es publico). El informe queda en Entrenamiento para el bot/informes/AAAA-MM-DD.md; trae textos de clientes, asi que
 // los numeros largos y los correos se tapan.
 
 import fs from 'fs';
@@ -202,7 +202,7 @@ if (!fr.length) L.push('- (ninguna se repitió)');
 for (const [k, n] of fr) L.push('- "' + k + '" ×' + n);
 L.push('');
 
-const carpeta = path.join(raiz, 'privado', 'revision');
+const carpeta = path.join(raiz, 'Entrenamiento para el bot', 'informes');
 fs.mkdirSync(carpeta, { recursive: true });
 const salida = path.join(carpeta, dia(ahora) + '.md');
 fs.writeFileSync(salida, L.join('\n'), 'utf8');
