@@ -283,7 +283,7 @@ const lista = paises
   .map(p => {
     let envio, recibo;
     if (!ecuRef || (p.nombre||'').toLowerCase()==='ecuador') { envio = calcularTasaEnvio(p, modo); recibo = calcularTasaRecibo(p, modo); }
-    else { envio = calcularConversion(ecuRef, p, 1, paises, modo); recibo = obtenerTasasProcesadas(p, ecuRef, paises, modo).tasaOrigenParaDolares; }
+    else { envio = calcularConversion(ecuRef, p, 1, paises, modo); recibo = calcularConversionInversa(p, ecuRef, 1, paises, modo); }
     return { Pais:p.nombre, Codigo:p.codigo, Moneda:p.moneda, Envio: envio? Number(envio.toFixed(2)):'N/D', Recibo: recibo? Number(recibo.toFixed(2)):'N/D', EsDolar: isCajaDolar(p) };
   });
 
