@@ -26,6 +26,38 @@
 // ============================================================================
 
 /**
+ * Verifica si un país tiene Tasa VIP configurada (solo aplica en Detal).
+ */
+export function tieneTasaVIP(pais) {
+  if (!pais) return false;
+  return pais.margenEnvioVIP !== undefined && pais.margenEnvioVIP !== null && !isNaN(parseFloat(pais.margenEnvioVIP));
+}
+
+/**
+ * Comisión fija en USD para Tasa VIP (por defecto $1 si tiene VIP y no se especificó comisión).
+ */
+export function obtenerComisionVIP(pais) {
+  if (!pais) return 1;
+  if (pais.comisionVIP !== undefined && pais.comisionVIP !== null && !isNaN(parseFloat(pais.comisionVIP))) {
+    return Math.max(parseFloat(pais.comisionVIP), 0);
+  }
+  return 1;
+}
+
+/**
+ * Tasa de Envío VIP (solo Detal): usa margenEnvioVIP en lugar de margenEnvio.
+ * Retorna 0 si el país no tiene margenEnvioVIP configurado.
+ */
+export function calcularTasaEnvioVIP(pais) {
+  if (!tieneTasaVIP(pais)) return 0;
+  const rawProveedor = pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0);
+  const tProveedor = parseFloat(rawProveedor) || 0;
+  if (tProveedor === 0) return 0;
+  const margenVIP = parseFloat(pais.margenEnvioVIP) || 0;
+  return tProveedor * (1 - margenVIP / 100);
+}
+
+/**
  * Tasa de Envío (cuando el sistema vende USD y entrega esta moneda).
  * Se RESTA el margen al proveedor.
  */
@@ -37,7 +69,9 @@ export function calcularTasaEnvio(pais, modo = 'detal') {
   // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
   let rawMargen;
-  if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && pais.margenEnvioMayor !== null && !isNaN(parseFloat(pais.margenEnvioMayor))) {
+  if (modo === 'vip' && tieneTasaVIP(pais)) {
+    rawMargen = pais.margenEnvioVIP;
+  } else if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && pais.margenEnvioMayor !== null && !isNaN(parseFloat(pais.margenEnvioMayor))) {
     rawMargen = pais.margenEnvioMayor;
   } else {
     rawMargen = pais.margenEnvio !== undefined ? pais.margenEnvio : (pais.margen || 0);
@@ -159,9 +193,11 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
       let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
         ? parseFloat(origen.margenReciboMayor)
         : (parseFloat(origen.margenRecibo) || 0);
-      let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
-        ? parseFloat(destino.margenEnvioMayor)
-        : (parseFloat(destino.margenEnvio) || 0);
+      let mD = (modo === 'vip' && tieneTasaVIP(destino))
+        ? parseFloat(destino.margenEnvioVIP)
+        : (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+          ? parseFloat(destino.margenEnvioMayor)
+          : (parseFloat(destino.margenEnvio) || 0);
 
       const mTotal = mO + mD;
       tasaOrigenParaDolares = 1;
@@ -187,9 +223,11 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
         // Moneda Local -> CAJA DÓLAR DESTINO (USDT, Zelle, Efectivo Venezuela, Ecuador):
         // Al entregar, el margen de envío (mD) se calcula sobre base 1 fija:
         // Si el margen es 7%, entrega 93.00 USDT exactos (100 * 0.93 = 93.00).
-        let mD = (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
-          ? parseFloat(destino.margenEnvioMayor)
-          : (parseFloat(destino.margenEnvio) || 0);
+        let mD = (modo === 'vip' && tieneTasaVIP(destino))
+          ? parseFloat(destino.margenEnvioVIP)
+          : (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+            ? parseFloat(destino.margenEnvioMayor)
+            : (parseFloat(destino.margenEnvio) || 0);
 
         tasaDestinoDesdeDolares = 1 * (1 - mD / 100);
       }
@@ -232,4 +270,26 @@ export function calcularConversionInversa(paisOrigen, paisDestino, montoRecibir,
 
   const montoEnDolares = montoRecibir / tasaDestinoDesdeDolares
   return montoEnDolares * tasaOrigenParaDolares
+}
+
+/**
+ * Conversión VIP hacia adelante (solo Detal, Modalidad A: comisión fija descontada del monto enviado).
+ */
+export function calcularConversionVIP(paisOrigen, paisDestino, monto, paises) {
+  const { tasaOrigenParaDolares, tasaDestinoDesdeDolares, destino } = obtenerTasasProcesadas(paisOrigen, paisDestino, paises, 'vip')
+  const comisionUSD = obtenerComisionVIP(destino)
+  const montoEnDolares = monto / tasaOrigenParaDolares
+  const montoNetoUSD = Math.max(montoEnDolares - comisionUSD, 0)
+  return montoNetoUSD * tasaDestinoDesdeDolares
+}
+
+/**
+ * Conversión VIP a la inversa (solo Detal, Modalidad A: suma la comisión fija al total requerido).
+ */
+export function calcularConversionInversaVIP(paisOrigen, paisDestino, montoRecibir, paises) {
+  const { tasaOrigenParaDolares, tasaDestinoDesdeDolares, destino } = obtenerTasasProcesadas(paisOrigen, paisDestino, paises, 'vip')
+  if (tasaDestinoDesdeDolares === 0) return 0;
+  const comisionUSD = obtenerComisionVIP(destino)
+  const montoNetoUSD = montoRecibir / tasaDestinoDesdeDolares
+  return (montoNetoUSD + comisionUSD) * tasaOrigenParaDolares
 }

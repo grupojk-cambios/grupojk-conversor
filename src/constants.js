@@ -32,6 +32,9 @@ export const PAISES_DESTACADOS_IDS = [8, 10, 17, 7, 3, 19] // Colombia, Venezuel
 //  volver a despegar.  Verificalo con: npm run verificar-motor
 // ============================================================================
 export {
+  tieneTasaVIP,
+  obtenerComisionVIP,
+  calcularTasaEnvioVIP,
   calcularTasaEnvio,
   calcularTasaRecibo,
   calcularTasaPublica,
@@ -39,7 +42,9 @@ export {
   esEcuador,
   obtenerTasasProcesadas,
   calcularConversion,
-  calcularConversionInversa
+  calcularConversionInversa,
+  calcularConversionVIP,
+  calcularConversionInversaVIP
 } from './motor.js'
 
 /**
@@ -268,6 +273,8 @@ export async function sincronizarGoogleSheets() {
     const idxCod = headRow.findIndex(h => h.includes('CÓDIGO') || h.includes('CODIGO') || h.includes('BANCO'));
     const idxMargenEnvioMayor = headRow.findIndex(h => h.includes('MARGEN ENVIO MAYOR') || h.includes('MARGEN ENVÍO MAYOR'));
     const idxMargenReciboMayor = headRow.findIndex(h => h.includes('MARGEN RECIBO MAYOR'));
+    const idxMargenEnvioVIP = headRow.findIndex(h => h.includes('MARGEN ENVIO VIP') || h.includes('MARGEN ENVÍO VIP') || h.trim() === 'MARGEN VIP' || h.trim() === 'VIP');
+    const idxComisionVIP = headRow.findIndex(h => h.includes('COMISION VIP') || h.includes('COMISIÓN VIP') || h.includes('FEE VIP'));
     const idxCiudades = headRow.findIndex(h => h.includes('CIUDADES'));
     const idxMon = headRow.findIndex(h => h.includes('NOMBRE') || h.includes('MONEDA'));
     const idxMinimo = headRow.findIndex(h => h.includes('MINIMO') || h.includes('MÍNIMO') || h.includes('MONTO MIN') || h === 'MIN');
@@ -345,6 +352,8 @@ export async function sincronizarGoogleSheets() {
           montoMinimo: valMinimo > 0 ? valMinimo : (base ? base.montoMinimo || 20 : 20),
           margenEnvioMayor: idxMargenEnvioMayor !== -1 && row.length > idxMargenEnvioMayor ? parseValNullable(row[idxMargenEnvioMayor]) : null,
           margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseValNullable(row[idxMargenReciboMayor]) : null,
+          margenEnvioVIP: idxMargenEnvioVIP !== -1 && row.length > idxMargenEnvioVIP ? parseValNullable(row[idxMargenEnvioVIP]) : null,
+          comisionVIP: idxComisionVIP !== -1 && row.length > idxComisionVIP ? parseValNullable(row[idxComisionVIP]) : null,
           ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : ''
         });
       }

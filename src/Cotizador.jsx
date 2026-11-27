@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput, obtenerTasasProcesadas } from './constants'
+import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, calcularConversionVIP, calcularConversionInversaVIP, tieneTasaVIP, obtenerComisionVIP, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput, obtenerTasasProcesadas } from './constants'
 import { supabase } from './lib/supabase'
 
 // Componente interno para selector de países con buscador responsivo
@@ -215,9 +215,19 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
   }
   
   const [procesandoEnlace, setProcesandoEnlace] = useState(false)
+  const [usarTasaVIP, setUsarTasaVIP] = useState(false)
 
   const esMayor = modo === 'mayor'
   const isEfectivoVen = (p) => p?.nombre?.toUpperCase().includes('EFECTIVO VENEZUELA') || p?.nombre?.toUpperCase().includes('EFECTIVO VEN');
+  const vipDisponible = !esMayor && destino && tieneTasaVIP(destino) && !isEfectivoVen(destino)
+  const vipActivo = Boolean(vipDisponible && usarTasaVIP)
+  const comisionVIPUSD = vipDisponible ? obtenerComisionVIP(destino) : 0
+
+  useEffect(() => {
+    if (!vipDisponible && usarTasaVIP) {
+      setUsarTasaVIP(false)
+    }
+  }, [vipDisponible, usarTasaVIP])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600)
@@ -304,19 +314,20 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
 
   useEffect(() => {
     if (origen && destino && paises.length > 0) {
+      const modoEfectivo = vipActivo ? 'vip' : modo
       const tOrigenRecibo = calcularTasaRecibo(origen, modo)
-      const tDestinoEnvio = calcularTasaEnvio(destino, modo)
+      const tDestinoEnvio = calcularTasaEnvio(destino, modoEfectivo)
       const isDisp = tOrigenRecibo > 0 && tDestinoEnvio > 0
 
       const numMonto = parsearMonto(monto)
       const numMontoRecibir = parsearMonto(montoRecibir)
 
       if (isDisp) {
-        const tc = calcularConversion(origen, destino, 1, paises, modo)
+        const tc = calcularConversion(origen, destino, 1, paises, modoEfectivo)
         if (isCajaDolar(origen) && !isCajaDolar(destino)) {
           setTasaDisplay({ base: `1 ${origen.codigo}`, valor: tc, unidad: destino.codigo })
         } else if (!isCajaDolar(origen) && (isCajaDolar(destino) || ['EUR', 'GBP', 'EU'].includes(destino.codigo))) {
-          const tcInverso = calcularConversionInversa(origen, destino, 1, paises, modo)
+          const tcInverso = calcularConversionInversa(origen, destino, 1, paises, modoEfectivo)
           setTasaDisplay({ base: `1 ${destino.codigo}`, valor: tcInverso, unidad: origen.codigo })
         } else {
           setTasaDisplay({ base: `1 ${origen.codigo}`, valor: tc, unidad: destino.codigo })
@@ -325,21 +336,25 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
 
       if (lastEdited === 'enviar' && monto !== '') {
         if (isDisp && numMonto > 0) {
-          const res = calcularConversion(origen, destino, numMonto, paises, modo)
+          const res = vipActivo
+            ? calcularConversionVIP(origen, destino, numMonto, paises)
+            : calcularConversion(origen, destino, numMonto, paises, modo)
           setMontoRecibir(formatearMontoInput(res.toFixed(2)))
         } else if (numMonto === 0) {
           setMontoRecibir('0')
         }
       } else if (lastEdited === 'recibir' && montoRecibir !== '') {
         if (isDisp && numMontoRecibir > 0) {
-          const nuevoMonto = calcularConversionInversa(origen, destino, numMontoRecibir, paises, modo)
+          const nuevoMonto = vipActivo
+            ? calcularConversionInversaVIP(origen, destino, numMontoRecibir, paises)
+            : calcularConversionInversa(origen, destino, numMontoRecibir, paises, modo)
           setMonto(formatearMontoInput(nuevoMonto.toFixed(2)))
         } else {
           setMonto('0')
         }
       }
     }
-  }, [origen, destino, paises, monto, montoRecibir, lastEdited, modo])
+  }, [origen, destino, paises, monto, montoRecibir, lastEdited, modo, vipActivo])
 
 
   const handleMontoEnviarChange = (valStr) => {
@@ -469,8 +484,9 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     const numMontoRecibir = parsearMonto(montoRecibir)
     const resFormateado = formatearMonto(numMontoRecibir, codDestino)
     const montoEnvFormateado = formatearMonto(numMonto, codOrigen)
+    const notaVIP = vipActivo ? ` (⭐ Tasa VIP • Comisión -$${formatearMonto(comisionVIPUSD)} USD descontada)` : ''
     
-    return `Estás enviando ${montoEnvFormateado} ${codOrigen} (${origen.nombre}) → ${resFormateado} ${codDestino} (${destino.nombre})`
+    return `Estás enviando ${montoEnvFormateado} ${codOrigen} (${origen.nombre}) → ${resFormateado} ${codDestino} (${destino.nombre})${notaVIP}`
   }
 
   const handleGenerarCotizacion = async (vendedorWhatsapp, nombreVendedor) => {
@@ -503,7 +519,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
         moneda_destino: destino.codigo,
         monto_recibir: parseFloat(parsearMonto(montoRecibir)),
         tasa_pactada: tasaDisplay.valor,
-        tipo_cliente: modo === 'mayor' ? 'Mayorista' : 'Estándar',
+        tipo_cliente: modo === 'mayor' ? 'Mayorista' : (vipActivo ? 'Estándar VIP' : 'Estándar'),
         vendedor: nombreVendedor
       }])
       
@@ -517,8 +533,9 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     const montEnv = formatearMonto(parsearMonto(monto), origen.codigo);
     const montRec = formatearMonto(parsearMonto(montoRecibir), destino.codigo);
     const msjTasa = `${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}`;
+    const lineaVIP = vipActivo ? `\n🔹 Modalidad: ⭐ Tasa VIP (Comisión -$${formatearMonto(comisionVIPUSD)} USD)` : '';
 
-    const mensaje = `¡Hola ${nombreVendedor}! Mi código es *${codigoUnico}*\nQuiero realizar esta transacción:\n\n🔹 Envío: ${montEnv} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montRec} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${msjTasa}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito? Mi nombre en la App es ${nombreUsuario}.`
+    const mensaje = `¡Hola ${nombreVendedor}! Mi código es *${codigoUnico}*\nQuiero realizar esta transacción:\n\n🔹 Envío: ${montEnv} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montRec} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${msjTasa}${lineaVIP}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito? Mi nombre en la App es ${nombreUsuario}.`
     
     window.open(`https://wa.me/${vendedorWhatsapp}?text=${encodeURIComponent(mensaje)}`, '_blank')
   }
@@ -800,14 +817,77 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
           </div>
         </div>
 
+        {/* Selector Tasa Normal vs Tasa VIP (Solo Detal cuando destino tiene VIP) */}
+        {origen && destino && isDisponible && vipDisponible && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '-1.5rem',
+            marginBottom: '2rem',
+            animation: 'fadeIn 0.3s'
+          }}>
+            <div style={{
+              display: 'inline-grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '0.5rem',
+              padding: '0.35rem',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '1rem',
+              width: '100%',
+              maxWidth: '420px'
+            }}>
+              <button
+                type="button"
+                onClick={() => setUsarTasaVIP(false)}
+                style={{
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: '0.75rem',
+                  border: !vipActivo ? '1px solid var(--primary-color)' : '1px solid transparent',
+                  background: !vipActivo ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
+                  color: !vipActivo ? 'var(--primary-color)' : 'var(--text-low)',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Tasa Normal
+              </button>
+              <button
+                type="button"
+                onClick={() => setUsarTasaVIP(true)}
+                style={{
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: '0.75rem',
+                  border: vipActivo ? '1px solid #fbbf24' : '1px solid transparent',
+                  background: vipActivo ? 'rgba(251, 191, 36, 0.16)' : 'transparent',
+                  color: vipActivo ? '#fbbf24' : 'var(--text-low)',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.3rem'
+                }}
+              >
+                <span>⭐ Tasa VIP</span>
+                <span style={{ fontSize: '0.72rem', opacity: 0.9 }}>(-${comisionVIPUSD})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Resumen de la operación y Pactar Cambio (Pegado al destino) */}
         {origen && destino && isDisponible && monto && (
           <div style={{
-            background: 'rgba(16,185,129,0.08)',
-            border: '1px solid rgba(16,185,129,0.2)',
+            background: vipActivo ? 'rgba(251, 191, 36, 0.08)' : 'rgba(16,185,129,0.08)',
+            border: vipActivo ? '1px solid rgba(251, 191, 36, 0.28)' : '1px solid rgba(16,185,129,0.2)',
             borderRadius: '1.2rem',
             padding: '1.2rem',
-            marginTop: '-1.5rem',
+            marginTop: vipDisponible ? '0' : '-1.5rem',
             marginBottom: '2rem',
             animation: 'fadeIn 0.4s'
           }}>
@@ -825,16 +905,18 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                 flexDirection: 'column', 
                 alignItems: 'center',
                 padding: '0.6rem 1.2rem',
-                background: 'rgba(16,185,129,0.12)',
-                border: '1px solid rgba(16,185,129,0.4)',
+                background: vipActivo ? 'rgba(251, 191, 36, 0.14)' : 'rgba(16,185,129,0.12)',
+                border: vipActivo ? '1px solid rgba(251, 191, 36, 0.45)' : '1px solid rgba(16,185,129,0.4)',
                 borderRadius: '1.2rem',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
                 width: '100%',
-                maxWidth: '320px'
+                maxWidth: '340px'
               }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.12rem', marginBottom: '0.2rem' }}>Tasa Aplicada</span>
+                <span style={{ fontSize: '0.65rem', color: vipActivo ? '#fbbf24' : 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.12rem', marginBottom: '0.2rem', fontWeight: vipActivo ? 800 : 600 }}>
+                  {vipActivo ? '⭐ Tasa VIP Aplicada' : 'Tasa Aplicada'}
+                </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', width: '100%' }}>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: vipActivo ? '#fbbf24' : 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>
                      {tasaDisplay.base} = {formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} <span style={{ fontSize: '0.6em', color: 'var(--secondary-color)' }}>{tasaDisplay.unidad}</span>
                   </div>
                   {/* Copia SOLO el numero de la tasa, igual que los botones de los montos */}
@@ -874,6 +956,11 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                     )}
                   </button>
                 </div>
+                {vipActivo && (
+                  <span style={{ fontSize: '0.72rem', color: 'rgba(251, 191, 36, 0.9)', fontWeight: 700, marginTop: '0.25rem' }}>
+                    Comisión fija descontada: -${formatearMonto(comisionVIPUSD)} USD
+                  </span>
+                )}
               </div>
             </div>
 

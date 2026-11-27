@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, formatearMonto } from './constants'
+import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, calcularTasaEnvioVIP, obtenerComisionVIP, formatearMonto } from './constants'
 import './Dashboard.css'
 
 export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitchMode }) {
@@ -76,6 +76,8 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
   const paisVzla = paises.find(p => p.codigo === 'VES' || p.id === 10)
   const jkEnvio = paisVzla ? calcularTasaEnvio(paisVzla, modo) : 0
   const jkRecibo = paisVzla ? calcularTasaRecibo(paisVzla, modo) : 0
+  const jkEnvioVIP = (!esMayor && paisVzla) ? calcularTasaEnvioVIP(paisVzla) : 0
+  const jkComisionVIP = paisVzla ? obtenerComisionVIP(paisVzla) : 1
 
   return (
     <div className="dashboard-container">
@@ -219,6 +221,17 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
                 Bs. {jkEnvio > 0 ? formatearMonto(jkEnvio, 'VES') : 'N/A'}
               </span>
             </div>
+            {jkEnvioVIP > 0 && (
+              <div className="monitor-jk-rate-item">
+                <span style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 700 }}>⭐ VIP:</span>
+                <span style={{ fontWeight: 800, color: '#fbbf24', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                  Bs. {formatearMonto(jkEnvioVIP, 'VES')}
+                </span>
+                <span style={{ fontSize: '0.7rem', color: 'rgba(251, 191, 36, 0.85)', fontWeight: 700 }}>
+                  (+${jkComisionVIP} com.)
+                </span>
+              </div>
+            )}
             <div className="monitor-jk-rate-item">
               <span style={{ fontSize: '0.8rem', color: 'var(--text-low)', fontWeight: 600 }}>📥 Recibo:</span>
               <span style={{ fontWeight: 800, color: 'white', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>

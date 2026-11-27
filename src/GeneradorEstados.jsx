@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import html2canvas from 'html2canvas'
-import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa, calcularTasaEnvio, calcularTasaRecibo } from './constants'
+import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa, calcularTasaEnvio, calcularTasaRecibo, tieneTasaVIP, obtenerComisionVIP, calcularTasaEnvioVIP } from './constants'
 import './GeneradorEstados.css'
 
 /**
@@ -198,13 +198,22 @@ export default function GeneradorEstados() {
       
       let tasaEnvio = 0;
       let tasaRecibo = 0;
+      let tasaEnvioVIP = 0;
+      const comVIP = obtenerComisionVIP(pais);
       
       if (rawEnvio > 0) {
         if (!paisReferencia || pais.id === paisReferencia.id) {
           tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+          if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
+            tasaEnvioVIP = calcularTasaEnvioVIP(pais);
+          }
         } else {
           const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
           tasaEnvio = (1 / tOrigE) * tDestE;
+          if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
+            const { tasaOrigenParaDolares: tOrigV, tasaDestinoDesdeDolares: tDestV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'vip');
+            tasaEnvioVIP = (1 / tOrigV) * tDestV;
+          }
         }
       }
       
@@ -237,7 +246,8 @@ export default function GeneradorEstados() {
       else if (pais.codigo === 'EUR') bandera = '🇪🇺';
       else bandera = '📍';
       
-      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearTasa(tasaEnvio)}* | 📥 *${formatearTasa(tasaRecibo)}*\n`;
+      const sufijoVIP = tasaEnvioVIP > 0 ? ` | ⭐ *VIP ${formatearTasa(tasaEnvioVIP)}* (+$${comVIP})` : '';
+      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearTasa(tasaEnvio)}*${sufijoVIP} | 📥 *${formatearTasa(tasaRecibo)}*\n`;
     });
     
     texto += `\n⚠️ *Todos monto mínimo de $20*\n`;
@@ -637,13 +647,22 @@ export default function GeneradorEstados() {
             
             let tasaEnvio = 0;
             let tasaRecibo = 0;
+            let tasaEnvioVIP = 0;
+            const comVIP = obtenerComisionVIP(pais);
             
             if (rawEnvio > 0) {
               if (!paisReferencia || pais.id === paisReferencia.id) {
                 tasaEnvio = calcularTasaEnvio(pais, modoCalculo);
+                if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
+                  tasaEnvioVIP = calcularTasaEnvioVIP(pais);
+                }
               } else {
                 const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
                 tasaEnvio = (1 / tOrigE) * tDestE;
+                if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
+                  const { tasaOrigenParaDolares: tOrigV, tasaDestinoDesdeDolares: tDestV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'vip');
+                  tasaEnvioVIP = (1 / tOrigV) * tDestV;
+                }
               }
             }
             
@@ -711,9 +730,27 @@ export default function GeneradorEstados() {
                   <div style={{ fontSize: '0.95em', fontWeight: 800, color: '#10b981', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
                     {formatearTasa(tasaEnvio)}
                   </div>
-                  <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
-                    x 1 USD
-                  </div>
+                  {tasaEnvioVIP > 0 ? (
+                    <div style={{
+                      display: 'inline-block',
+                      marginTop: '0.15em',
+                      fontSize: '0.52em',
+                      fontWeight: 800,
+                      color: '#fbbf24',
+                      background: 'rgba(251, 191, 36, 0.14)',
+                      border: '1px solid rgba(251, 191, 36, 0.35)',
+                      borderRadius: '0.35em',
+                      padding: '0.1em 0.35em',
+                      lineHeight: 1.2,
+                      whiteSpace: 'nowrap'
+                    }}>
+                      ⭐ VIP {formatearTasa(tasaEnvioVIP)} (+${comVIP})
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
+                      x 1 USD
+                    </div>
+                  )}
                 </div>
 
                 {/* Tasa Recibo */}
