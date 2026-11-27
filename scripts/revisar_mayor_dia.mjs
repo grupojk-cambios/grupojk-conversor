@@ -52,8 +52,10 @@ const ecuador = ms => new Date(ms - 5 * 3600000);
 const hhmm = ms => ecuador(ms).toISOString().slice(11, 16);
 const dia = ms => ecuador(ms).toISOString().slice(0, 10);
 const quitar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-const limpio = (s, n) => String(s || '').replace(/\n+/g, ' / ').replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, '[correo]').replace(/\d[\d .\-]{5,}\d/g, '[núm]').slice(0, n || 160);
-const tapar = s => String(s || '').replace(/\n+/g, ' / ').replace(/\d/g, '#').slice(0, 170);
+// Correos y billeteras se tapan enteros (no llevan digitos suficientes para que el # los esconda).
+const taparLlaves = s => String(s || '').replace(/[^\s@/]+@[^\s@/]+\.[a-z]{2,}/gi, '[correo]').replace(/\b[a-z0-9]{26,}\b/gi, '[billetera]');
+const limpio = (s, n) => taparLlaves(String(s || '').replace(/\n+/g, ' / ')).replace(/\d[\d .\-]{5,}\d/g, '[núm]').slice(0, n || 160);
+const tapar = s => taparLlaves(String(s || '').replace(/\n+/g, ' / ')).replace(/\d/g, '#').slice(0, 170);
 const pct = (a, n) => (n ? Math.round((100 * a) / n) + '%' : '-');
 const contar = (lista, f) => { const o = {}; for (const x of lista) { const k = f(x); o[k] = (o[k] || 0) + 1; } return o; };
 const top = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
@@ -85,7 +87,9 @@ function entender(grupo, m) {
   try { const r = new Function('$input', CODIGO_ENTENDER)({ first: () => ({ json: { grupo, data } }) }); return r.length ? r[0].json : null; } catch (e) { return null; }
 }
 // Que habria hecho el bot en modo REAL con este mensaje de un cliente (sin la memoria de Redis: JEP y temporal de Solidario parten de cero).
-function simular(grupo, fila, ms) {
+// "recientes" = las filas de ese grupo de los 30 minutos anteriores (lo que el bot lee en "Retiros Recientes"): con ellas se ven
+// los RST repetidos y los pedidos mandados en varios mensajes.
+function simular(grupo, fila, ms, recientes) {
   const real = Date.now; Date.now = () => ms;
   try {
     const $ = nombre => {
@@ -95,6 +99,8 @@ function simular(grupo, fila, ms) {
       if (nombre === 'Redis Leer Publicacion') return { first: () => ({ json: { pub: null } }) };
       if (nombre === 'Redis Leer Temporal') return { first: () => ({ json: { temporal: null } }) };
       if (nombre === 'Grupos Destino') return { all: () => destinosTabla.map(json => ({ json })) };
+      if (nombre === 'Retiros Recientes') return { all: () => (recientes || []).map(json => ({ json })) };
+      if (nombre === 'Redis Leer Sin Banco') return { first: () => ({ json: { sinBanco: null } }) };
       throw new Error('nodo inesperado ' + nombre);
     };
     if (!new Function('$', CODIGO_HACE)($).length) return null;
@@ -106,11 +112,13 @@ function clasificar(envios) {
   if (!envios.length) return 'nada (charla o datos sueltos)';
   const t = envios.map(e => String(e.texto || ''));
   if (envios.some(e => e.etapa === 'error')) return 'ERROR en el codigo';
+  if (t.some(x => /llegó otra vez un/.test(x))) return 'repetido: no se publicaria dos veces (aviso en avisos)';
   if (envios.some(e => e.etapa === 'aviso')) return 'aviso: banco sin grupo';
   if (t.some(x => /^🏧 Cobrador/.test(x))) return 'JEP: pedido al cobrador';
   if (t.some(x => /^Te avisamos cuando el cobrador|^Ya avisamos/.test(x))) return 'JEP: pedido al cobrador';
   if (envios.some(e => e.etapa === 'banco')) return envios.some(e => /COBRAR MAÑANA/.test(nombreDe(e.jid))) ? 'se publicaria en COBRAR MAÑANA (fuera de horario)' : 'se publicaria en su banco';
-  if (t.some(x => /^¿Sus? retiros? .*Responda sí o no/.test(x))) return 'banco mal escrito: se le preguntaria si es ese banco';
+  if (t.some(x => /^¿Sus? retiros? .*Responda sí o no/.test(x))) return envios.some(e => /no dijo el banco, pero 2 códigos/.test(String(e.vista || '')))
+    ? 'no dijo el banco pero trae 2 códigos de 4: se le preguntaria si es Guayaquil' : 'banco mal escrito: se le preguntaria si es ese banco';
   if (t.some(x => /^¿Ese mensaje es un RST\?|^¿Su retiro es de .* o de /.test(x))) return 'parece un RST sin banco: se le preguntaria de que banco es';
   if (t.some(x => /^Revisa /.test(x))) return 'se le pediria revisar el largo de un codigo';
   if (t.some(x => /^Faltan /.test(x))) return 'se le pediria un dato que falta';
@@ -159,7 +167,15 @@ for (const g of grupos.values()) {
 }
 const deClientes = filas.filter(x => x.grupo.tipo === 'cliente' && (x.fila.autor_rol === 'cliente' || x.fila.autor_rol === 'operador_extra'));
 const retiros = deClientes.filter(x => ((x.fila.datos || {}).registros || []).some(r => r.tipo === 'rst' || r.tipo === 'rct') || (x.fila.datos || {}).pide_texto);
-const resultado = contar(retiros.map(x => ({ x, c: clasificar(simular(x.grupo, x.fila, x.ts)) })), o => o.c);
+// Lo que el bot leeria en "Retiros Recientes": las filas del mismo grupo de los 30 minutos anteriores.
+const filasDeGrupo = new Map();
+filas.forEach((x, i) => { x.rowId = i + 1; const l = filasDeGrupo.get(x.grupo.grupo_jid) || []; l.push(x); filasDeGrupo.set(x.grupo.grupo_jid, l); });
+const TIPOS_RECIENTES = ['rst', 'rct', 'mixto', 'beneficiario', 'otro'];
+const recientesDe = x => (filasDeGrupo.get(x.grupo.grupo_jid) || []).filter(y => y !== x && y.ts <= x.ts && x.ts - y.ts <= 30 * 60000 && TIPOS_RECIENTES.includes(y.fila.tipo))
+  .map(y => Object.assign({}, y.fila, { id: y.rowId, estado: 'visto' }));
+const simularX = x => simular(x.grupo, x.fila, x.ts, recientesDe(x));
+const evaluados = retiros.map(x => ({ x, c: clasificar(simularX(x)) }));
+const resultado = contar(evaluados, o => o.c);
 // mensajes de clientes que no se entendieron pero parecen un pedido
 const NO_ENTENDIDOS = deClientes.filter(x => x.fila.tipo === 'otro' && /\d{4,}|\brst\b|retiro|clave|cuenta|banco|monto|\$|usd/i.test(x.fila.texto) && !retiros.includes(x));
 // codigos con el largo que no es
@@ -176,6 +192,48 @@ const marcados = enBancos.map(x => {
   const buenas = rs.filter(r => !/[❌✖❎🚫⛔]/u.test(r.emoji)), malas = rs.filter(r => /[❌✖❎🚫⛔]/u.test(r.emoji));
   return { banco, vigilado: BANCOS_CON_ALERTA.includes(banco), cobrado: buenas.length > 0, conX: malas.length > 0, minutos: buenas.length ? Math.round((Math.min(...buenas.map(r => r.ts)) - x.ts) / 60000) : null, ts: x.ts };
 });
+// ---------- ¿ACERTO? (pedido de Kelvin, 27/11) ----------
+// "Publicado" no es lo mismo que "acertado": si el cliente escribio mal el banco o le falta un dato, preguntarle es lo correcto.
+// Se compara lo que haria el bot con lo que paso de verdad: el equipo pega a mano cada RST en el grupo de su banco, y se busca esa
+// publicacion por los CODIGOS del retiro (y el monto, si los dos lo traen) en las 8 horas siguientes.
+//   publicaria en su banco / en COBRAR MAÑANA -> acierto, salvo que el equipo lo haya pasado a OTRO banco
+//   preguntaria si es ese banco (mal escrito, o Guayaquil por los 2 codigos de 4) -> acierto (pregunta por seguridad)
+//   pediria un dato, revisar un codigo, de que banco es, o no haria nada -> acierto si el cliente lo volvio a mandar;
+//     FALLO si el equipo lo paso tal cual al banco sin que el cliente lo corrigiera (el bot lo habria frenado sin razon)
+//   error en el codigo del bot -> FALLO
+// Sin rastro del equipo ni reenvio del cliente no hay con que comparar: cuenta como acierto (nadie lo proceso tal cual).
+const codsDe = r => ((r && r.datos && Array.isArray(r.datos.codigos)) ? r.datos.codigos : []).map(String);
+const rstDe = x => (((x.fila.datos || {}).registros) || []).filter(r => r.tipo === 'rst' || r.tipo === 'rct');
+const publicacionDelEquipo = (x, reg) => {
+  const cods = codsDe(reg);
+  if (!cods.length) return null;
+  return enBancos.find(y => y.ts >= x.ts - 60000 && y.ts <= x.ts + 8 * 3600000 && rstDe(y).some(r => codsDe(r).some(c => cods.includes(c))
+    && (r.monto_usd == null || reg.monto_usd == null || Number(r.monto_usd) === Number(reg.monto_usd)))) || null;
+};
+const bancoDeLaPublicacion = y => { const r = rstDe(y).find(r => r.banco); return quitar(r && r.banco); };
+const mismoSitio = (pub, reg) => {
+  const g = quitar(pub.grupo.nombre);
+  if (/cobrar manana/.test(g) && !bancoDeLaPublicacion(pub)) return true;                // en COBRAR MAÑANA sin banco escrito: no hay con que comparar
+  return g === quitar((reg.datos || {}).destino_sugerido) || g.includes(quitar(reg.banco)) || bancoDeLaPublicacion(pub) === quitar(reg.banco);
+};
+const loReenvio = x => retiros.some(y => y !== x && y.grupo.grupo_jid === x.grupo.grupo_jid && y.ts > x.ts && y.ts - x.ts <= 30 * 60000);
+const FRENA = /dato que falta|revisar el largo|RST sin banco|pediria el texto|otra respuesta|sin accion|nada \(charla/;
+const juicios = evaluados.map(o => {
+  const regs = rstDe(o.x), reg = regs[0] || {};
+  const pub = regs.map(r => publicacionDelEquipo(o.x, r)).find(Boolean) || null;
+  if (/ERROR/.test(o.c)) return { o, ok: false, por: 'error en el código del bot' };
+  if (/se publicaria/.test(o.c)) {
+    if (pub && reg.banco && !mismoSitio(pub, reg)) return { o, ok: false, por: 'el bot lo mandaba a ' + reg.banco + ' y el equipo lo pasó a ' + pub.grupo.nombre };
+    return { o, ok: true, comparado: !!pub };
+  }
+  if (FRENA.test(o.c)) {
+    if (loReenvio(o.x)) return { o, ok: true, comparado: true };
+    if (pub) return { o, ok: false, por: o.c.replace(/^se le /, 'el bot le ').replace(/^parece/, 'el bot creía que parece') + ', pero el equipo lo pasó tal cual a ' + pub.grupo.nombre };
+    return { o, ok: true, comparado: false };
+  }
+  return { o, ok: true, comparado: !!pub };
+});
+const fallosBot = juicios.filter(j => !j.ok);
 const vigilados = marcados.filter(m => m.vigilado);
 const tardanzas = vigilados.filter(m => m.cobrado).map(m => m.minutos).filter(n => n >= 0);
 const porBanco = {};
@@ -195,7 +253,18 @@ const pedidosRegs = conPedido.flatMap(x => regsDe(x).filter(r => r.tipo === 'ben
 const destinoDe = r => (r.datos && r.datos.destino_sugerido) || '';
 const sinMontoP = o => [o.r.monto_usd, o.r.monto_local, o.r.datos && o.r.datos.monto_sin_moneda].every(v => v === null || v === undefined);
 const pedidosPorDestino = contar(pedidosRegs, o => destinoDe(o.r) || (o.r.pais ? o.r.pais + ' (sin grupo)' : 'SIN PAÍS'));
-const previasSimuladas = conPedido.map(x => ((simular(x.grupo, x.fila, x.ts) || []).find(e => /📦 PEDIDO/.test(String(e.texto || ''))) || {}).texto || '').filter(Boolean);
+// Pedidos mandados en VARIOS mensajes (27/11): la cuenta en uno y el monto en otro. El bot los junta si son del mismo cliente
+// con menos de 3 minutos entre uno y otro; aqui se simula igual (con las filas recientes del grupo).
+const conPieza = deClientes.filter(x => (x.fila.datos || {}).pieza);
+const previasPedido = conPedido.concat(conPieza).sort((a, b) => a.ts - b.ts)
+  .map(x => ({ x, t: ((simularX(x) || []).find(e => /📦 PEDIDO/.test(String(e.texto || ''))) || {}).texto || '' })).filter(o => o.t);
+const juntados = previasPedido.filter(o => /junté \d mensajes/.test(o.t));
+const mismoClienteCerca = (a, b) => a.grupo.grupo_jid === b.grupo.grupo_jid && a.fila.autor_numero === b.fila.autor_numero && b.ts >= a.ts && b.ts - a.ts <= 10 * 60000;
+// los mensajes que terminaron dentro de un pedido juntado (para no contarlos como "no leidos" ni "sin monto")
+const enJunta = new Set();
+for (const j of juntados) for (const y of conPedido.concat(conPieza)) if (mismoClienteCerca(y, j.x)) enJunta.add(y);
+const sinMontoFinal = pedidosRegs.filter(sinMontoP).filter(o => !enJunta.has(o.x)).length;
+const previasSimuladas = juntados.slice(0, 1).concat(previasPedido.filter(o => !juntados.includes(o))).map(o => o.t);
 const GRUPOS_PAIS = ['venezuela', 'banesco', 'colombia', 'peru', 'brasil', 'chile', 'argentina', 'mexico', 'ecuador', 'panama', 'cuba', 'paraguay', 'zelle', 'binance', 'euro'];
 const tokens = s => quitar(s).split(/[^a-z0-9ñ]+/).filter(w => w.length >= 2);
 const clientesG = [...grupos.values()].filter(g => g.tipo === 'cliente').map(g => ({ g, toks: tokens(g.nombre.replace(/pedidos?|\bjk\b|kelvin/gi, ' ')) }));
@@ -250,7 +319,8 @@ L.push('');
 L.push('## Resumen');
 L.push('- Grupos del mayor que el informe mira: **' + grupos.size + '** (' + [...grupos.values()].filter(g => g.tipo === 'cliente').length + ' de clientes, ' + destinosTabla.length + ' de destino). Con mensajes en el período: **' + [...porGrupo.values()].filter(l => l.length).length + '**');
 L.push('- Mensajes: **' + mensajes + '** (' + ignorados + ' ignorados por el lector: stickers, reacciones sueltas...). Mensajes de clientes / su operador: **' + deClientes.length + '**');
-L.push('- Retiros (RST/RCT/fotos de retiro) escritos por clientes: **' + retiros.length + '**; fuera de horario: **' + fueraHorario + '**');
+L.push('- Retiros (RST/RCT/fotos de retiro) escritos por clientes: **' + retiros.length + '**; fuera de horario: **' + fueraHorario + '**'
+  + (retiros.length ? ' · el bot habría ACERTADO en **' + (juicios.length - fallosBot.length) + ' de ' + juicios.length + ' (' + pct(juicios.length - fallosBot.length, juicios.length) + ')**' : ''));
 L.push('- Errores en los 3 workflows del mayor (n8n): ' + (errores === null ? '(no se pudo consultar)' : '**' + errores.length + '**' + (errores.length ? ' (' + errores.map(e => e.nombre.replace('Mayor: ', '') + ' #' + e.id + ' ' + e.cuando).join(', ') + ')' : '')));
 L.push('- Pedidos a países (cuentas de beneficiario) escritos por clientes: **' + pedidosRegs.length + '** cuentas en ' + conPedido.length + ' mensajes');
 L.push('- Vistas previas de ENSAYO que salieron en el grupo de avisos: **' + (avisos === null ? '(no se pudo leer)' : previas.length + ' de retiros + ' + previasDePedidos.length + ' de pedidos + ' + alertasEnsayo.length + ' de alertas') + '**');
@@ -259,7 +329,9 @@ L.push('## Pedidos a países: qué tan bien los lee el bot');
 if (!pedidosRegs.length) L.push('- (ningún pedido en el período)');
 else {
   const n = pedidosRegs.length;
-  L.push('- Con país: **' + pedidosRegs.filter(o => o.r.pais).length + '** de ' + n + ' (' + pct(pedidosRegs.filter(o => o.r.pais).length, n) + ') · con grupo al que pasarlo: **' + pedidosRegs.filter(o => destinoDe(o.r)).length + '** · sin monto: **' + pedidosRegs.filter(sinMontoP).length + '**');
+  L.push('- Con país: **' + pedidosRegs.filter(o => o.r.pais).length + '** de ' + n + ' (' + pct(pedidosRegs.filter(o => o.r.pais).length, n) + ') · con grupo al que pasarlo: **' + pedidosRegs.filter(o => destinoDe(o.r)).length + '** · sin monto: **' + pedidosRegs.filter(sinMontoP).length + '**'
+    + ' → juntando los mensajes del mismo cliente quedan sin monto: **' + sinMontoFinal + '**');
+  L.push('- Pedidos que el bot armó juntando 2 o 3 mensajes (la cuenta en uno y el monto en otro): **' + juntados.length + '**');
   L.push('- A qué grupo iría cada uno: ' + top(pedidosPorDestino, 20).map(([k, v]) => k + ' ×' + v).join(' · '));
 }
 const cmp = contar(pasados, p => p.resultado);
@@ -274,7 +346,7 @@ if (difs.length) {
 L.push('');
 L.push('### Mensajes de clientes que parecen un pedido y el bot no leyó (datos tapados)');
 const vistosP = new Set();
-for (const x of PEDIDO_NO_LEIDO) { const t = tapar(x.fila.texto); if (vistosP.has(t)) continue; vistosP.add(t); if (vistosP.size <= 15) L.push('- [' + x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] (' + x.fila.tipo + ') ' + t); }
+for (const x of PEDIDO_NO_LEIDO.filter(x => !enJunta.has(x))) { const t = tapar(x.fila.texto); if (vistosP.has(t)) continue; vistosP.add(t); if (vistosP.size <= 15) L.push('- [' + x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] (' + x.fila.tipo + ') ' + t); }
 if (!vistosP.size) L.push('- (ninguno)');
 L.push('');
 L.push('### Cómo se ve la vista previa de un pedido (3 ejemplos, datos tapados)');
@@ -283,7 +355,14 @@ for (const t of previasSimuladas.slice(0, 3)) L.push('- ' + tapar(t));
 L.push('');
 L.push('## Qué habría hecho el bot con cada retiro de un cliente');
 if (!retiros.length) L.push('- (ningún retiro en el período)');
-for (const [k, n] of top(resultado, 15)) L.push('- ' + k + ': **' + n + '** (' + pct(n, retiros.length) + ')');
+else {
+  L.push('- **Aciertos: ' + (juicios.length - fallosBot.length) + ' de ' + juicios.length + ' (' + pct(juicios.length - fallosBot.length, juicios.length) + ')** · fallos: **' + fallosBot.length + '**'
+    + ' · comparados con lo que hizo el equipo o con el reenvío del cliente: ' + juicios.filter(j => j.comparado || !j.ok).length);
+  L.push('  (acierto = hizo lo correcto: publicarlo en el banco correcto, o preguntar / pedir algo que de verdad estaba mal o faltaba. Fallo = el equipo lo pasó distinto o tal cual.)');
+  for (const j of fallosBot.slice(0, 15)) L.push('  - ❌ [' + j.o.x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] ' + j.por + ' · ' + tapar(j.o.x.fila.texto));
+  L.push('- Detalle:');
+}
+for (const [k, n] of top(resultado, 15)) L.push('  - ' + k + ': **' + n + '** (' + pct(n, retiros.length) + ')');
 L.push('');
 L.push('## Largo de los códigos que mandaron los clientes (por banco)');
 if (!Object.keys(largos).length) L.push('- (ningún RST)');
@@ -301,7 +380,7 @@ else {
 L.push('');
 L.push('## Mensajes de clientes que el bot NO entendió y parecen un pedido (datos tapados)');
 const vistos = new Set();
-for (const x of NO_ENTENDIDOS) { const t = tapar(x.fila.texto); if (vistos.has(t)) continue; vistos.add(t); if (vistos.size <= 25) L.push('- [' + x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] ' + t); }
+for (const x of NO_ENTENDIDOS.filter(x => !enJunta.has(x))) { const t = tapar(x.fila.texto); if (vistos.has(t)) continue; vistos.add(t); if (vistos.size <= 25) L.push('- [' + x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] ' + t); }
 if (!vistos.size) L.push('- (ninguno)');
 L.push('');
 L.push('## Bancos que piden los clientes y no tienen grupo');

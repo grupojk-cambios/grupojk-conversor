@@ -385,9 +385,13 @@ function entenderBloque(bloque){
     let montoInferido = false;
     if (!cods.length) cods = codigosSueltosDe(b, tels).filter(c => c !== ced && c !== clave);
     // Sin etiqueta ("Guayaquil / tlf / 2345 / 6543 / 500"): el unico numero suelto de hasta 3 digitos que sobra es el monto.
+    // Antes de contarlos se quitan los TELEFONOS y los codigos ya leidos: un celular escrito en pedazos ("099 000 0004")
+    // tiene numeros de 3 cifras que tapaban el monto. Caso real del 26/11: "Pichincha 140 / 099 ... / Codigo ...": el 140 pegado
+    // al banco es el monto, y el bot le iba a pedir el monto.
     let usdFinal = usd;
     if (usdFinal === null){
-      const sueltos = [...b.matchAll(/(?<![\d.,:$])(\d{2,3})(?![\d.,:])/g)].map(m => m[1]);
+      const sinTel = b.replace(/(?<![\d.,])(\+?593[ -]?)?0?9\d[ -]?\d{3}[ -]?\d{3,4}(?!\d)/g, ' ').replace(/(?<![\d.,])04(?:12|14|16|24|26)[ -]?\d{7}(?!\d)/g, ' ');
+      const sueltos = [...sinTel.matchAll(/(?<![\d.,:$])(\d{2,3})(?![\d.,:])/g)].map(m => m[1]).filter(x => cods.indexOf(x) === -1);
       if (sueltos.length === 1){ usdFinal = parseFloat(sueltos[0]); montoInferido = true; }
     }
     const hora = (b.match(/\b(\d{1,2}:\d{2})\b/) || [])[1] || null;
@@ -403,6 +407,15 @@ function entenderBloque(bloque){
     const hablaRetiro = /\b(rst|retiro|retirar|retira)\b/.test(b) || /(?:clave|c[oó]d[a-z]*|otp)\s*[:.]?\s*\d{3,8}(?!\d)/.test(b);
     const usd = mon.usd !== null ? mon.usd : mon.sinMoneda;
     if (telsEC.length && hablaRetiro && usd !== null){
+      // DOS codigos de 4 cifras ("Primer Codigo / Segundo Codigo") solo los da GUAYAQUIL (protocolo, seccion 9). Si no dice el
+      // banco pero trae eso, no se le pregunta "¿de que banco es?": se le pregunta "¿Su retiro es de Guayaquil? sí o no", igual
+      // que con un banco mal escrito (banco_dudoso). Caso real del 27/11. Nunca se publica sin su "sí".
+      const cods2 = codigosDe(b);
+      if (cods2.length === 2 && cods2.every(c => c.length === 4) && (!parecidos.length || parecidos.some(p => p.banco === 'guayaquil'))){
+        return { tipo: 'rst', pais: 'Ecuador', banco: 'Guayaquil', monto_usd: usd, monto_local: null, moneda: 'USD',
+                 datos: { destino_sugerido: GRUPO_RST.guayaquil, telefono: telsEC[0], codigos: cods2, cedula: cedulas[0] || null, clave: null, hora: null,
+                          banco_dudoso: 'sin banco', banco_deducido: true }, bloque };
+      }
       return { tipo: 'rst', pais: 'Ecuador', banco: null, monto_usd: usd, monto_local: null, moneda: 'USD',
                datos: { destino_sugerido: null, telefono: telsEC[0], codigos: codigosDe(b), cedula: cedulas[0] || null, sin_banco: true,
                         posibles: parecidos.length > 1 ? parecidos.map(p => BANCOS_EC[p.banco]) : undefined }, bloque };
@@ -411,7 +424,12 @@ function entenderBloque(bloque){
 
   // BENEFICIARIO: tiene con que identificar una cuenta (numero, correo, billetera) y pais o monto
   const correos = correosDe(b), billetera = billeteraDe(b);
-  const cuentas = largos.filter(n => !cedulas.includes(n) && !tels.includes(n));
+  let cuentas = largos.filter(n => !cedulas.includes(n) && !tels.includes(n));
+  // En Brasil la llave PIX casi siempre es el CPF, que es el mismo numero de la cedula: "Cuenta: Inter / 123.456.789.42 /
+  // Cedula: 12345678942 / Brasil". Antes ese numero se descartaba por ser la cedula, la cuenta quedaba vacia y el pedido se
+  // tomaba como una pregunta (por la "Tasa"). Paso el 26/11.
+  const esBrasil = /\bbrasil\b|\bbrazil\b|🇧🇷|\bpix\b|\bcpf\b/.test(b);
+  if (!cuentas.length && esBrasil && cedulas.length && !/[?¿]/.test(b)) cuentas = cedulas.slice(0, 1);
   const hayIdentificador = cuentas.length > 0 || correos.length > 0 || !!billetera || pagoMovil
     || (tels.length > 0 && /nequi|daviplata|yape|plin|pix/.test(b))
     || (cedulas.length > 0 && /\brut\b|cuenta vista|cuenta rut|\bdni\b/.test(b))        // en Chile la cuenta RUT es la cedula
@@ -468,6 +486,29 @@ function preguntaDe(b){
   if (/\bhay\b|disponib|chance|tienes|tienen|tiene |tendras/.test(b)) temas.push('disponibilidad');
   if (/esperando|ya sal|ya llego|me avisa|foto|verificar|cuando/.test(b)) temas.push('estado');
   return (temas.length || /\?/.test(b)) ? { temas } : null;
+}
+
+// ---------- PEDAZO DE UN PEDIDO mandado en otro mensaje (27/11) ----------
+// Un cliente manda "Pedido USDT / 300$" y en el mensaje de al lado "BINANCE / correo / billetera"; otro manda la billetera,
+// el correo y "50$" en tres mensajes. Solos no son un pedido (al monto le falta la cuenta, al correo el pais y el monto), pero
+// "Decidir Publicacion" los junta con la cuenta del mismo cliente si llegan con menos de 3 minutos de diferencia.
+//   monto:  un mensaje CORTO con un monto en dolares o en moneda local y nada mas que lo identifique ("Pedido USDT / 300$").
+//   correo: un correo solo, sin monto (puede ser de Binance o de Zelle: el pais lo pone el otro pedazo).
+// No cuentan las preguntas ("¿le queda para 300$ en USDT?") ni lo que habla de un retiro, un deposito o un pago del cliente.
+function piezaPedidoDe(b){
+  if (/[?¿]/.test(b) || b.length > 160 || b.split('\n').filter(l => l.trim()).length > 5) return null;
+  // ("Solo falta 238$" es lo que le falta pagar de un saldo, no el monto de un pedido: 27/11)
+  if (/\b(rst|rct|retiro|retira|retirar|deposito|depositar|deposite|transferi|transferencia|pago|pague|abono|abone|saldo|restante|resta|debe|falta|faltan|faltaria|queda|quedan|pendiente)\b/.test(b)) return null;
+  if (numerosLargos(b).length || billeteraDe(b)) return null;
+  const correos = correosDe(b), mon = extraerMontos(b);
+  const usd = mon.usd !== null ? mon.usd : mon.sinMoneda;
+  if (!correos.length && (usd !== null || mon.local !== null)){
+    const p = paisDe(b, { largos: [], bancoEC: '', billetera: '' });
+    return { clase: 'monto', monto_usd: usd, monto_local: mon.local, moneda: mon.moneda || (usd !== null ? 'USD' : null),
+             pais: p.pais, destino_sugerido: p.pais ? (GRUPO_PAIS[p.pais] || null) : null };
+  }
+  if (correos.length === 1 && usd === null && mon.local === null) return { clase: 'correo' };
+  return null;
 }
 
 // ---------- armar la fila ----------
@@ -528,6 +569,9 @@ if (grupo.tipo === 'tasas'){
   } else {
     const q = preguntaDe(b);
     if (q){ fila.tipo = 'pregunta'; fila.datos = Object.assign(fila.datos, q); }
+    // Un pedazo de pedido (un monto suelto o un correo suelto) queda tipo 'otro' con datos.pieza (la tabla no acepta otros tipos).
+    const pz = (grupo.tipo === 'cliente') ? piezaPedidoDe(b) : null;
+    if (pz && fila.tipo === 'otro') fila.datos.pieza = pz;
   }
 }
 // Una edicion manda sobre el tipo: el mensaje no trae texto, asi que arriba habria quedado en "otro".
@@ -575,6 +619,7 @@ $hacePublicarCode = @'
 // Supabase para ellos. Pasa solo:
 //   - un RST/RCT (o una foto que habla de un retiro) que escribio el CLIENTE o su operador extra en su grupo;
 //   - un PEDIDO a un pais (beneficiario: la cuenta a la que hay que pagar) del cliente: por ahora SOLO vista previa (26/11);
+//     o un PEDAZO de pedido (un monto o un correo suelto, datos.pieza) que se junta con la cuenta de al lado (27/11);
 //   - una respuesta en un grupo de DESTINO ("Verificar", "se dañó"...) que cita un mensaje;
 //   - Solidario: el cobrador que cita nuestro RST y escribe "temporal" (la clave temporal en vivo), o el cliente que la manda;
 //   - JEP: un cliente que QUIERE hacer un RST ("quiero retirar por JEP") aunque no mande datos, o el cobrador
@@ -595,7 +640,7 @@ const hayPedido = regs.some(r => r.tipo === 'beneficiario');
 const delCliente = fila.autor_rol === 'cliente' || fila.autor_rol === 'operador_extra';
 const t = String(fila.texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // (un mensaje con UN numero de 6 digitos puede ser la clave temporal de Solidario que el cobrador pidio: "Decidir Publicacion" lo confirma)
-if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente' } }];
+if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pieza || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente' } }];
 // El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
 // "Decidir Publicacion" contra los mensajes recientes del grupo.
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
@@ -633,6 +678,11 @@ const TEXTO_CLIENTE_VERIFICAR = 'Por favor verifique, corrija y envíe nuevament
 const TEXTO_CLIENTE_DANADO = 'Estimado cliente, su código se dañó / no pudo ser cobrado. Por favor genere un nuevo código de retiro para poder saldar el saldo pendiente.';
 const TEXTO_CLIENTE_EDITO = 'Vimos que editó su mensaje, pero WhatsApp no nos deja leer las ediciones. Por favor envíe los datos de nuevo, completos y en un solo texto.';
 const TEXTO_SIN_BANCO = '¿Ese mensaje es un RST? No reconocí de qué banco es. Si es un retiro, envíe todos los datos de nuevo en un solo texto, con el nombre del banco, por favor.';
+// Despues del "sí" a "¿Su retiro es de Guayaquil?" (no puso el banco), un recordatorio. Si en 7 dias ya van VECES_OBLIGATORIO
+// retiros suyos sin el nombre del banco (contando este), el recordatorio es mas firme (pedido de Kelvin, 27/11).
+const TEXTO_PONER_BANCO = 'Por favor, siempre colócale el nombre del banco.';
+const TEXTO_BANCO_OBLIGATORIO = 'Es obligatorio que le coloques el nombre del banco.';
+const VECES_OBLIGATORIO = 3;
 
 const ent = $('Cuando lo Llama el Bot').first().json || {};
 const grupo = ent.grupo || {};
@@ -650,6 +700,14 @@ const jepEstado = (grupo.tipo === 'cliente' && leido && leido.estado) ? leido : 
 let leidoTmp = null;
 try { const raw = $('Redis Leer Temporal').first().json.temporal; if (raw) leidoTmp = (typeof raw === 'string') ? JSON.parse(raw) : raw; } catch(e){ leidoTmp = null; }
 const solEstado = (grupo.tipo === 'cliente' && leidoTmp && leidoTmp.estado) ? leidoTmp : null;
+// "Redis Leer Sin Banco": cuando (en los ultimos 7 dias) este cliente mando un RST SIN el nombre del banco (sinBanco:<grupo>).
+let vecesSinBanco = [];
+try {
+  const raw = $('Redis Leer Sin Banco').first().json.sinBanco;
+  const l = raw ? ((typeof raw === 'string') ? JSON.parse(raw) : raw) : [];
+  vecesSinBanco = (Array.isArray(l) ? l : []).map(Number).filter(t => t && Date.now() - t < 7 * 86400000);
+} catch(e){ vecesSinBanco = []; }
+const redisSiempre = [];       // lo que se anota en Redis tambien en ENSAYO (el contador de "sin banco")
 const destinos = {};          // nombre del grupo (sin acentos) -> su id, solo los de la tabla
 try { for (const it of $('Grupos Destino').all()){ const g = it.json || {}; if (g.grupo_jid && g.nombre && g.activo !== false) destinos[quitar(g.nombre)] = g.grupo_jid; } } catch(e){}
 const abierto = horarioDe(Date.now()).abierto;
@@ -703,6 +761,70 @@ const confirmado = !!pendiente && respuesta === 'si';
 const filaRef = confirmado ? pendiente.id : filaId;
 const msgRef = confirmado ? pendiente.mensaje_id : fila.mensaje_id;
 
+// ---------- PEDIDO EN VARIOS MENSAJES (27/11) ----------
+// Una cuenta sin monto y un monto suelto ("Pedido USDT / 300$") del MISMO cliente, con menos de 3 minutos entre uno y otro, son
+// UN pedido, lleguen en el orden que lleguen. Un correo suelto se pega a la cuenta de al lado (Binance: billetera + correo).
+// Se recorren en orden los mensajes del cliente de los ultimos 10 minutos ("Retiros Recientes" + este): cada cuenta sin monto
+// espera su monto y cada monto espera su cuenta; una cuenta que ya trae su monto corta la espera. Solo sale algo si ESTE mensaje
+// es el que completa el pedido (si la cuenta llego primero, ella ya salio como "sin monto" y ahora sale el pedido entero).
+const JUNTAR_MS = 3 * 60000;
+function piezaDe(r){
+  let d = r && r.datos;
+  if (typeof d === 'string'){ try { d = JSON.parse(d); } catch(e){ d = {}; } }
+  d = d || {};
+  const regs = Array.isArray(d.registros) ? d.registros : [];
+  const bens = regs.filter(x => x.tipo === 'beneficiario');
+  if (bens.length){
+    const sinMonto = x => [x.monto_usd, x.monto_local, x.datos && x.datos.monto_sin_moneda].every(v => v === null || v === undefined);
+    return (bens.length === 1 && regs.length === 1 && sinMonto(bens[0])) ? { k: 'cuenta', reg: bens[0] } : { k: 'completo' };
+  }
+  if (d.pieza && d.pieza.clase === 'monto') return { k: 'monto', pz: d.pieza };
+  if (d.pieza && d.pieza.clase === 'correo') return { k: 'correo' };
+  return null;
+}
+function pedidoJuntado(){
+  if (grupo.tipo !== 'cliente') return null;
+  const yo = piezaDe(fila);
+  if (!yo || yo.k === 'completo') return null;
+  const ahoraMs = Date.parse(fila.fecha_mensaje) || Date.now();
+  const mismoAutor = r => fila.autor_numero ? String(r.autor_numero || '') === String(fila.autor_numero) : r.autor_rol === fila.autor_rol;
+  let previas = [];
+  try { previas = $('Retiros Recientes').all().map(i => i.json).filter(r => r && r.id && r.mensaje_id !== fila.mensaje_id && mismoAutor(r)); } catch(e){ previas = []; }
+  const seq = previas.map(r => ({ r, ts: Date.parse(r.fecha_mensaje) || 0, id: Number(r.id) || 0 }))
+    .filter(x => x.ts <= ahoraMs && ahoraMs - x.ts <= 10 * 60000)
+    .sort((a, b) => (a.ts - b.ts) || (a.id - b.id));
+  seq.push({ r: fila, ts: ahoraMs, id: Infinity, actual: true, p: yo });
+  let espera = null, par = null;
+  for (const it of seq){
+    if (!it.actual) it.p = piezaDe(it.r);
+    if (!it.p) continue;                                            // charla, RST, foto: no cortan la espera
+    const cerca = !!espera && (it.ts - espera.ultimo) <= JUNTAR_MS;
+    if (it.p.k === 'completo'){ espera = null; continue; }
+    if (it.p.k === 'cuenta' || it.p.k === 'correo'){
+      // un correo se pega a la cuenta que espera (o una cuenta al correo que espera)
+      if (cerca && espera.tipo === 'cuenta' && (it.p.k === 'correo' || espera.items.every(x => x.p.k === 'correo'))){ espera.items.push(it); espera.ultimo = it.ts; continue; }
+      if (cerca && espera.tipo === 'monto'){ if (it.actual) par = { cuentas: [it], monto: espera.items[0] }; espera = null; continue; }
+      espera = { tipo: 'cuenta', items: [it], ultimo: it.ts };
+      continue;
+    }
+    if (cerca && espera.tipo === 'cuenta'){ if (it.actual) par = { cuentas: espera.items, monto: it }; espera = null; continue; }
+    espera = { tipo: 'monto', items: [it], ultimo: it.ts };
+  }
+  if (!par) return null;
+  const conCuenta = par.cuentas.find(x => x.p.k === 'cuenta');
+  const base = conCuenta ? conCuenta.p.reg : { tipo: 'beneficiario', pais: null, banco: null, datos: {} };
+  const pz = par.monto.p.pz || {};
+  const pais = base.pais || pz.pais || null;
+  const destino = (base.datos && base.datos.destino_sugerido) || (!base.pais ? pz.destino_sugerido : null) || null;
+  const piezas = par.cuentas.concat([par.monto]).sort((a, b) => (a.ts - b.ts) || (a.id - b.id));
+  return {
+    n: piezas.length,
+    texto: piezas.map(x => String(x.r.texto || '').trim()).filter(Boolean).join('\n'),
+    pedido: { tipo: 'beneficiario', pais, banco: base.banco || null, monto_usd: pz.monto_usd, monto_local: pz.monto_local, moneda: pz.moneda || base.moneda || null,
+              datos: Object.assign({}, base.datos || {}, { destino_sugerido: destino, candidatos: pais ? [] : ((base.datos && base.datos.candidatos) || []), juntado: true }) }
+  };
+}
+
 const envios = [];
 let estadoFila = '', grupoDestinoFila = '', real = false;
 let filaPendiente = 0;
@@ -716,7 +838,8 @@ let filaEditada = 0;
 if (fila.tipo === 'edicion'){
   const idEditado = String(datos.editado_id || '');
   let orig = null;
-  try { orig = $('Retiros Recientes').all().map(i => i.json).find(r => r && r.id && String(r.mensaje_id) === idEditado) || null; } catch(e){}
+  // (desde el 27/11 "Retiros Recientes" tambien trae las filas 'otro' de los pedazos de pedido: editar un saludo no cuenta)
+  try { orig = $('Retiros Recientes').all().map(i => i.json).find(r => r && r.id && String(r.mensaje_id) === idEditado && ['rst', 'rct', 'mixto', 'beneficiario'].indexOf(r.tipo) !== -1) || null; } catch(e){}
   if (!orig) return [];                      // edito un saludo, una foto o algo viejo: no hay nada que corregir
   real = (MODO === 'real') && grupo.publicar === true;
   filaEditada = orig.id;
@@ -810,6 +933,19 @@ else if (grupo.tipo === 'cliente'){
     estadoFila = publicados.map(p => p.estado).sort((a, b) => PESO[b] - PESO[a])[0];
     grupoDestinoFila = [...new Set(publicados.map(p => NOMBRE_GRUPO(p.destinoClave)))].join(', ');
   }
+  // ---------- NO PUSO EL NOMBRE DEL BANCO (27/11) ----------
+  // Cada RST sin el nombre del banco (el de "¿es de Guayaquil?" y el de "¿de qué banco es?") se anota (7 dias). Cuando el
+  // cliente contesta "sí" a "¿Su retiro es de Guayaquil?" y se publica, se le deja el recordatorio: "Por favor, siempre colócale
+  // el nombre del banco."; desde la 3ra vez en 7 dias: "Es obligatorio que le coloques el nombre del banco."
+  if (!confirmado && regs.some(r => r.datos && (r.datos.banco_deducido || r.datos.sin_banco))){
+    redisSiempre.push({ clave: 'sinBanco:' + grupo.grupo_jid, valor: JSON.stringify(vecesSinBanco.concat([Date.now()]).slice(-20)), ttl: 7 * 24 * 3600 });
+  }
+  if (confirmado && publicados.length && pendiente.registros.some(r => r.datos && r.datos.banco_deducido)){
+    const firme = vecesSinBanco.length >= VECES_OBLIGATORIO;
+    const recordar = firme ? TEXTO_BANCO_OBLIGATORIO : TEXTO_PONER_BANCO;
+    envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto: recordar, citar: msgRef,
+                  vista: '➡️ al cliente (citando su retiro' + (firme ? '; ya van ' + vecesSinBanco.length + ' veces en 7 días sin el banco' : '') + '): "' + recordar + '"' });
+  }
   // ---------- JEP: "te avisamos cuando el cobrador esté en el cajero" (el código dura 15 minutos) ----------
   // Un pedido de JEP sin datos ("quiero retirar por JEP") tambien cuenta: no hay RST registrado, pero hay que avisar al cobrador.
   if (!jepPide && !enCajero && !esTemporal && quiereJep(fila.texto) && !regs.some(r => claveBanco(r) === 'jep')) jepPide = true;
@@ -852,11 +988,17 @@ else if (grupo.tipo === 'cliente'){
       const montos = dudosos.filter(r => r.monto_usd !== null && r.monto_usd !== undefined).map(r => fmtMonto(r.monto_usd) + '$');
       const bancos = [...new Set(dudosos.map(r => r.banco))];
       const texto = (dudosos.length === 1 ? '¿Su retiro' : '¿Sus retiros') + (montos.length ? ' de ' + unir(montos) : '') + (dudosos.length === 1 ? ' es' : ' son') + ' de ' + unir(bancos) + '? Responda sí o no, por favor.';
+      // Por que se pregunta: el banco mal escrito ("produbaco"), o no dijo el banco pero trae 2 codigos de 4 (Guayaquil, 27/11).
+      const escritos = [...new Set(dudosos.filter(r => !r.datos.banco_deducido).map(r => r.datos.banco_dudoso))];
+      const porque = [escritos.length ? 'escribió "' + escritos.join('", "') + '"' : '', dudosos.some(r => r.datos.banco_deducido) ? 'no dijo el banco, pero 2 códigos de 4 cifras son de Guayaquil' : ''].filter(Boolean).join('; ');
       envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto, citar: fila.mensaje_id,
-                    vista: '➡️ al cliente (escribió "' + [...new Set(dudosos.map(r => r.datos.banco_dudoso))].join('", "') + '"; citando su mensaje): "' + texto + '"' });
+                    vista: '➡️ al cliente (' + porque + '; citando su mensaje): "' + texto + '"' });
       estadoFila = 'confirmar_banco';
     } else {
-      for (const reg of dudosos) incompletos.push({ reg, f: [], rv: ['el nombre del banco ("' + reg.datos.banco_dudoso + '") no se entiende bien'] });
+      for (const reg of dudosos){
+        if (reg.datos.banco_deducido) sinBanco.push(reg);                     // "¿Ese mensaje es un RST? No reconocí de qué banco es..."
+        else incompletos.push({ reg, f: [], rv: ['el nombre del banco ("' + reg.datos.banco_dudoso + '") no se entiende bien'] });
+      }
     }
   }
   // ---------- parece un RST pero no dice de que banco ----------
@@ -907,7 +1049,11 @@ else if (grupo.tipo === 'cliente'){
   // a mano al grupo del pais: el NOMBRE del cliente en mayusculas arriba y debajo los datos que mando el cliente. Aqui solo se
   // muestra en el grupo de avisos COMO los pasaria el bot, para estudiarlo. Todavia NO se publica en ningun grupo: falta
   // decidir con Kelvin cuando (¿al confirmar el pago?) y que significa la linea "RST" que pone la operadora.
-  const pedidos = (Array.isArray(datos.registros) ? datos.registros : []).filter(r => r.tipo === 'beneficiario');
+  // Si este mensaje COMPLETA un pedido mandado en dos o tres mensajes (la cuenta en uno y el monto en otro, 27/11), la vista
+  // previa es la del pedido entero y lleva el texto de todos los pedazos.
+  const juntado = pedidoJuntado();
+  const pedidos = juntado ? [juntado.pedido] : (Array.isArray(datos.registros) ? datos.registros : []).filter(r => r.tipo === 'beneficiario');
+  const textoPedido = juntado ? juntado.texto : String(fila.texto || '').trim();
   if (pedidos.length){
     const grupoDe = p => (p.datos && p.datos.destino_sugerido) || '';
     const nombres = [...new Set(pedidos.map(grupoDe).filter(Boolean))];
@@ -924,8 +1070,8 @@ else if (grupo.tipo === 'cliente'){
     const sinMonto = pedidos.filter(p => [p.monto_usd, p.monto_local, p.datos && p.datos.monto_sin_moneda].every(v => v === null || v === undefined));
     if (sinMonto.length) notas.push('⚠️ ' + (pedidos.length > 1 ? sinMonto.length + ' sin monto' : 'Sin monto') + ': falta que diga cuánto.');
     const donde = nombres.length ? unir(nombres) : 'NINGÚN grupo';
-    const vista = '📦 PEDIDO' + (pedidos.length > 1 ? ' (' + pedidos.length + ' cuentas)' : '') + ' → iría a ' + donde + ':\n'
-      + nombre.toUpperCase() + '\n' + String(fila.texto || '').trim() + (notas.length ? '\n\n' + notas.join('\n') : '');
+    const vista = '📦 PEDIDO' + (pedidos.length > 1 ? ' (' + pedidos.length + ' cuentas)' : '') + (juntado ? ' (junté ' + juntado.n + ' mensajes)' : '') + ' → iría a ' + donde + ':\n'
+      + nombre.toUpperCase() + '\n' + textoPedido + (notas.length ? '\n\n' + notas.join('\n') : '');
     envios.push({ etapa: 'pedido', soloEnsayo: true, tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, vista });
   }
 } else if (grupo.tipo === 'destino' && pub && pub.cliente_jid && datos.cita_id){
@@ -974,10 +1120,13 @@ if (!real){
   // Igual 'confirmar_banco' (la pregunta del banco mal escrito) y el 'verificar' de un "no": son los que dicen si el retiro
   // sigue esperando la respuesta. Un "si" en ensayo deja la fila en 'ensayo' (no se publico nada de verdad).
   const anotar = filaEditada || estadoFila === 'confirmar_banco' || (pendiente && respuesta === 'no');
-  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (anotar ? estadoFila : 'ensayo'), grupo_destino: '' } }];
+  // El contador de "sin banco" SI se anota en ensayo: asi la vista previa muestra el recordatorio firme cuando toca.
+  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (anotar ? estadoFila : 'ensayo'), grupo_destino: '',
+                    redisSet: redisSiempre.length ? redisSiempre : undefined } }];
 }
 // REAL: los RST salen de verdad, pero los PEDIDOS siguen siendo solo vista previa en el grupo de avisos.
 const salida = envios.filter(e => !e.soloEnsayo).map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
+if (redisSiempre.length && salida.length) salida[0].json.redisSet = (salida[0].json.redisSet || []).concat(redisSiempre);
 const soloVista = envios.filter(e => e.soloEnsayo);
 if (soloVista.length){
   const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + soloVista.map(e => e.vista).join('\n\n');
@@ -1120,7 +1269,11 @@ El bot principal le pasa a este workflow cada mensaje de los **grupos del mayor*
 
 **Si el cliente EDITA un mensaje** (26/11): WhatsApp manda las ediciones cifradas, asi que el bot sabe CUAL mensaje cambio pero nunca que dice ahora. Si lo editado fue un retiro o una cuenta de los ultimos 30 minutos, se le pide que lo mande de nuevo y la fila vieja queda en **verificar** (asi el reenvio no se rechaza como repetido ni se le avisa de vencimiento a un codigo que va a ser reemplazado). Editar un saludo o una foto no dispara nada.
 
-**Banco mal escrito** (26/11): si al nombre del banco le falta, le sobra o le cambia una letra ("produbaco", "pichinca"; en los nombres largos hasta dos), el bot lo reconoce pero NO lo publica: le pregunta al cliente "¿Su retiro es de Produbanco? Responda sí o no" y la fila queda en **confirmar_banco**. Con un "sí" lo publica normal; con un "no" le pide que lo mande de nuevo (fila en verificar). Si la palabra se parece a dos bancos, o el mensaje parece un RST (celular + código + monto) sin ningún banco, le pregunta de qué banco es y que lo mande de nuevo.
+**Banco mal escrito** (26/11): si al nombre del banco le falta, le sobra o le cambia una letra ("produbaco", "pichinca"; en los nombres largos hasta dos), el bot lo reconoce pero NO lo publica: le pregunta al cliente "¿Su retiro es de Produbanco? Responda sí o no" y la fila queda en **confirmar_banco**. Con un "sí" lo publica normal; con un "no" le pide que lo mande de nuevo (fila en verificar). Si la palabra se parece a dos bancos, o el mensaje parece un RST (celular + código + monto) sin ningún banco, le pregunta de qué banco es y que lo mande de nuevo. Si no dice el banco pero trae **dos códigos de 4 cifras** (27/11), eso es Guayaquil: le pregunta "¿Su retiro es de Guayaquil? Responda sí o no". Con el "sí" lo publica y le deja un recordatorio: "Por favor, siempre colócale el nombre del banco."; si en 7 días ya van 3 retiros suyos sin el banco: "Es obligatorio que le coloques el nombre del banco." (el conteo está en Redis, `sinBanco:<grupo>`).
+
+**Monto pegado al banco** (27/11): "Pichincha 140 / 099 ... / Código ..." -> el 140 es el monto (antes los pedazos del celular lo tapaban).
+
+**Pedidos a países** (solo vista previa en avisos, aun en modo real): la cuenta del cliente con el país y el grupo al que iría. Si el pedido viene en varios mensajes del mismo cliente con menos de 3 minutos entre uno y otro (la cuenta en uno y el monto en otro, o billetera + correo + monto), los junta en un solo pedido. En Brasil la llave PIX puede ser el mismo número de la cédula (CPF).
 
 **Alertas de vencimiento** (filas de abajo): cada RST que esta en el grupo de su banco se anota en `vigilancia_rst_mayor` con su hora de vencimiento (los pegados a mano y los del bot). Las reacciones de los cobradores (cualquier emoji menos la X = cobrado) se anotan alli. El workflow "Mayor: alertas de vencimiento" avisa en el grupo del banco, citando el RST, cuando falta 1 hora (5 min en JEP) y nadie lo marco como cobrado.
 
@@ -1193,14 +1346,24 @@ $nodes = @(
     # Los retiros de este mismo grupo de los ultimos 30 minutos (sin el mensaje de ahora): para no publicar DOS veces el mismo
     # codigo cuando el cliente lo manda repetido o corregido (revision diaria del 25/11). executeOnce: "Grupos Destino" sale con
     # una fila por banco y esta consulta se hace UNA sola vez.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_mayor_por_whatsapp'; returnAll = $false; limit = 30; filterType = 'string'
-                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid + "&tipo=in.(rst,rct,mixto,beneficiario)&fecha_mensaje=gte." + new Date(Date.now() - 30 * 60000).toISOString() + "&mensaje_id=neq." + $("Decidir").first().json.mensaje_id }}' }
+    # Desde el 27/11 tambien trae las filas 'otro' (ahi quedan los pedazos de pedido: un monto o un correo suelto) para juntar un
+    # pedido mandado en varios mensajes; por eso van primero las mas nuevas (order) y el limite es 60.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_mayor_por_whatsapp'; returnAll = $false; limit = 60; filterType = 'string'
+                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid + "&tipo=in.(rst,rct,mixto,beneficiario,otro)&fecha_mensaje=gte." + new Date(Date.now() - 30 * 60000).toISOString() + "&mensaje_id=neq." + $("Decidir").first().json.mensaje_id + "&order=fecha_mensaje.desc" }}' }
     id = 'c1d2e3f4-0027-4b00-8b00-mayor0000027'; name = 'Retiros Recientes'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1496,480)
     executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
   },
   [ordered]@{
+    # ¿Cuantas veces (7 dias) este cliente mando un RST SIN el nombre del banco? (sinBanco:<grupo>, 27/11). Decide si el
+    # recordatorio despues del "sí" es "Por favor, siempre colócale el nombre del banco." o "Es obligatorio...".
+    # executeOnce: "Retiros Recientes" sale con una fila por mensaje reciente y esta lectura se hace UNA sola vez.
+    parameters = @{ operation = 'get'; key = "={{ (`$('Cuando lo Llama el Bot').first().json.grupo.tipo === 'cliente') ? ('sinBanco:' + `$('Cuando lo Llama el Bot').first().json.grupo.grupo_jid) : 'sinBanco:sin-cliente' }}"; keyType = 'string'; propertyName = 'sinBanco'; options = @{} }
+    id = 'c1d2e3f4-0028-4b00-8b00-mayor0000028'; name = 'Redis Leer Sin Banco'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(1672,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
+  },
+  [ordered]@{
     parameters = @{ jsCode = $decidirPublicacionCode }
-    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1584,300)
+    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1760,300)
   },
   [ordered]@{
     # UN nodo para texto y sticker. En modo ensayo el unico destino es el grupo de avisos.
@@ -1209,7 +1372,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify($json.tipo === "sticker" ? { number: $json.jid, sticker: $json.sticker } : Object.assign({ number: $json.jid, text: $json.texto }, $json.citar ? { quoted: { key: { id: $json.citar } } } : {})) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1760,300)
+    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1936,300)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1217,7 +1380,7 @@ $nodes = @(
     # Si fallo y llevaba cita (el mensaje citado a veces ya no esta en Evolution), se reintenta SIN cita:
     # una cita que no funcione nunca puede dejar a un cliente sin su respuesta.
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ !!$json.error && !!$("Decidir Publicacion").item.json.citar }}'; value2 = '={{true}}' } ) } }
-    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(1936,300)
+    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(2112,300)
   },
   [ordered]@{
     parameters = @{ method = 'POST'; url = '={{ "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin" }}'
@@ -1225,7 +1388,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify({ number: $("Decidir Publicacion").item.json.jid, text: $("Decidir Publicacion").item.json.texto }) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2112,480)
+    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2288,480)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1236,17 +1399,17 @@ $nodes = @(
                     fieldsUi = @{ fieldValues = @(
                       @{ fieldId = 'estado'; fieldValue = '={{ $json.error ? "error_envio" : $("Decidir Publicacion").item.json.estado_fila }}' },
                       @{ fieldId = 'grupo_destino'; fieldValue = '={{ $("Decidir Publicacion").item.json.grupo_destino || "" }}' } ) } }
-    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2288,120)
+    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2464,120)
     onError = 'continueRegularOutput'; credentials = $supaCred
   },
   [ordered]@{
     parameters = @{ jsCode = $armarMapaCode }
-    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2288,300)
+    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2464,300)
   },
   [ordered]@{
     # Cada valor trae su propio tiempo de vida (ttl en segundos): la publicacion 7 dias, el permiso de JEP unas horas o minutos.
     parameters = @{ operation = 'set'; key = '={{ $json.clave }}'; value = '={{ $json.valor }}'; keyType = 'string'; expire = $true; ttl = ('={{ $json.ttl || ' + ($HORAS_MAPA_PUBLICACION * 3600) + ' }}') }
-    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2464,300)
+    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2640,300)
     onError = 'continueRegularOutput'; credentials = $redisCred
   },
   # ----- ALERTAS DE VENCIMIENTO (protocolo, seccion 7): reacciones de los cobradores y RST vigilados -----
@@ -1280,11 +1443,11 @@ $nodes = @(
   [ordered]@{
     # Un RST que publico el propio bot en el grupo de su banco (solo en modo real).
     parameters = @{ jsCode = $armarVigilanciaCode }
-    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2288,900)
+    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2464,900)
   },
   [ordered]@{
     parameters = @{ resource = 'row'; operation = 'create'; tableId = 'vigilancia_rst_mayor'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2464,900)
+    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2640,900)
     onError = 'continueRegularOutput'; credentials = $supaCred
   }
 )
@@ -1305,7 +1468,8 @@ $connections = [ordered]@{
   'Redis Leer Publicacion' = @{ main = @( ,@( @{ node='Redis Leer Temporal'; type='main'; index=0 } ) ) }
   'Redis Leer Temporal'    = @{ main = @( ,@( @{ node='Grupos Destino'; type='main'; index=0 } ) ) }
   'Grupos Destino'         = @{ main = @( ,@( @{ node='Retiros Recientes'; type='main'; index=0 } ) ) }
-  'Retiros Recientes'      = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
+  'Retiros Recientes'      = @{ main = @( ,@( @{ node='Redis Leer Sin Banco'; type='main'; index=0 } ) ) }
+  'Redis Leer Sin Banco'   = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
   'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 } ) ) }
   'Enviar'                 = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
   'Fallo la Cita?'         = @{ main = (

@@ -175,8 +175,17 @@ console.log('=== 5) El workflow del mayor ===');
       && /grupo_jid=eq\./.test(rr.parameters.filterString) && /mensaje_id=neq\./.test(rr.parameters.filterString),
       '"Retiros Recientes": una sola consulta, del mismo grupo y sin el mensaje de ahora (y sigue aunque no haya filas)');
   const sale = n => (((mayor.connections[n] || {}).main || [])[0] || []).map(c => c.node);
-  chk(JSON.stringify(sale('Grupos Destino')) === '["Retiros Recientes"]' && JSON.stringify(sale('Retiros Recientes')) === '["Decidir Publicacion"]',
-      'el orden es Grupos Destino -> Retiros Recientes -> Decidir Publicacion');
+  chk(JSON.stringify(sale('Grupos Destino')) === '["Retiros Recientes"]' && JSON.stringify(sale('Retiros Recientes')) === '["Redis Leer Sin Banco"]'
+      && JSON.stringify(sale('Redis Leer Sin Banco')) === '["Decidir Publicacion"]',
+      'el orden es Grupos Destino -> Retiros Recientes -> Redis Leer Sin Banco -> Decidir Publicacion');
+  // "sin banco" (27/11): las veces que el cliente no puso el banco; UNA sola lectura, y si Redis falla igual sigue
+  const sb = nodo(mayor, 'Redis Leer Sin Banco');
+  chk(sb.executeOnce === true && sb.alwaysOutputData === true && sb.onError === 'continueRegularOutput' && !!sb.credentials && sb.parameters.operation === 'get'
+      && /sinBanco:/.test(sb.parameters.key), '"Redis Leer Sin Banco": una sola lectura (sinBanco:<grupo>), con credencial, y si falla no se cae');
+  // el lienzo en orden de proceso (de izquierda a derecha)
+  const x = n => nodo(mayor, n).position[0];
+  const fila = ['Hace Falta Publicar?', 'Redis Leer Publicacion', 'Redis Leer Temporal', 'Grupos Destino', 'Retiros Recientes', 'Redis Leer Sin Banco', 'Decidir Publicacion', 'Enviar', 'Fallo la Cita?'];
+  chk(fila.every((n, i) => i === 0 || x(n) > x(fila[i - 1])), 'en el lienzo los nodos van en el orden del proceso, de izquierda a derecha');
   chk(!!nodo(mayor, 'Nota') && /FASE 2/.test(nodo(mayor, 'Nota').parameters.content) && /ENSAYO/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 2 y el modo ensayo');
 }
 

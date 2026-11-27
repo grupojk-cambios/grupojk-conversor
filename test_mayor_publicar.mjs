@@ -74,6 +74,7 @@ function correr(texto, opciones) {
       if (nombre === 'Redis Leer Temporal') return { first: () => ({ json: { temporal: o.temporal ? JSON.stringify(o.temporal) : null } }) };
       if (nombre === 'Grupos Destino') return { all: () => (o.destinos || DESTINOS).map(json => ({ json })) };
       if (nombre === 'Retiros Recientes') return { all: () => (o.recientes || []).map(json => ({ json })) };
+      if (nombre === 'Redis Leer Sin Banco') return { first: () => ({ json: { sinBanco: o.sinBanco ? JSON.stringify(o.sinBanco) : null } }) };
       throw new Error('nodo inesperado: ' + nombre);
     };
     const pasa = new Function('$', code('Hace Falta Publicar?'))($).length > 0;
@@ -829,6 +830,146 @@ console.log('=== 20) BANCO MAL ESCRITO: "¿Su retiro es de Produbanco?" y el si 
   chk(!real(['monto 200$', 'celular 0990000004'].join(SALTO)).envios.length, 'un celular y un monto sin codigo ni "RST": no se pregunta nada (puede ser cualquier cosa)');
   chk(reg0(entender(['Nequi 3000000001', 'Pedro Prueba', 'cc 1000000001', '150.000 cop'].join(SALTO))).tipo === 'beneficiario', 'una cuenta (Nequi) sigue siendo una cuenta');
   chk(!real('Retiro de 200$ por favor, codigo 5478 mi correo es prueba@example.com 0990000004').envios.some(e => /No reconocí/.test(e.texto || '')), 'con un correo no se toma como RST sin banco');
+}
+
+console.log('');
+console.log('=== 21) REVISION DEL 27/11: monto pegado al banco, Guayaquil sin banco, pedido en varios mensajes y Brasil con CPF ===');
+{
+  // ---------- a) el monto pegado al nombre del banco (caso real, 26/11) ----------
+  // Los pedazos del celular ("099 000 0004") tenian numeros de 3 cifras que tapaban el monto.
+  const MONTO_PEGADO = ['Pichincha 140', '099 000 0004', 'Codigo 5478'].join(SALTO);
+  let r = reg0(entender(MONTO_PEGADO));
+  chk(r && r.banco === 'Pichincha' && r.monto_usd === 140, '"Pichincha 140 / 099 000 0004 / Codigo 5478": el 140 es el monto', '-> ' + JSON.stringify(r && { banco: r.banco, usd: r.monto_usd }));
+  let p = real(MONTO_PEGADO);
+  chk(bancos(p).length === 1 && DEST_DE(bancos(p)[0].jid) === 'PICHINCHA', '...y se publica en PICHINCHA', '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+  p = real(['Pichincha', '099 000 0004', 'Codigo 5478'].join(SALTO));
+  chk(bancos(p).length === 0 && clienteTxt(p).length === 1 && /el monto/.test(clienteTxt(p)[0].texto), 'sin monto de verdad: se le sigue pidiendo el monto', '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+  p = real(['Produbanco 300', 'Cedula 1700000011', 'Codigo 175588'].join(SALTO));
+  chk(bancos(p).length === 1 && /Monto: 300\$/.test(bancos(p)[0].texto), 'sin celular tambien: "Produbanco 300" -> monto 300', '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+
+  // ---------- b) no dice el banco, pero trae 2 codigos de 4 cifras = Guayaquil (caso real, 27/11) ----------
+  const SIN_BANCO_2COD = ['Primer Código: 2403', '', 'Segundo Código: 2790', '', 'Cedula: 0900000010', '', 'Celular: 0990000005', '', '$470'].join(SALTO);
+  r = reg0(entender(SIN_BANCO_2COD));
+  chk(r && r.tipo === 'rst' && r.banco === 'Guayaquil' && r.datos.banco_deducido === true && r.monto_usd === 470, '2 códigos de 4 sin banco: se lee como Guayaquil (deducido)',
+      '-> ' + JSON.stringify(r && { banco: r.banco, d: r.datos.banco_deducido, usd: r.monto_usd }));
+  p = real(SIN_BANCO_2COD);
+  chk(bancos(p).length === 0 && sticker(p).length === 0, '...NO se publica sin preguntar');
+  chk(clienteTxt(p).length === 1 && clienteTxt(p)[0].texto === '¿Su retiro de 470$ es de Guayaquil? Responda sí o no, por favor.' && clienteTxt(p)[0].citar,
+      '...se le pregunta "¿Su retiro de 470$ es de Guayaquil? Responda sí o no"', '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+  chk(p.envios.every(e => e.estado_fila === 'confirmar_banco'), '...y la fila queda en "confirmar_banco"');
+  p = correr(SIN_BANCO_2COD);
+  chk(p.envios.length === 1 && /no dijo el banco, pero 2 códigos de 4 cifras son de Guayaquil/.test(p.envios[0].texto), 'en ENSAYO la vista previa dice por qué pregunta', '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+  const PEND = { id: 601, mensaje_id: 'GYE1', tipo: 'rst', banco: 'Guayaquil', autor_rol: 'cliente', estado: 'confirmar_banco',
+                 fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 2 * 60000).toISOString(), datos: entender(SIN_BANCO_2COD).datos };
+  p = real('si', { recientes: [PEND] });
+  chk(bancos(p).length === 1 && DEST_DE(bancos(p)[0].jid) === 'GUAYAQUIL' && /C1: 2403/.test(bancos(p)[0].texto), 'con su "sí" se publica en GUAYAQUIL', '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, DEST_DE(e.jid)])));
+  p = real('no', { recientes: [PEND] });
+  chk(bancos(p).length === 0 && clienteTxt(p).length === 1 && /verifique, corrija/.test(clienteTxt(p)[0].texto), 'con un "no" se le pide que lo mande de nuevo');
+
+  // ---------- el recordatorio despues del "sí": "Por favor, siempre colócale el nombre del banco." (pedido de Kelvin, 27/11) ----------
+  const T0 = new Date(ABIERTO).getTime(), HACE = dias => T0 - dias * 86400000;
+  const recordatorio = q => clienteTxt(q).filter(e => /nombre del banco\.$/.test(e.texto));
+  p = real('si', { recientes: [PEND], sinBanco: [HACE(0.01)] });
+  chk(recordatorio(p).length === 1 && recordatorio(p)[0].texto === 'Por favor, siempre colócale el nombre del banco.' && recordatorio(p)[0].citar === 'GYE1',
+      'con el "sí": se publica y se le deja "Por favor, siempre colócale el nombre del banco." (citando su retiro)', '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+  chk(p.envios.findIndex(e => e.etapa === 'banco') < p.envios.findIndex(e => e === recordatorio(p)[0]), '...despues de publicarlo en el banco');
+  p = real('si', { recientes: [PEND], sinBanco: [HACE(3), HACE(0.01)] });
+  chk(recordatorio(p).length === 1 && /^Por favor/.test(recordatorio(p)[0].texto), '2 veces en 7 días: sigue el "Por favor"');
+  p = real('si', { recientes: [PEND], sinBanco: [HACE(5), HACE(2), HACE(0.01)] });
+  chk(recordatorio(p).length === 1 && recordatorio(p)[0].texto === 'Es obligatorio que le coloques el nombre del banco.', 'la 3ra vez en 7 días: "Es obligatorio que le coloques el nombre del banco."',
+      '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+  p = real('si', { recientes: [PEND], sinBanco: [HACE(20), HACE(10), HACE(0.01)] });
+  chk(recordatorio(p).length === 1 && /^Por favor/.test(recordatorio(p)[0].texto), 'las de hace más de 7 días no cuentan');
+  p = correr('si', { recientes: [PEND], sinBanco: [HACE(5), HACE(2), HACE(0.01)] });
+  chk(p.envios.length === 1 && /Es obligatorio que le coloques el nombre del banco/.test(p.envios[0].texto) && /ya van 3 veces/.test(p.envios[0].texto), 'en ENSAYO la vista previa muestra el recordatorio');
+  // se cuenta cada RST sin el nombre del banco (tambien el de "¿de qué banco es?")
+  const anota = q => (q.envios.flatMap(e => e.redisSet || []).find(s => /^sinBanco:/.test(s.clave)) || null);
+  p = real(SIN_BANCO_2COD, { sinBanco: [HACE(2)] });
+  let s = anota(p);
+  chk(!!s && s.clave === 'sinBanco:' + GRUPO.grupo_jid && JSON.parse(s.valor).length === 2 && s.ttl === 7 * 24 * 3600, 'al preguntar "¿es de Guayaquil?" se anota la vez (7 días)', '-> ' + JSON.stringify(s));
+  s = anota(correr(SIN_BANCO_2COD));
+  chk(!!s && JSON.parse(s.valor).length === 1, '...tambien en ENSAYO');
+  chk(!!anota(real(['RST', 'monto 200$', 'codigo 5478', 'celular 0990000004'].join(SALTO))), 'un RST sin banco (pregunta general) tambien cuenta');
+  chk(!anota(real(['Pichincha código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO))), 'un RST con su banco no cuenta');
+  chk(!anota(real('si', { recientes: [PEND] })), 'el "sí" no cuenta otra vez');
+  // el banco MAL ESCRITO ("produbaco") no lleva recordatorio: el nombre si lo puso
+  const PEND2 = Object.assign({}, PEND, { mensaje_id: 'PRODU1', banco: 'Produbanco',
+    datos: entender(['*produbaco*', 'monto 350$', 'cedula 1700000011', 'clave 167688', 'celular 0990000012'].join(SALTO)).datos });
+  chk(!recordatorio(real('si', { recientes: [PEND2] })).length, 'el "sí" a un banco mal escrito ("produbaco") no lleva recordatorio');
+  p = real(['RST', 'monto 200$', 'codigo 5478', 'celular 0990000004'].join(SALTO));
+  chk(clienteTxt(p).length === 1 && /^¿Ese mensaje es un RST\?/.test(clienteTxt(p)[0].texto), 'un solo código sin banco: sigue la pregunta general');
+  p = real(['RST', 'monto 200$', 'codigo 175588', 'codigo 175599', 'celular 0990000004'].join(SALTO));
+  chk(clienteTxt(p).length === 1 && /^¿Ese mensaje es un RST\?/.test(clienteTxt(p)[0].texto), 'dos códigos de 6 sin banco: no se adivina');
+
+  // ---------- d) Brasil: la llave PIX es el mismo numero de la cedula (CPF) (caso real, 26/11) ----------
+  const BRASIL = ['Cuenta: Inter ', '123.456.789.42', 'Nombre: Pedro Prueba Rivera', 'Cédula: 12345678942', 'Brasil 🇧🇷', '20$', 'Tasa 5.40', '108'].join(SALTO);
+  r = reg0(entender(BRASIL));
+  chk(r && r.tipo === 'beneficiario' && r.pais === 'Brasil' && r.monto_usd === 20 && r.datos.destino_sugerido === 'BRASIL', 'cuenta de Brasil con el CPF igual a la cédula: es un pedido a BRASIL (antes: "pregunta")',
+      '-> ' + JSON.stringify(r && { tipo: r.tipo, pais: r.pais, usd: r.monto_usd }));
+  chk(entender(['Hay tasa para Brasil hoy?', 'Cédula: 12345678942'].join(SALTO)).tipo !== 'beneficiario', 'una pregunta de Brasil con una cédula no es un pedido');
+
+  // ---------- c) un pedido en VARIOS mensajes del mismo cliente (casos reales, 26/11) ----------
+  const PAISES = ['BINANCE', 'VENEZUELA', 'ZELLE'].map((nombre, i) => ({ grupo_jid: '1203630000000003' + String(10 + i) + '@g.us', nombre, tipo: 'destino', activo: true }));
+  const CON = extra => Object.assign({ destinos: DESTINOS.concat(PAISES) }, extra || {});
+  const BILL = 'Tabcdefghijkmnopqrstuvwxyz12345678';                     // billetera inventada
+  const BIN = ['BINANCE 🔶', '', 'prueba.cliente@example.com', '', BILL].join(SALTO);
+  const MONTO = ['Pedido USDT ', '', '300$'].join(SALTO);
+  const fila = (texto, extra) => Object.assign({ id: 700 + (++n), estado: 'visto' }, entender(texto, extra));
+  const previa = q => (q.envios.find(e => /📦 PEDIDO/.test(e.texto || '')) || {}).texto || '';
+
+  let f = entender(MONTO);
+  chk(f.tipo === 'otro' && f.datos.pieza && f.datos.pieza.clase === 'monto' && f.datos.pieza.monto_usd === 300 && f.datos.pieza.destino_sugerido === 'BINANCE',
+      '"Pedido USDT / 300$" es un PEDAZO de pedido: monto 300$, Binance', '-> ' + JSON.stringify(f.datos.pieza));
+  p = correr(MONTO, CON());
+  chk(p.pasa && !p.envios.length, 'solo (sin la cuenta al lado) no manda nada todavia');
+  // el monto primero y la billetera despues
+  p = correr(BIN, CON({ recientes: [fila(MONTO)] }));
+  let t = previa(p);
+  chk(/📦 PEDIDO \(junté 2 mensajes\) → iría a BINANCE:/.test(t) && /300\$/.test(t) && t.indexOf(BILL) !== -1 && !/Sin monto/.test(t),
+      'monto + billetera (en 2 mensajes): UN pedido a BINANCE con los 300$', '-> ' + JSON.stringify(t));
+  chk(t.indexOf('Pedido USDT') < t.indexOf('BINANCE 🔶'), '...con los textos en el orden en que llegaron');
+  // la billetera primero (sale "sin monto") y el monto despues (sale el pedido entero)
+  p = correr(BIN, CON());
+  chk(/Sin monto/.test(previa(p)), 'la billetera sola: sale "sin monto" (como antes)');
+  p = correr(MONTO, CON({ recientes: [fila(BIN)] }));
+  t = previa(p);
+  chk(/junté 2 mensajes\) → iría a BINANCE/.test(t) && /300\$/.test(t) && !/Sin monto/.test(t), 'billetera + monto despues: sale el pedido entero', '-> ' + JSON.stringify(t));
+  // tres mensajes: billetera, correo y monto
+  const SOLO_BILL = BILL, CORREO = 'prueba.cliente@example.com', CINCUENTA = '50$';
+  chk((entender(CORREO).datos.pieza || {}).clase === 'correo', 'un correo solo es un pedazo (correo)');
+  p = correr(CINCUENTA, CON({ recientes: [fila(SOLO_BILL), fila(CORREO)] }));
+  t = previa(p);
+  chk(/junté 3 mensajes\) → iría a BINANCE/.test(t) && /50\$/.test(t) && t.indexOf(CORREO) !== -1, 'billetera + correo + monto (3 mensajes): UN pedido a BINANCE', '-> ' + JSON.stringify(t));
+  // correo + monto: el pais lo pone el monto ("USDT")
+  p = correr('USDT 120$', CON({ recientes: [fila(CORREO)] }));
+  chk(/junté 2 mensajes\) → iría a BINANCE/.test(previa(p)), 'correo + "USDT 120$": a BINANCE', '-> ' + JSON.stringify(previa(p)));
+  p = correr('120$', CON({ recientes: [fila(CORREO)] }));
+  chk(/sin país claro/.test(previa(p)), 'correo + "120$" (sin decir Binance ni Zelle): avisa que no sabe el país', '-> ' + JSON.stringify(previa(p)));
+  // lo que NO se junta
+  const lejos = fila(MONTO); lejos.fecha_mensaje = new Date(Date.parse(lejos.fecha_mensaje) - 5 * 60000).toISOString();
+  chk(/Sin monto/.test(previa(correr(BIN, CON({ recientes: [lejos] })))), 'con mas de 3 minutos entre uno y otro: no se juntan');
+  chk(/Sin monto/.test(previa(correr(BIN, CON({ recientes: [fila(MONTO, { numero: '593990000003' })] })))), 'el monto que escribe la OPERADORA no se junta con la cuenta del cliente');
+  const VE_COMPLETA = ['Banco de Venezuela', '01020000000000000001', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO);
+  p = correr(MONTO, CON({ recientes: [fila(VE_COMPLETA)] }));
+  chk(!p.envios.length, 'un monto despues de una cuenta que YA traia su monto: no se junta (nada que completar)');
+  // dos cuentas, cada una con su monto: no se cruzan
+  const c1 = fila(BIN), m1 = fila(MONTO), c2 = fila(['Zelle', 'otra.persona@example.com', 'Ana Prueba'].join(SALTO));
+  p = correr(MONTO, CON({ recientes: [c1, m1, c2] }));
+  t = previa(p);
+  chk(/→ iría a ZELLE/.test(t) && t.indexOf('otra.persona@example.com') !== -1 && t.indexOf(BILL) === -1, 'cuenta1 + monto1 + cuenta2 + monto2: el 2do monto va con la 2da cuenta', '-> ' + JSON.stringify(t));
+  p = correr(VE_COMPLETA.replace('100$', ''), CON({ recientes: [c1, m1] }));
+  chk(/Sin monto/.test(previa(p)) && !/junté/.test(previa(p)), 'un monto ya usado no se vuelve a usar para otra cuenta', '-> ' + JSON.stringify(previa(p)));
+  // los pedazos que no son pedazos
+  for (const no of ['De casualidad le queda para 300$ en USDT?', 'Voy a pasar retiro por 300$', 'ya te pague 300$', 'Buenos dias', 'Solo falta 238$', 'quedan 50$ pendientes']){
+    chk(!(entender(no).datos || {}).pieza, '"' + no + '" no es un pedazo de pedido');
+  }
+  // en modo REAL el pedido juntado sigue siendo solo vista previa
+  p = correr(BIN, CON({ modo: 'real', recientes: [fila(MONTO)] }));
+  chk(p.envios.length === 1 && p.envios[0].jid === AVISOS && /junté 2 mensajes/.test(p.envios[0].texto), 'en modo REAL el pedido juntado sigue siendo solo vista previa en avisos',
+      '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, e.jid])));
+  // un saludo editado no dispara nada (ahora "Retiros Recientes" tambien trae las filas 'otro')
+  p = real('', { recientes: [Object.assign(fila('Buenos dias'), { mensaje_id: 'SALUDO1' })], extra: { mensaje: { secretEncryptedMessage: { targetMessageKey: { id: 'SALUDO1' } } } } });
+  chk(!p.envios.length, 'editar un saludo sigue sin disparar nada');
 }
 
 console.log('');
