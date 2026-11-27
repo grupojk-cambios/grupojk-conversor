@@ -241,7 +241,9 @@ console.log('=== 6) BANCO SIN GRUPO, FOTOS Y LO QUE NO DEBE HACER NADA ===');
   chk(!correr('Pichincha Código: 5478 Teléfono: 0990000004 Monto: $200', { modo: 'real', extra: { numero: '593990000077' } }).pasa, 'ni un desconocido del grupo');
   chk(correr('Pichincha Código: 5478 Teléfono: 0990000004 Monto: $200', { modo: 'real', extra: { numero: '593990000002' } }).pasa, 'el operador extra del cliente SI cuenta como el cliente');
   chk(!correr('Hola buenos dias, hay Bs hoy?', { modo: 'real' }).pasa, 'una pregunta cualquiera: nada');
-  chk(!correr('Banco Venezuela 01020518230000072054 Ana Prueba 11111111 $40', { modo: 'real' }).pasa, 'un beneficiario (no es retiro): nada');
+  // Un beneficiario (pedido a un pais) SI pasa desde el 26/11, pero SOLO como vista previa en avisos (seccion 18).
+  const ben = correr('Banco Venezuela 01020518230000072054 Ana Prueba 11111111 $40', { modo: 'real' });
+  chk(ben.pasa && ben.envios.every(e => e.jid === AVISOS), 'un beneficiario (no es retiro): solo vista previa en avisos, nada a bancos ni al cliente', '-> ' + JSON.stringify(ben.envios.map(e => e.jid)));
   chk(!correr(['Pichincha', 'Código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO), { modo: 'real', sinGuardar: true }).pasa, 'si la fila no se pudo guardar (mensaje repetido): NO se publica dos veces');
   const propio = new Function('$input', code('Entender Mensaje'))({ first: () => ({ json: { grupo: BANCO_GRUPO, data: evento('(Cliente Prueba' + SALTO + 'PICHINCHA' + SALTO + 'Monto: 200$)', { fromMe: true, id: '3EB0ABCDEF0123456789', numero: '' }) } }) });
   chk(propio.length === 0, 'lo que publica el propio bot (id 3EB0...) no se vuelve a registrar');
@@ -641,6 +643,92 @@ console.log('=== 17) EL CLIENTE EDITA UN MENSAJE: WhatsApp manda la edicion cifr
   const reenvio = correr(PICH, { modo: 'real', recientes: [viejaVerificar] });
   chk(reenvio.envios.some(e => DEST_DE(e.jid)), 'el RST que el cliente reenvia despues SI se publica (la fila vieja esta en verificar)',
       '-> ' + JSON.stringify(reenvio.envios.map(e => DEST_DE(e.jid)).filter(Boolean)));
+}
+
+console.log('');
+console.log('=== 18) PEDIDOS A PAISES: solo VISTA PREVIA en avisos, aun en modo real (pedido de Kelvin, 26/11) ===');
+{
+  // Los grupos de paises de la tabla (en la tabla real se llaman asi, sin acentos).
+  const PAISES = ['VENEZUELA', 'BANESCO', 'COLOMBIA', 'PERU', 'BINANCE'].map((nombre, i) => ({ grupo_jid: '1203630000000002' + String(10 + i) + '@g.us', nombre, tipo: 'destino', activo: true }));
+  const CON_PAISES = { destinos: DESTINOS.concat(PAISES) };
+  const ES_PAIS = jid => PAISES.some(p => p.grupo_jid === jid) || !!DEST_DE(jid);
+  const VE = ['Banco de Venezuela', '01020000000000000001', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO);
+  const BANESCO = ['01340000000000000002', 'Jose Prueba', 'V-10000002', 'Bs 50.000'].join(SALTO);
+  const NEQUI = ['Nequi 3000000001', 'Pedro Prueba', 'cc 1000000001', '150.000 cop'].join(SALTO);
+  const BILLETERA = 'TXyzPRUEBAprueba12345678901234567';
+  // OJO: el RST tiene que tener el banco y el codigo en el MISMO renglon para que el lector lo separe de la cuenta que
+  // viene despues ("Pichincha" solo en un renglon + la cuenta = se lee todo como UNA cuenta; limitacion conocida, 26/11).
+  const PICH = ['Pichincha código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO);
+
+  let p = correr(VE, CON_PAISES);
+  chk(p.pasa, 'un pedido del cliente SI pasa el filtro "Hace Falta Publicar?"');
+  chk(p.envios.length === 1 && p.envios[0].jid === AVISOS && p.envios[0].etapa === 'ensayo', 'en ENSAYO: una sola vista previa, en el grupo de avisos',
+      '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, e.jid])));
+  const t = p.envios[0].texto;
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(/📦 PEDIDO → iría a VENEZUELA:/.test(t), 'dice a que grupo iria (VENEZUELA)');
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'Banco de Venezuela') !== -1, 'como lo pasa la operadora: el NOMBRE del cliente en mayusculas y debajo sus datos');
+  chk(/01020000000000000001/.test(t) && /Maria Prueba/.test(t), 'con la cuenta y el titular tal cual los mando el cliente');
+  chk(!/⚠️/.test(t), 'un pedido completo no lleva advertencias');
+
+  chk(/iría a BANESCO:/.test(correr(BANESCO, CON_PAISES).envios[0].texto), 'una cuenta Banesco (0134) iria a BANESCO');
+  chk(/iría a COLOMBIA:/.test(correr(NEQUI, CON_PAISES).envios[0].texto), 'un Nequi iria a COLOMBIA');
+  p = correr(['Yape 900000001', 'Rosa Prueba', 'Perú', '105 soles'].join(SALTO), CON_PAISES);
+  chk(/iría a PERÚ:/.test(p.envios[0].texto) && !/No hay grupo/.test(p.envios[0].texto), 'un Yape iria a PERU (el grupo sin acento de la tabla SI se encuentra)', '-> ' + p.envios[0].texto.split(SALTO)[2]);
+
+  p = correr('USDT TRC20' + SALTO + BILLETERA, CON_PAISES);
+  chk(/iría a BINANCE:/.test(p.envios[0].texto) && /Sin monto: falta que diga cuánto/.test(p.envios[0].texto), 'una billetera sin monto: va a BINANCE y avisa que falta el monto',
+      '-> ' + JSON.stringify(p.envios[0].texto.split(SALTO).slice(-1)));
+
+  p = correr(NEQUI, { destinos: DESTINOS.concat(PAISES.filter(x => x.nombre !== 'COLOMBIA')) });
+  chk(/No hay grupo COLOMBIA en la tabla/.test(p.envios[0].texto), 'si el grupo del pais no esta en la tabla, lo dice');
+  p = correr(['Uruguay', 'Cuenta 1234567890123', 'Ana Prueba', '100$'].join(SALTO), CON_PAISES);
+  chk(p.envios.length === 1 && /Uruguay: no hay grupo para ese país/.test(p.envios[0].texto), 'un pais sin grupo (Uruguay): lo dice', '-> ' + JSON.stringify((p.envios[0] || {}).texto));
+
+  // Dos cuentas en un mensaje
+  p = correr(VE + SALTO + BANESCO, CON_PAISES);
+  chk(/📦 PEDIDO \(2 cuentas\) → iría a VENEZUELA y BANESCO:/.test(p.envios[0].texto), 'dos cuentas en un mensaje: las dos, cada una a su grupo', '-> ' + p.envios[0].texto.split(SALTO)[2]);
+
+  // EN REAL tampoco se publica nada en un grupo de pais (todavia no se decidio cuando: ¿al confirmar el pago?)
+  p = correr(VE, Object.assign({ modo: 'real' }, CON_PAISES));
+  chk(p.envios.length === 1 && p.envios[0].jid === AVISOS && /🧪 ENSAYO/.test(p.envios[0].texto) && /📦 PEDIDO/.test(p.envios[0].texto),
+      'en modo REAL un pedido sigue siendo SOLO vista previa en avisos', '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, e.jid])));
+  chk(!p.envios.some(e => ES_PAIS(e.jid)), 'y NUNCA va a un grupo de pais ni de banco');
+  chk(!p.envios.some(e => e.soloEnsayo), 'la marca interna "soloEnsayo" no sale del nodo');
+  chk(p.envios[0].estado_fila === 'ensayo', 'la fila del pedido queda en "ensayo"', '-> ' + p.envios[0].estado_fila);
+
+  // Un RST y un pedido en el MISMO mensaje, en real: el RST se publica; el pedido, solo vista previa.
+  p = correr(PICH + SALTO + SALTO + VE, Object.assign({ modo: 'real' }, CON_PAISES));
+  const alBanco = p.envios.filter(e => e.etapa === 'banco');
+  const previa = p.envios.filter(e => e.jid === AVISOS && /📦 PEDIDO/.test(e.texto));
+  chk(alBanco.length === 1 && DEST_DE(alBanco[0].jid) === 'PICHINCHA', 'RST + pedido en real: el RST SI va a PICHINCHA', '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, DEST_DE(e.jid) || e.jid])));
+  chk(previa.length === 1 && !/Pichincha/i.test(previa[0].texto.split('📦')[0].split(SALTO).slice(2).join(' ')), 'y el pedido va aparte, solo como vista previa');
+  chk(!p.envios.some(e => PAISES.some(x => x.grupo_jid === e.jid)), 'ningun mensaje a un grupo de pais');
+
+  // Lo que escribe la operadora o Kelvin en el grupo del cliente NO es un pedido del cliente.
+  chk(!correr(VE, Object.assign({ extra: { numero: '593990000003' } }, CON_PAISES)).envios.length, 'la cuenta que escribe la OPERADORA en el grupo no dispara nada');
+  chk(!correr(VE, Object.assign({ extra: { fromMe: true, numero: '' } }, CON_PAISES)).envios.length, 'ni la que escribe Kelvin');
+  // Y en un grupo de DESTINO tampoco (ahi el equipo publica los pedidos).
+  chk(!correr(VE, Object.assign({ grupo: Object.assign({}, BANCO_GRUPO, { nombre: 'VENEZUELA' }) }, CON_PAISES)).envios.length, 'un pedido publicado en un grupo de pais no dispara nada');
+}
+
+console.log('');
+console.log('=== 19) LA "LLAVE DEL GRUPO" pegada al mensaje NO lo tira (bug encontrado el 26/11) ===');
+{
+  // WhatsApp le pega la llave del grupo (senderKeyDistributionMessage) al PRIMER mensaje que alguien manda en un rato.
+  // El bot tiraba ese mensaje entero: en 48 h se perdieron ~200, entre ellos 8 RST y 8 pedidos de clientes.
+  const LLAVE = { senderKeyDistributionMessage: { groupId: '120363000000000001@g.us', axolotlSenderKeyDistributionMessage: 'AAAA' }, messageContextInfo: {} };
+  const PICH1 = ['Pichincha código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO);
+  let f = entender('', { mensaje: Object.assign({ conversation: PICH1 }, LLAVE) });
+  chk(f && f.tipo === 'rst', 'un RST con la llave pegada SI se lee', '-> ' + (f && f.tipo));
+  const p = correr('', { modo: 'real', extra: { mensaje: Object.assign({ conversation: PICH1 }, LLAVE) } });
+  chk(p.envios.some(e => DEST_DE(e.jid) === 'PICHINCHA'), 'y en real se publica en su banco, como cualquier RST');
+  f = entender('', { mensaje: Object.assign({ conversation: ['Nequi 3000000001', 'Pedro Prueba', '150.000 cop'].join(SALTO) }, LLAVE) });
+  chk(f && f.tipo === 'beneficiario', 'un pedido con la llave pegada SI se lee', '-> ' + (f && f.tipo));
+  f = entender('', { mensaje: Object.assign({ imageMessage: { caption: '' } }, LLAVE) });
+  chk(f && f.tipo === 'captura', 'una foto con la llave pegada SI se registra');
+  chk(entender('', { mensaje: LLAVE }) === null, 'la llave SOLA (sin texto, foto ni audio) se sigue ignorando');
+  chk(entender('', { mensaje: Object.assign({ stickerMessage: {} }, LLAVE) }) === null, 'un sticker con la llave se sigue ignorando');
 }
 
 console.log('');

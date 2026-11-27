@@ -111,7 +111,9 @@ console.log('=== 3) RST y RCT (retiros de los bancos de Ecuador) ===');
     ['Guayaquil\nmonto 80$\ncodig: 5151\ncodig: 6262\n0990000017', { banco: 'Guayaquil', usd: 80, cod: ['5151', '6262'], tel: '0990000017' }],
     ['Pichincha\ncodigos: 7788\nTlf 0990000018\nmonto 90$', { banco: 'Pichincha', usd: 90, cod: ['7788'], tel: '0990000018' }],
     // sin separador el codigo no se parte: "cod" no se puede comer los digitos
-    ['Pichincha Tlf 0990000019 cod1648 Monto 70$', { banco: 'Pichincha', usd: 70, cod: ['1648'], tel: '0990000019' }]
+    ['Pichincha Tlf 0990000019 cod1648 Monto 70$', { banco: 'Pichincha', usd: 70, cod: ['1648'], tel: '0990000019' }],
+    // 26/11 (Elvis Martinez): el signo de dolar tambien viene en emoji
+    ['Pichincha Tlf 0990000020 Código 5479 Monto 6️⃣0️⃣\u{1F4B2}', { banco: 'Pichincha', usd: 60, cod: ['5479'], tel: '0990000020' }]
   ];
   for (const [texto, esp] of casos) {
     const r = entender(texto);
@@ -166,6 +168,11 @@ console.log('=== 5) Otros paises, Zelle y USDT ===');
   chk(cl.pais === 'Chile' && cl.monto_usd === 214.82 && cl.monto_local === 200000 && cl.moneda === 'CLP', 'Chile: 214.82$, 200.000 pesos chilenos', '-> ' + JSON.stringify([cl.pais, cl.monto_usd, cl.monto_local, cl.moneda]));
   const ze = entender('Zelle Jorge Prueba jprueba@example.com Monto: 6️⃣6️⃣5️⃣💰');
   chk(ze.tipo === 'beneficiario' && ze.pais === 'Zelle' && ze.monto_usd === 665, 'Zelle: el monto escrito con emojis (665)', '-> ' + JSON.stringify([ze.pais, ze.monto_usd]));
+  // 26/11 (Elvis Martinez): el numero va SOLO en su renglon, sin "Monto:", y el 💰 es el unico que dice que es plata
+  const ze2 = entender('*ZELLE*\nEmpresa Prueba LLC\nempresa.prueba@example.com\n1️⃣4️⃣8️⃣💰');
+  chk(ze2.tipo === 'beneficiario' && ze2.pais === 'Zelle' && ze2.monto_usd === 148, 'Zelle: "148💰" solo en su renglon, sin decir Monto', '-> ' + JSON.stringify([ze2.pais, ze2.monto_usd]));
+  const ze3 = entender('Zelle Jorge Prueba jprueba@example.com\n💵470');
+  chk(ze3.monto_usd === 470, 'Zelle: el billete 💵 delante del numero tambien es dolar', '-> ' + JSON.stringify(ze3.monto_usd));
   const us = entender('prueba@example.com Miser TH3BCimZMs8NAmF3ipaEg4xmbCuHjnCUNV 2500$');
   chk(us.pais === 'USDT' && us.monto_usd === 2500 && us.datos.registros[0].datos.billetera, 'USDT: correo + billetera + 2500$', '-> ' + JSON.stringify([us.pais, us.monto_usd]));
   const ec = entender('Banco Pichincha 2204190743 Monserrat Prueba CI 0401880687 monto: 15$');

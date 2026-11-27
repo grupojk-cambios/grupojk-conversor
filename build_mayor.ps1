@@ -59,7 +59,11 @@ function desenvolver(m){
   return x;
 }
 const msg = desenvolver(ev.message);
-const IGNORAR = ['stickerMessage', 'reactionMessage', 'encReactionMessage', 'protocolMessage', 'albumMessage', 'pollUpdateMessage', 'senderKeyDistributionMessage'];
+// OJO: 'senderKeyDistributionMessage' NO va en esta lista. Es la "llave del grupo" que WhatsApp le PEGA al primer mensaje
+// que alguien manda en un rato (junto al texto, la foto o el audio). Estuvo aqui hasta el 26/11 y el bot tiraba ese mensaje
+// entero: en 48 h se perdieron ~200 mensajes, entre ellos 8 RST y 8 pedidos de clientes. Un mensaje que solo trae la
+// llave (sin texto, foto ni audio) igual se descarta mas abajo, por no tener contenido.
+const IGNORAR = ['stickerMessage', 'reactionMessage', 'encReactionMessage', 'protocolMessage', 'albumMessage', 'pollUpdateMessage'];
 if (IGNORAR.some(k => msg[k] !== undefined)) return [];
 
 const textoCrudo = String(msg.conversation || (msg.extendedTextMessage && msg.extendedTextMessage.text)
@@ -78,8 +82,10 @@ if (!textoCrudo && !esImagen && !esAudio && !editado) return [];
 // Los numeros escritos con emojis ("6️⃣6️⃣5️⃣") se vuelven digitos. PERO un emoji de numero SOLO al inicio de una linea y
 // separado por un espacio ("1️⃣ 2403" / "2️⃣ 2790", como los manda Julio) es el ROTULO del codigo 1 y el codigo 2 de
 // Guayaquil: se vuelve "C1: 2403". Antes se volvia "1 2403" y ese 1 se tomaba como el monto ("$1", 25/11).
+// Los emojis de plata (bolsa, signo de dolar, billete) se vuelven "$": "1️⃣4️⃣8️⃣💰" es 148$. Antes el monto
+// quedaba vacio porque el 💰 no contaba como moneda (Elvis Martinez, 26/11). El euro, la libra y el yen no.
 const limpio = textoCrudo.normalize('NFKC').replace(/(^|\n)[ \t]*([12])️?⃣[ \t]+(?=\d)/g, '$1C$2: ')
-  .replace(/([0-9])️?⃣/g, '$1').replace(/[​-‏‪-‮]/g, '');
+  .replace(/([0-9])️?⃣/g, '$1').replace(/[\u{1F4B0}\u{1F4B2}\u{1F4B5}]️?/gu, () => '$').replace(/[​-‏‪-‮]/g, '');
 const minus = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const digitos = x => String(x || '').replace(/\D/g, '');
 const mismoNumero = (a, b) => { const x = digitos(a), y = digitos(b); return !!x && !!y && x.slice(-9) === y.slice(-9); };
@@ -503,6 +509,7 @@ $hacePublicarCode = @'
 // Un filtro barato: casi todos los mensajes de los grupos NO son un retiro, y asi no se consulta Redis ni
 // Supabase para ellos. Pasa solo:
 //   - un RST/RCT (o una foto que habla de un retiro) que escribio el CLIENTE o su operador extra en su grupo;
+//   - un PEDIDO a un pais (beneficiario: la cuenta a la que hay que pagar) del cliente: por ahora SOLO vista previa (26/11);
 //   - una respuesta en un grupo de DESTINO ("Verificar", "se dañó"...) que cita un mensaje;
 //   - Solidario: el cobrador que cita nuestro RST y escribe "temporal" (la clave temporal en vivo), o el cliente que la manda;
 //   - JEP: un cliente que QUIERE hacer un RST ("quiero retirar por JEP") aunque no mande datos, o el cobrador
@@ -517,10 +524,11 @@ if (!guardada.id) return [];                          // no se pudo guardar (men
 const d = fila.datos || {};
 const regs = Array.isArray(d.registros) ? d.registros : [];
 const hayRetiro = regs.some(r => r.tipo === 'rst' || r.tipo === 'rct');
+const hayPedido = regs.some(r => r.tipo === 'beneficiario');
 const delCliente = fila.autor_rol === 'cliente' || fila.autor_rol === 'operador_extra';
 const t = String(fila.texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // (un mensaje con UN numero de 6 digitos puede ser la clave temporal de Solidario que el cobrador pidio: "Decidir Publicacion" lo confirma)
-if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto))) return [{ json: { motivo: 'cliente' } }];
+if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto))) return [{ json: { motivo: 'cliente' } }];
 // El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
 // "Decidir Publicacion" contra los mensajes recientes del grupo.
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
@@ -760,6 +768,32 @@ else if (grupo.tipo === 'cliente'){
     envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
     if (!estadoFila) estadoFila = 'repetido';
   }
+  // ---------- PEDIDOS A PAISES (beneficiario): SOLO VISTA PREVIA, aun en modo real (pedido de Kelvin, 26/11) ----------
+  // La cuenta a la que hay que pagarle al cliente (Venezuela, Banesco, Colombia, Perú, Binance...). Hoy los pasa la operadora
+  // a mano al grupo del pais: el NOMBRE del cliente en mayusculas arriba y debajo los datos que mando el cliente. Aqui solo se
+  // muestra en el grupo de avisos COMO los pasaria el bot, para estudiarlo. Todavia NO se publica en ningun grupo: falta
+  // decidir con Kelvin cuando (¿al confirmar el pago?) y que significa la linea "RST" que pone la operadora.
+  const pedidos = (Array.isArray(datos.registros) ? datos.registros : []).filter(r => r.tipo === 'beneficiario');
+  if (pedidos.length){
+    const grupoDe = p => (p.datos && p.datos.destino_sugerido) || '';
+    const nombres = [...new Set(pedidos.map(grupoDe).filter(Boolean))];
+    const notas = [];
+    const sinPais = pedidos.filter(p => !p.pais);
+    if (sinPais.length){
+      const cands = [...new Set(sinPais.flatMap(p => (p.datos && p.datos.candidatos) || []))];
+      notas.push('⚠️ ' + (pedidos.length > 1 ? sinPais.length + ' de las cuentas' : 'La cuenta') + ' sin país claro' + (cands.length ? ' (podría ser ' + unir(cands) + ')' : '') + ': no sabría a qué grupo pasarla.');
+    }
+    const paisSinGrupo = [...new Set(pedidos.filter(p => p.pais && !grupoDe(p)).map(p => p.pais))];
+    if (paisSinGrupo.length) notas.push('⚠️ ' + unir(paisSinGrupo) + ': no hay grupo para ese país.');
+    const noCargados = nombres.filter(n => !destinos[quitar(n)]);
+    if (noCargados.length) notas.push('⚠️ No hay grupo ' + unir(noCargados) + ' en la tabla de grupos.');
+    const sinMonto = pedidos.filter(p => [p.monto_usd, p.monto_local, p.datos && p.datos.monto_sin_moneda].every(v => v === null || v === undefined));
+    if (sinMonto.length) notas.push('⚠️ ' + (pedidos.length > 1 ? sinMonto.length + ' sin monto' : 'Sin monto') + ': falta que diga cuánto.');
+    const donde = nombres.length ? unir(nombres) : 'NINGÚN grupo';
+    const vista = '📦 PEDIDO' + (pedidos.length > 1 ? ' (' + pedidos.length + ' cuentas)' : '') + ' → iría a ' + donde + ':\n'
+      + nombre.toUpperCase() + '\n' + String(fila.texto || '').trim() + (notas.length ? '\n\n' + notas.join('\n') : '');
+    envios.push({ etapa: 'pedido', soloEnsayo: true, tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, vista });
+  }
 } else if (grupo.tipo === 'destino' && pub && pub.cliente_jid && datos.cita_id){
   // ---------- el banco responde a UNA publicacion nuestra ----------
   // (solo existe si el bot publico de verdad; si el modo volvio a 'ensayo', no se manda nada)
@@ -804,7 +838,14 @@ if (!real){
   // cliente no se rechace despues como "repetido" (mismo banco y mismo codigo). No se ve desde afuera.
   return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (filaEditada ? estadoFila : 'ensayo'), grupo_destino: '' } }];
 }
-return envios.map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
+// REAL: los RST salen de verdad, pero los PEDIDOS siguen siendo solo vista previa en el grupo de avisos.
+const salida = envios.filter(e => !e.soloEnsayo).map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
+const soloVista = envios.filter(e => e.soloEnsayo);
+if (soloVista.length){
+  const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + soloVista.map(e => e.vista).join('\n\n');
+  salida.push({ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: estadoFila || 'ensayo', grupo_destino: grupoDestinoFila } });
+}
+return salida;
 '@
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__HORARIO_JK__', $horarioJs).Replace('__PUBLICAR_COMUN__', $publicarJs)
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__MODO__', $MAYOR_MODO).Replace('__GRUPO_AVISOS__', $GRUPO_AVISOS).Replace('__STICKER_BASE__', $STICKER_BASE)
