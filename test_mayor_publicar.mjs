@@ -732,5 +732,105 @@ console.log('=== 19) LA "LLAVE DEL GRUPO" pegada al mensaje NO lo tira (bug enco
 }
 
 console.log('');
+console.log('=== 20) BANCO MAL ESCRITO: "¿Su retiro es de Produbanco?" y el si / no del cliente (Julio E, 26/11) ===');
+{
+  // Caso real (datos inventados): "*produbaco*" con todo lo demas bien. Antes el RST se perdia entero.
+  const PRODUBACO = ['*produbaco*', 'marquez', '', ' monto  350$', 'cedula  1700000011', 'clave 167688', 'celular  0990000012'].join(SALTO);
+  let f = entender(PRODUBACO);
+  let r = reg0(f);
+  chk(f.tipo === 'rst' && r.banco === 'Produbanco' && r.datos.banco_dudoso === 'produbaco' && r.monto_usd === 350, '"produbaco" se lee como un RST de Produbanco, marcado como dudoso',
+      '-> ' + JSON.stringify(r && { tipo: r.tipo, banco: r.banco, dudoso: r.datos.banco_dudoso, usd: r.monto_usd }));
+  let p = real(PRODUBACO);
+  chk(p.pasa && bancos(p).length === 0 && sticker(p).length === 0, 'NO se publica en el banco todavia (ni sticker)', '-> ' + JSON.stringify(p.envios.map(e => e.etapa)));
+  chk(clienteTxt(p).length === 1 && clienteTxt(p)[0].texto === '¿Su retiro de 350$ es de Produbanco? Responda sí o no, por favor.' && clienteTxt(p)[0].citar,
+      'al cliente, citando su mensaje: "¿Su retiro de 350$ es de Produbanco? Responda sí o no"', '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+  chk(p.envios.every(e => e.estado_fila === 'confirmar_banco'), 'la fila queda en "confirmar_banco"', '-> ' + JSON.stringify(p.envios.map(e => e.estado_fila)));
+  p = correr(PRODUBACO);
+  chk(p.envios.length === 1 && p.envios[0].jid === AVISOS && /Responda sí o no/.test(p.envios[0].texto) && /escribió "produbaco"/.test(p.envios[0].texto)
+      && p.envios[0].estado_fila === 'confirmar_banco', 'en ENSAYO: la pregunta va como vista previa y la fila igual queda en "confirmar_banco"', '-> ' + JSON.stringify(p.envios.map(e => [e.jid, e.estado_fila])));
+
+  // Otras letras comidas, de mas o volteadas
+  const otros = [['pichinca', 'Pichincha', ['pichinca', 'Código: 5478', 'Teléfono: 0990000004', 'Monto: $200']],
+                 ['pinchincha', 'Pichincha', ['Banco pinchincha', 'Código: 5478', 'Teléfono: 0990000004', 'Monto: $200']],
+                 ['guayaqil', 'Guayaquil', ['guayaqil', 'C1: 2403', 'C2: 2790', 'Teléfono: 0990000005', 'Monto: 500']],
+                 ['guallaquil (2 letras en un nombre largo)', 'Guayaquil', ['guallaquil', 'C1: 2403', 'C2: 2790', 'Teléfono: 0990000005', 'Monto: 500']],
+                 ['pacfico', 'Pacífico', ['pacfico', 'Monto: 100$', 'Código: 474927', 'Cedula: 0900000002', 'Teléfono: 0990000003']],
+                 ['bolivarino', 'Bolivariano', ['Banco bolivarino', 'Monto: 380', 'Código: 068521', 'Celular: 0990000009', 'Cédula: 0900000010']]];
+  for (const [et, banco, lineas] of otros){
+    const x = reg0(entender(lineas.join(SALTO)));
+    chk(x && x.tipo === 'rst' && x.banco === banco && !!x.datos.banco_dudoso, '"' + et + '" -> ' + banco + ' (dudoso)', '-> ' + JSON.stringify(x && { banco: x.banco, d: x.datos.banco_dudoso }));
+  }
+  // El banco bien escrito NO pregunta nada
+  const BIEN = ['Produbanco', 'monto 350$', 'cedula 1700000011', 'clave 167688', 'celular 0990000012'].join(SALTO);
+  chk(!reg0(entender(BIEN)).datos.banco_dudoso && bancos(real(BIEN)).length === 1, 'bien escrito: se publica directo, sin preguntar');
+  // Una cuenta de Venezuela con "Bolivariana" no se vuelve un RST de Bolivariano
+  const VE = ['Banco de Venezuela', '01020000000000000001', 'Republica Bolivariana', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO);
+  chk(reg0(entender(VE)).tipo === 'beneficiario', '"República Bolivariana" en una cuenta de Venezuela sigue siendo una cuenta');
+  // Incompleto y mal escrito: se piden los datos que faltan (el mensaje ya nombra el banco) y no se pregunta si/no
+  p = real(['produbaco', 'monto 350$', 'clave 167688'].join(SALTO));
+  chk(clienteTxt(p).length === 1 && /^Faltan estos datos para tu RST de Produbanco: la cédula/.test(clienteTxt(p)[0].texto), 'mal escrito e incompleto: se le piden los datos que faltan', '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+
+  // ---------- el cliente contesta ----------
+  const pendiente = (extra) => Object.assign({ id: 501, mensaje_id: 'PREGUNTADO1', tipo: 'rst', banco: 'Produbanco', autor_rol: 'cliente', estado: 'confirmar_banco',
+    fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 3 * 60000).toISOString(), datos: entender(PRODUBACO).datos }, extra || {});
+  for (const si of ['si', 'Sí', 'siii', 'Si señor', 'claro', 'correcto', '👍']){
+    p = real(si, { recientes: [pendiente()] });
+    chk(p.pasa && bancos(p).length === 1 && DEST_DE(bancos(p)[0].jid) === 'PRODUBANCO', '"' + si + '" -> se publica en PRODUBANCO', '-> ' + JSON.stringify(p.envios.map(e => e.etapa)));
+  }
+  p = real('si', { recientes: [pendiente()] });
+  chk(sticker(p).length === 1, '...con su sticker "RST Recibido"');
+  chk(/\(Cliente Prueba\nPRODUBANCO\nMonto: 350\$\nCódigo: 167688/.test(bancos(p)[0].texto), '...con el bloque de siempre (PRODUBANCO bien escrito)', '-> ' + JSON.stringify(bancos(p)[0].texto));
+  chk(bancos(p)[0].mapa.id_msg_cliente === 'PREGUNTADO1' && bancos(p)[0].mapa.fila_id === 501, '...y el banco queda conectado con el mensaje ORIGINAL del retiro (para el "Verificar")', '-> ' + JSON.stringify(bancos(p)[0].mapa));
+  chk(p.envios.every(e => e.fila_id === 501 && e.estado_fila === 'publicado'), '...la fila del retiro (no la del "si") queda "publicado"', '-> ' + JSON.stringify(p.envios.map(e => [e.fila_id, e.estado_fila])));
+  chk(!!bancos(p)[0].vigila, '...y se vigila su vencimiento');
+  p = correr('si', { recientes: [pendiente()] });
+  chk(p.envios.length === 1 && p.envios[0].jid === AVISOS && /iría a PRODUBANCO/.test(p.envios[0].texto) && p.envios[0].fila_id === 501 && p.envios[0].estado_fila === 'ensayo',
+      'en ENSAYO: el "si" muestra la publicacion como vista previa y la fila queda en "ensayo"', '-> ' + JSON.stringify(p.envios.map(e => [e.fila_id, e.estado_fila])));
+
+  for (const no of ['no', 'No', 'nop', 'negativo']){
+    p = real(no, { recientes: [pendiente()] });
+    chk(bancos(p).length === 0 && clienteTxt(p).length === 1 && /verifique, corrija y envíe nuevamente/.test(clienteTxt(p)[0].texto) && clienteTxt(p)[0].citar === 'PREGUNTADO1',
+        '"' + no + '" -> no se publica; se le pide que lo mande de nuevo (citando su retiro)', '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+  }
+  p = real('no', { recientes: [pendiente()] });
+  chk(p.envios.every(e => e.fila_id === 501 && e.estado_fila === 'verificar'), '...y la fila del retiro queda en "verificar"');
+
+  // Lo que NO es la respuesta
+  chk(!real('si', { recientes: [] }).envios.length, '"si" sin ninguna pregunta pendiente: no pasa nada');
+  chk(!real('si', { recientes: [pendiente({ estado: 'publicado' })] }).envios.length, '"si" si el ultimo retiro ya estaba publicado: no pasa nada');
+  chk(!real('si', { recientes: [pendiente(), pendiente({ id: 502, mensaje_id: 'OTRO', estado: 'publicado', fecha_mensaje: new Date(new Date(ABIERTO).getTime() - 60000).toISOString() })] }).envios.length,
+      '"si" si DESPUES de la pregunta mando otro retiro: no se toca el viejo');
+  chk(!real('no se', { recientes: [pendiente()] }).envios.length, '"no sé" no es un no');
+  chk(!real('no tengo el codigo todavia, ya se lo paso apenas me llegue', { recientes: [pendiente()] }).envios.length, 'un mensaje largo que empieza con "no" no es la respuesta');
+  chk(!real('si', { recientes: [pendiente()], extra: { numero: '593990000003' } }).envios.length, 'el "si" de la OPERADORA no cuenta');
+  // Un RST nuevo (bien escrito) mientras hay una pregunta pendiente: se trata normal
+  p = real(['Pichincha', 'Código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO), { recientes: [pendiente()] });
+  chk(bancos(p).length === 1 && DEST_DE(bancos(p)[0].jid) === 'PICHINCHA' && p.envios.every(e => e.fila_id === 77), 'un RST nuevo con la pregunta pendiente: se publica el nuevo, normal');
+  // El retiro que espera la respuesta no cuenta como "repetido" de otro
+  p = real(BIEN, { recientes: [pendiente()] });
+  chk(bancos(p).length === 1, 'si lo reenvia bien escrito (mismo codigo) mientras espera: SI se publica, no es "repetido"');
+  // Editar el mensaje que se le pregunto: se le pide que lo mande de nuevo (como cualquier edicion)
+  p = real('', { recientes: [pendiente()], extra: { mensaje: { secretEncryptedMessage: { targetMessageKey: { id: 'PREGUNTADO1' } } } } });
+  chk(clienteTxt(p).length === 1 && /editó su mensaje/.test(clienteTxt(p)[0].texto) && p.envios.every(e => e.fila_id === 501), 'si edita el mensaje que se le pregunto: se le pide que lo mande de nuevo');
+
+  // Mal escrito junto con otro retiro en el MISMO mensaje: se publica el bueno y del dudoso se pide revisar
+  p = real(['Pichincha código: 5478', 'Teléfono: 0990000004', 'Monto: $200', '', 'produbaco cedula 1700000011 clave 167688 monto 350$'].join(SALTO));
+  chk(bancos(p).length === 1 && DEST_DE(bancos(p)[0].jid) === 'PICHINCHA', 'mal escrito junto con otro retiro: el bueno SI se publica', '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, DEST_DE(e.jid)])));
+  chk(clienteTxt(p).length === 1 && /produbaco/.test(clienteTxt(p)[0].texto) && !/Responda sí o no/.test(clienteTxt(p)[0].texto), '...y del mal escrito se le pide revisarlo (sin pregunta si/no)', '-> ' + JSON.stringify(clienteTxt(p).map(e => e.texto)));
+  chk(p.envios.every(e => e.estado_fila !== 'confirmar_banco'), '...y la fila no queda esperando respuesta');
+
+  // ---------- parece un RST pero no dice el banco ----------
+  const SIN = ['RST', 'monto 200$', 'codigo 5478', 'celular 0990000004'].join(SALTO);
+  r = reg0(entender(SIN));
+  chk(r && r.tipo === 'rst' && r.banco === null && r.datos.sin_banco === true, 'un RST sin banco se registra (sin_banco)', '-> ' + JSON.stringify(r && { tipo: r.tipo, banco: r.banco }));
+  p = real(SIN);
+  chk(bancos(p).length === 0 && clienteTxt(p).length === 1 && /^¿Ese mensaje es un RST\? No reconocí de qué banco es/.test(clienteTxt(p)[0].texto), '...y se le pregunta: "¿Ese mensaje es un RST? No reconocí de qué banco es..."',
+      '-> ' + JSON.stringify(p.envios.map(e => e.texto)));
+  chk(!real(['monto 200$', 'celular 0990000004'].join(SALTO)).envios.length, 'un celular y un monto sin codigo ni "RST": no se pregunta nada (puede ser cualquier cosa)');
+  chk(reg0(entender(['Nequi 3000000001', 'Pedro Prueba', 'cc 1000000001', '150.000 cop'].join(SALTO))).tipo === 'beneficiario', 'una cuenta (Nequi) sigue siendo una cuenta');
+  chk(!real('Retiro de 200$ por favor, codigo 5478 mi correo es prueba@example.com 0990000004').envios.some(e => /No reconocí/.test(e.texto || '')), 'con un correo no se toma como RST sin banco');
+}
+
+console.log('');
 console.log(fallos ? ('FALLARON ' + fallos) : 'TODO OK');
 process.exit(fallos ? 1 : 0);

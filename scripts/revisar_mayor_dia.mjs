@@ -110,6 +110,8 @@ function clasificar(envios) {
   if (t.some(x => /^🏧 Cobrador/.test(x))) return 'JEP: pedido al cobrador';
   if (t.some(x => /^Te avisamos cuando el cobrador|^Ya avisamos/.test(x))) return 'JEP: pedido al cobrador';
   if (envios.some(e => e.etapa === 'banco')) return envios.some(e => /COBRAR MAÑANA/.test(nombreDe(e.jid))) ? 'se publicaria en COBRAR MAÑANA (fuera de horario)' : 'se publicaria en su banco';
+  if (t.some(x => /^¿Sus? retiros? .*Responda sí o no/.test(x))) return 'banco mal escrito: se le preguntaria si es ese banco';
+  if (t.some(x => /^¿Ese mensaje es un RST\?|^¿Su retiro es de .* o de /.test(x))) return 'parece un RST sin banco: se le preguntaria de que banco es';
   if (t.some(x => /^Revisa /.test(x))) return 'se le pediria revisar el largo de un codigo';
   if (t.some(x => /^Faltan /.test(x))) return 'se le pediria un dato que falta';
   if (t.some(x => /texto escrito/.test(x))) return 'foto: se le pediria el texto';
@@ -164,7 +166,7 @@ const NO_ENTENDIDOS = deClientes.filter(x => x.fila.tipo === 'otro' && /\d{4,}|\
 const largos = {};
 for (const x of retiros) for (const r of (x.fila.datos.registros || [])) if (r.tipo === 'rst') { const b = String(r.banco); const l = (r.datos.codigos || []).map(c => String(c).length).join('+') || 'sin codigo'; largos[b] = largos[b] || {}; largos[b][l] = (largos[b][l] || 0) + 1; }
 // bancos mencionados que no tienen grupo
-const bancosSinGrupo = contar(retiros.flatMap(x => (x.fila.datos.registros || []).filter(r => (r.tipo === 'rst' || r.tipo === 'rct') && !['pichincha', 'guayaquil', 'produbanco', 'pacifico', 'jep', 'bolivariano', 'solidario', 'austro', 'internacional'].includes(quitar(r.banco)))), r => String(r.banco));
+const bancosSinGrupo = contar(retiros.flatMap(x => (x.fila.datos.registros || []).filter(r => (r.tipo === 'rst' || r.tipo === 'rct') && r.banco && !['pichincha', 'guayaquil', 'produbanco', 'pacifico', 'jep', 'bolivariano', 'solidario', 'austro', 'internacional'].includes(quitar(r.banco)))), r => String(r.banco));
 const fueraHorario = retiros.filter(x => { const e = ecuador(x.ts), d = e.getUTCDay(), h = e.getUTCHours() + e.getUTCMinutes() / 60; return !(d === 0 ? (h >= 10 && h < 14) : (h >= 9 && h < 18)); }).length;
 // RST en los grupos de los bancos y si alguien los marco como cobrados
 const enBancos = filas.filter(x => x.grupo.tipo === 'destino' && ((x.fila.datos || {}).registros || []).some(r => r.tipo === 'rst'));

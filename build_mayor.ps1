@@ -262,6 +262,36 @@ const billeteraDe = b => (b.match(/\b(?:t[1-9a-hj-np-za-km-z]{33}|0x[a-f0-9]{40}
 const BANCOS_EC = { pichincha: 'Pichincha', guayaquil: 'Guayaquil', produbanco: 'Produbanco', pacifico: 'Pacífico', jep: 'JEP',
                     bolivariano: 'Bolivariano', solidario: 'Solidario', austro: 'Austro', internacional: 'Internacional', machala: 'Machala' };
 const bancoEcuadorDe = b => { const m = b.match(/\b(pichincha|guayaquil|produbanco|pacifico|jep|bolivariano|solidario|austro|internacional|machala)\b/); return m ? m[1] : ''; };
+// ---------- el banco escrito con UNA letra de menos, de mas o cambiada (26/11) ----------
+// "produbaco", "pichinca", "guayaqil": el cliente se come una letra (en los nombres largos, de 9 letras o mas, hasta dos).
+// Julio E mando "*produbaco*" con todo lo demas bien y el RST se perdio entero. Ahora se reconoce el banco, PERO el
+// retiro queda marcado (banco_dudoso) y la Fase 2 le pregunta al cliente "¿Su retiro es de Produbanco?" antes de
+// publicarlo. Si la palabra se parece a DOS bancos, no se adivina. Solo sirve para los RST/RCT (no para las cuentas).
+// JEP no entra (3 letras: cualquier palabra se le parece).
+const BANCOS_PARECIDOS = ['pichincha', 'guayaquil', 'produbanco', 'pacifico', 'bolivariano', 'solidario', 'austro', 'internacional', 'machala'];
+const NO_ES_BANCO = ['bolivariana', 'solitario', 'internacionales', 'pacifica'];   // palabras de verdad que se parecen a un banco
+function distancia(a, c){
+  // Letras de mas, de menos, cambiadas o volteadas ("pichicnha"): cuantos arreglos hacen falta para pasar de a a c.
+  const d = [];
+  for (let i = 0; i <= a.length; i++) d.push([i]);
+  for (let j = 1; j <= c.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= c.length; j++){
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === c[j - 1] ? 0 : 1));
+    if (i > 1 && j > 1 && a[i - 1] === c[j - 2] && a[i - 2] === c[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  return d[a.length][c.length];
+}
+function bancosParecidos(b){
+  const out = new Map();
+  for (const w of (b.match(/[a-z]{5,}/g) || [])){
+    if (BANCOS_PARECIDOS.indexOf(w) !== -1 || NO_ES_BANCO.indexOf(w) !== -1) continue;
+    for (const k of BANCOS_PARECIDOS){
+      if (out.has(k) || Math.abs(w.length - k.length) > 2) continue;
+      if (distancia(w, k) <= (k.length >= 9 ? 2 : 1)) out.set(k, w);
+    }
+  }
+  return [...out].map(([banco, escrito]) => ({ banco, escrito }));
+}
 const BANCOS_VE = { '0102': 'Venezuela', '0104': 'Venezolano de Crédito', '0105': 'Mercantil', '0108': 'Provincial', '0114': 'Bancaribe', '0115': 'Exterior',
   '0128': 'Caroní', '0134': 'Banesco', '0137': 'Sofitasa', '0138': 'Plaza', '0151': 'BFC', '0156': '100% Banco', '0157': 'Del Sur', '0163': 'Tesoro',
   '0166': 'Agrícola', '0168': 'Bancrecer', '0169': 'Mi Banco', '0171': 'Activo', '0172': 'Bancamiga', '0174': 'Banplus', '0175': 'Bicentenario',
@@ -316,6 +346,11 @@ const RX_ES_RST = /(\brst\b|clave|codigo|\bcod\b|\botp\b|primero|segundo|\bc\.?\
 function entenderBloque(bloque){
   const b = minus(bloque);
   const bancoEC = bancoEcuadorDe(b) || PISTA.bancoEC;
+  // Para los RST/RCT, el banco mal escrito tambien vale (queda marcado para preguntarle al cliente). Las cuentas usan solo bancoEC.
+  const parecidos = bancoEC ? [] : bancosParecidos(b);
+  const bancoDudoso = parecidos.length === 1 ? parecidos[0] : null;
+  const bancoRst = bancoEC || (bancoDudoso ? bancoDudoso.banco : '');
+  const marcaDudoso = bancoDudoso && !bancoEC ? { banco_dudoso: bancoDudoso.escrito } : {};
   const mon = extraerMontos(b);
   const largos = numerosLargos(b);
   const cuentaVE = largos.find(n => n.length === 20 && n.startsWith('01')) || '';
@@ -326,22 +361,22 @@ function entenderBloque(bloque){
   const rct = /retira(?:r)? con tarjeta|retiro con tarjeta|\brct\b/.test(b);
 
   // RCT / RST: retiros de los bancos de Ecuador
-  if (bancoEC && rct && !cuentaVE){
+  if (bancoRst && rct && !cuentaVE){
     const usd = mon.usd !== null ? mon.usd : mon.sinMoneda;
-    return { tipo: 'rct', pais: 'Ecuador', banco: BANCOS_EC[bancoEC], monto_usd: usd, monto_local: null, moneda: 'USD',
-             datos: { destino_sugerido: GRUPO_RST[bancoEC] || null, telefono: tels[0] || null }, bloque };
+    return { tipo: 'rct', pais: 'Ecuador', banco: BANCOS_EC[bancoRst], monto_usd: usd, monto_local: null, moneda: 'USD',
+             datos: Object.assign({ destino_sugerido: GRUPO_RST[bancoRst] || null, telefono: tels[0] || null }, marcaDudoso), bloque };
   }
   // Un telefono y un monto bastan para un RST, salvo que el mensaje hable de una CUENTA ("Banco Pichincha cuenta ahorro ...").
   const hablaDeCuenta = /\bcuenta\b|\bcta\b|ahorros?\b|corriente/.test(b);
   // Sin etiquetas ("Guayaquil / tlf / 2345 / 6543 / 500"): el banco + un telefono + numeros de codigo sueltos bastan.
   const hayCodigoSuelto = !!tels.length && !hablaDeCuenta && codigosSueltosDe(b, tels).some(c => !cedulas.includes(c));
-  if (bancoEC && !cuentaVE && (RX_ES_RST.test(b) || hayCodigoSuelto || (tels.length && !hablaDeCuenta && (mon.usd !== null || mon.sinMoneda !== null)))){
+  if (bancoRst && !cuentaVE && (RX_ES_RST.test(b) || hayCodigoSuelto || (tels.length && !hablaDeCuenta && (mon.usd !== null || mon.sinMoneda !== null)))){
     const usd = mon.usd !== null ? mon.usd : mon.sinMoneda;
     const ced = cedulasDe(b)[0] || null;
     let cods = codigosDe(b);
     // JEP: "OTP: 796988" es el codigo y "Clave: 1111" es la clave de la TARJETA (en los demas bancos "clave" es el codigo).
     let clave = null;
-    if (bancoEC === 'jep'){
+    if (bancoRst === 'jep'){
       const otp = (b.match(/\botp\s*[:.]?\s*(\d{3,8})(?!\d)/) || [])[1];
       clave = (b.match(/\bclave(?:\s+(?:de\s+(?:la\s+)?)?tarjeta)?\s*[:.]?\s*(\d{3,6})(?!\d)/) || [])[1] || null;
       if (otp) cods = [otp];
@@ -356,8 +391,22 @@ function entenderBloque(bloque){
       if (sueltos.length === 1){ usdFinal = parseFloat(sueltos[0]); montoInferido = true; }
     }
     const hora = (b.match(/\b(\d{1,2}:\d{2})\b/) || [])[1] || null;
-    return { tipo: 'rst', pais: 'Ecuador', banco: BANCOS_EC[bancoEC], monto_usd: usdFinal, monto_local: null, moneda: 'USD',
-             datos: { destino_sugerido: GRUPO_RST[bancoEC] || null, telefono: tels[0] || null, codigos: cods, cedula: ced, clave, hora, monto_inferido: montoInferido || undefined }, bloque };
+    return { tipo: 'rst', pais: 'Ecuador', banco: BANCOS_EC[bancoRst], monto_usd: usdFinal, monto_local: null, moneda: 'USD',
+             datos: Object.assign({ destino_sugerido: GRUPO_RST[bancoRst] || null, telefono: tels[0] || null, codigos: cods, cedula: ced, clave, hora, monto_inferido: montoInferido || undefined }, marcaDudoso), bloque };
+  }
+  // ---------- parece un RST, pero no dice de que banco (o se parece a dos bancos a la vez) (26/11) ----------
+  // Un celular de Ecuador + un codigo o la palabra "RST/retiro" + un monto, sin ninguna cuenta, correo ni billetera: es un
+  // retiro al que le falta el banco. Se registra (sin_banco) para que la Fase 2 le pregunte al cliente de que banco es,
+  // en vez de perderlo callado.
+  if (!bancoRst && !cuentaVE && !hablaDeCuenta && !correosDe(b).length && !billeteraDe(b)){
+    const telsEC = tels.filter(t => /^(?:593)?0?9\d{8}$/.test(t));
+    const hablaRetiro = /\b(rst|retiro|retirar|retira)\b/.test(b) || /(?:clave|c[oó]d[a-z]*|otp)\s*[:.]?\s*\d{3,8}(?!\d)/.test(b);
+    const usd = mon.usd !== null ? mon.usd : mon.sinMoneda;
+    if (telsEC.length && hablaRetiro && usd !== null){
+      return { tipo: 'rst', pais: 'Ecuador', banco: null, monto_usd: usd, monto_local: null, moneda: 'USD',
+               datos: { destino_sugerido: null, telefono: telsEC[0], codigos: codigosDe(b), cedula: cedulas[0] || null, sin_banco: true,
+                        posibles: parecidos.length > 1 ? parecidos.map(p => BANCOS_EC[p.banco]) : undefined }, bloque };
+    }
   }
 
   // BENEFICIARIO: tiene con que identificar una cuenta (numero, correo, billetera) y pais o monto
@@ -396,7 +445,7 @@ function entenderBloque(bloque){
 function esAncla(linea){
   const b = minus(linea);
   if (numerosLargos(b).some(n => n.length === 20 && n.startsWith('01'))) return true;
-  return !!bancoEcuadorDe(b) && (RX_ES_RST.test(b) || telefonosDe(b).length > 0);
+  return !!(bancoEcuadorDe(b) || bancosParecidos(b).length === 1) && (RX_ES_RST.test(b) || telefonosDe(b).length > 0);
 }
 function registrosDe(texto){
   const lineas = texto.split('\n').map(l => l.trim()).filter(Boolean);
@@ -503,6 +552,22 @@ if (visto) return [];
 return [{ json: fila }];
 '@
 
+# ===================== CODIGO COMUN: ¿EL CLIENTE CONTESTA SI O NO? =====================
+# Lo usan "Hace Falta Publicar?" (para dejarlo pasar) y "Decidir Publicacion" (para saber que contesto).
+$siNoJs = @'
+// "si", "sí", "siii", "claro", "correcto", "👍" = 'si' | "no", "nop", "negativo" = 'no' | lo demas = ''. Solo mensajes CORTOS:
+// un "no tengo el codigo todavia, ya se lo paso" no es contestar la pregunta. "no se" (no sé) tampoco.
+function respuestaSiNo(texto){
+  const t = String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  if (!t || t.length > 40) return '';
+  if (/^(?:👍|✅|✔️?|👌)+$/u.test(t.replace(/\s+/g, ''))) return 'si';
+  if (/^[^a-z0-9]*(?:si+|sip|sep|claro|correcto|exacto|afirmativo|asi es|eso es|ese mismo|es correcto|ok si|okey si)\b/.test(t)) return 'si';
+  if (/^[^a-z0-9]*no\s+se\b/.test(t)) return '';
+  if (/^[^a-z0-9]*(?:no+|nop|nope|negativo)\b/.test(t)) return 'no';
+  return '';
+}
+'@
+
 # ===================== CODIGO: ¿HACE FALTA PUBLICAR? (Fase 2) =====================
 $hacePublicarCode = @'
 // ===== ¿HACE FALTA PUBLICAR ALGO? =====
@@ -514,8 +579,10 @@ $hacePublicarCode = @'
 //   - Solidario: el cobrador que cita nuestro RST y escribe "temporal" (la clave temporal en vivo), o el cliente que la manda;
 //   - JEP: un cliente que QUIERE hacer un RST ("quiero retirar por JEP") aunque no mande datos, o el cobrador
 //     que avisa en el grupo de JEP, citando nuestro mensaje, que ya esta en el cajero ("listo, ya estoy aca").
+//   - un "si" / "no" corto del cliente: puede ser la respuesta a "¿Su retiro es de Produbanco?" ("Decidir Publicacion" lo confirma);
 // Lo que Kelvin o la operadora escriban en un grupo de cliente nunca dispara nada.
 __PUBLICAR_COMUN__
+__SI_NO__
 const fila = $('Decidir').first().json;
 const ent = $('Cuando lo Llama el Bot').first().json || {};
 const grupo = ent.grupo || {};
@@ -528,7 +595,7 @@ const hayPedido = regs.some(r => r.tipo === 'beneficiario');
 const delCliente = fila.autor_rol === 'cliente' || fila.autor_rol === 'operador_extra';
 const t = String(fila.texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // (un mensaje con UN numero de 6 digitos puede ser la clave temporal de Solidario que el cobrador pidio: "Decidir Publicacion" lo confirma)
-if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto))) return [{ json: { motivo: 'cliente' } }];
+if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente' } }];
 // El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
 // "Decidir Publicacion" contra los mensajes recientes del grupo.
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
@@ -537,7 +604,7 @@ if (grupo.tipo === 'destino' && d.cita_id && /\bjep\b/.test(quitar(grupo.nombre)
 if (grupo.tipo === 'destino' && d.cita_id && pideTemporal(fila.texto)) return [{ json: { motivo: 'temporal' } }];
 return [];
 '@
-$hacePublicarCode = $hacePublicarCode.Replace('__PUBLICAR_COMUN__', $publicarJs)
+$hacePublicarCode = $hacePublicarCode.Replace('__PUBLICAR_COMUN__', $publicarJs).Replace('__SI_NO__', $siNoJs)
 
 # ===================== CODIGO: DECIDIR PUBLICACION (Fase 2) =====================
 $decidirPublicacionCode = @'
@@ -559,11 +626,13 @@ const GRUPO_AVISOS = '__GRUPO_AVISOS__';
 const STICKER_RST = '__STICKER_BASE__sticker-rst-recibido.webp';
 __HORARIO_JK__
 __PUBLICAR_COMUN__
-const TEXTO_FOTO = 'Por favor envíe todos los datos en texto escrito para poder procesar su retiro.';
+__SI_NO__
+const TEXTO_FOTO ='Por favor envíe todos los datos en texto escrito para poder procesar su retiro.';
 const TEXTO_BANCO_VERIFICAR = 'ok, procedo a mandar a verificar y corregir';
 const TEXTO_CLIENTE_VERIFICAR = 'Por favor verifique, corrija y envíe nuevamente todos los datos en un solo texto.';
 const TEXTO_CLIENTE_DANADO = 'Estimado cliente, su código se dañó / no pudo ser cobrado. Por favor genere un nuevo código de retiro para poder saldar el saldo pendiente.';
 const TEXTO_CLIENTE_EDITO = 'Vimos que editó su mensaje, pero WhatsApp no nos deja leer las ediciones. Por favor envíe los datos de nuevo, completos y en un solo texto.';
+const TEXTO_SIN_BANCO = '¿Ese mensaje es un RST? No reconocí de qué banco es. Si es un retiro, envíe todos los datos de nuevo en un solo texto, con el nombre del banco, por favor.';
 
 const ent = $('Cuando lo Llama el Bot').first().json || {};
 const grupo = ent.grupo || {};
@@ -596,7 +665,8 @@ const recientes = [];
 try {
   for (const it of $('Retiros Recientes').all()){
     const r = it.json || {};
-    if (!r.mensaje_id || r.mensaje_id === fila.mensaje_id || r.estado === 'verificar' || r.estado === 'danado') continue;
+    // 'confirmar_banco': esperando que el cliente diga si el banco mal escrito es el que creemos; todavia no se publico.
+    if (!r.mensaje_id || r.mensaje_id === fila.mensaje_id || r.estado === 'verificar' || r.estado === 'danado' || r.estado === 'confirmar_banco') continue;
     let d = r.datos;
     if (typeof d === 'string'){ try { d = JSON.parse(d); } catch(e){ d = {}; } }
     for (const x of ((d && Array.isArray(d.registros)) ? d.registros : [])){
@@ -609,8 +679,33 @@ try {
 // JEP no entra: su RST se queda esperando hasta que el cobrador este en el cajero, y ahi el cliente lo vuelve a mandar a proposito.
 const repetidoDe = reg => { const cods = codigosDeReg(reg), k = claveBanco(reg); return (cods && k !== 'jep') ? (recientes.find(x => x.banco === k && x.cods === cods) || null) : null; };
 
+// ---------- ¿EL CLIENTE CONTESTA "¿Su retiro es de Produbanco?"? (26/11) ----------
+// Cuando el banco venia mal escrito ("produbaco"), el bot le pregunto al cliente y la fila quedo en 'confirmar_banco'. Si
+// ahora el cliente contesta un "si" / "no" corto y ESE es su ultimo retiro de los ultimos 30 minutos, es la respuesta:
+//   si -> se publica ese retiro como cualquier otro;  no -> se le pide que lo mande de nuevo y la fila pasa a 'verificar'.
+// Si despues de la pregunta mando otro retiro, el "si" ya no es para el viejo (no se toca nada).
+const respuesta = (grupo.tipo === 'cliente' && !(Array.isArray(datos.registros) && datos.registros.length)) ? respuestaSiNo(fila.texto) : '';
+let pendiente = null;
+if (respuesta){
+  try {
+    const delCliente = r => r.autor_rol === 'cliente' || r.autor_rol === 'operador_extra';
+    const ult = $('Retiros Recientes').all().map(i => i.json).filter(r => r && r.id && ['rst', 'rct', 'mixto'].indexOf(r.tipo) !== -1 && delCliente(r))
+      .sort((a, b) => (Date.parse(b.fecha_mensaje) || 0) - (Date.parse(a.fecha_mensaje) || 0))[0];
+    if (ult && ult.estado === 'confirmar_banco'){
+      let d = ult.datos;
+      if (typeof d === 'string'){ try { d = JSON.parse(d); } catch(e){ d = {}; } }
+      pendiente = { id: ult.id, mensaje_id: String(ult.mensaje_id), banco: ult.banco, registros: (d && Array.isArray(d.registros)) ? d.registros : [] };
+    }
+  } catch(e){ pendiente = null; }
+}
+const confirmado = !!pendiente && respuesta === 'si';
+// La fila y el mensaje del retiro: los de ahora, o (si el cliente confirmo el banco) los del mensaje que pregunto.
+const filaRef = confirmado ? pendiente.id : filaId;
+const msgRef = confirmado ? pendiente.mensaje_id : fila.mensaje_id;
+
 const envios = [];
 let estadoFila = '', grupoDestinoFila = '', real = false;
+let filaPendiente = 0;
 
 // ---------- EL CLIENTE EDITO UN MENSAJE SUYO (26/11) ----------
 // WhatsApp manda las ediciones CIFRADAS: se sabe cual mensaje cambio, nunca que dice ahora. Si lo que edito
@@ -633,17 +728,28 @@ if (fila.tipo === 'edicion'){
                 '. WhatsApp no deja leer las ediciones, así que se le pidió que lo mande de nuevo; la fila ' + orig.id + ' queda en verificar.';
   envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
 }
+else if (pendiente && respuesta === 'no'){
+  // ---------- el cliente dice que NO es ese banco ----------
+  real = (MODO === 'real') && grupo.publicar === true;
+  filaPendiente = pendiente.id;
+  estadoFila = 'verificar';
+  envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto: TEXTO_CLIENTE_VERIFICAR, citar: pendiente.mensaje_id,
+                vista: '➡️ al cliente (dijo que NO es ' + (pendiente.banco || 'ese banco') + '; citando su retiro): "' + TEXTO_CLIENTE_VERIFICAR + '"' });
+}
 else if (grupo.tipo === 'cliente'){
   // ---------- un retiro del cliente ----------
   real = (MODO === 'real') && grupo.publicar === true;
+  if (confirmado) filaPendiente = pendiente.id;
   // Una charla NO es un pedido ("¿que tanto demora en retirar los rst de guayaquil?", "el Pichincha esta fallando la
   // opcion de RST"): sin ningun dato (ni monto, ni telefono, ni cedula, ni codigo) no se le pide nada a nadie; y
   // una pregunta con datos incompletos tampoco.
   const preguntando = /[?¿]/.test(String(fila.texto || ''));
   const hayDatos = r => (r.monto_usd !== null && r.monto_usd !== undefined) || (r.tipo !== 'rct' && !!(r.datos && (r.datos.telefono || r.datos.cedula || r.datos.clave || (r.datos.codigos || []).length)));
-  const regs = (Array.isArray(datos.registros) ? datos.registros : []).filter(r => r.tipo === 'rst' || r.tipo === 'rct')
-    .filter(r => (r.tipo === 'rct' ? !preguntando || faltan(r).length === 0 : hayDatos(r) && (!preguntando || faltan(r).length === 0)));
-  const incompletos = [], sinGrupo = [], publicados = [], jepMontos = [], repetidos = [];
+  // Si el cliente confirmo el banco, los retiros son los del mensaje que se le pregunto (solo los del banco dudoso: los demas ya se trataron).
+  const fuente = confirmado ? pendiente.registros.filter(r => r.datos && r.datos.banco_dudoso) : (Array.isArray(datos.registros) ? datos.registros : []);
+  const regs = fuente.filter(r => r.tipo === 'rst' || r.tipo === 'rct')
+    .filter(r => confirmado || (r.tipo === 'rct' ? !preguntando || faltan(r).length === 0 : hayDatos(r) && (!preguntando || faltan(r).length === 0)));
+  const incompletos = [], sinGrupo = [], publicados = [], jepMontos = [], repetidos = [], dudosos = [], sinBanco = [];
   const enCajero = !!(jepEstado && jepEstado.estado === 'en_cajero');          // el cobrador ya avisó que está en el cajero
   const jepEsperando = !!(jepEstado && jepEstado.estado === 'esperando');       // ya se le pidió al cobrador, todavía no avisa
   let jepPide = false;
@@ -669,11 +775,14 @@ else if (grupo.tipo === 'cliente'){
   }
   for (const reg of (esTemporal ? [] : regs)){
     const k = claveBanco(reg);
+    if (reg.datos && reg.datos.sin_banco){ sinBanco.push(reg); continue; }       // parece un RST pero no dice de que banco
     // JEP: el codigo dura 15 minutos. Hasta que el cobrador avise que ya esta en el cajero NO se publica nada: se le pide al
     // cobrador que vaya y al cliente que espere (protocolo, seccion 10). Con ese permiso, se publica enseguida.
     if (k === 'jep' && reg.tipo === 'rst' && !enCajero){ jepPide = true; if (reg.monto_usd !== null && reg.monto_usd !== undefined) jepMontos.push(reg.monto_usd); continue; }
     const f = faltan(reg), rv = revisar(reg);                                // lo que falta y lo que viene con el largo equivocado
     if (f.length || rv.length){ incompletos.push({ reg, f, rv }); continue; }
+    // Completo, pero con el banco mal escrito ("produbaco"): antes de publicarlo se le pregunta al cliente (mas abajo).
+    if (!confirmado && reg.datos && reg.datos.banco_dudoso){ dudosos.push(reg); continue; }
     const rep = repetidoDe(reg);
     if (rep){ const ahoraMsg = Date.parse(fila.fecha_mensaje) || Date.now(); repetidos.push({ reg, min: rep.ts ? Math.max(1, Math.round((ahoraMsg - rep.ts) / 60000)) : 0 }); continue; }
     const dueno = GRUPO_DEL_BANCO[k];
@@ -688,7 +797,7 @@ else if (grupo.tipo === 'cliente'){
     publicados.push({ k, destinoClave, estado: enBanco ? 'publicado' : (hoy ? 'cobrar_hoy' : 'en_cobrar_manana') });
     envios.push({ etapa: 'banco', tipo: 'texto', jid, texto,
                   vista: '➡️ iría a ' + NOMBRE_GRUPO(destinoClave) + (enBanco ? '' : ' (fuera de horario)') + (jid ? '' : ' (grupo todavía no cargado en la tabla)') + ':\n' + vistaTexto,
-                  mapa: { cliente_jid: grupo.grupo_jid, cliente_nombre: nombre, id_msg_cliente: fila.mensaje_id, banco: reg.banco, tipo: reg.tipo, fila_id: filaId, destino: NOMBRE_GRUPO(destinoClave) },
+                  mapa: { cliente_jid: grupo.grupo_jid, cliente_nombre: nombre, id_msg_cliente: msgRef, banco: reg.banco, tipo: reg.tipo, fila_id: filaRef, destino: NOMBRE_GRUPO(destinoClave) },
                   // Alerta de vencimiento: un RST que quedo en el grupo de su banco se vigila (en COBRAR MAÑANA no: ahi todavia no corre el reloj del banco).
                   vigila: (enBanco && reg.tipo === 'rst') ? { banco: k, recibido: fila.fecha_mensaje || new Date().toISOString(), resumen: nombre + ' · ' + String(reg.banco || '').toUpperCase() + ' ' + fmtMonto(reg.monto_usd) + '$' } : undefined,
                   redisSet: conPermisoJep ? [{ clave: 'jepPend:' + grupo.grupo_jid, valor: JSON.stringify({ estado: 'usado' }), ttl: 60 }] : undefined });
@@ -733,6 +842,31 @@ else if (grupo.tipo === 'cliente'){
       estadoFila = 'en_cobrar_manana';
       grupoDestinoFila = [...new Set([grupoDestinoFila, NOMBRE_GRUPO(GRUPO_DEL_BANCO.jep)].filter(Boolean))].join(', ');
     }
+  }
+  // ---------- el banco venia mal escrito ("produbaco"): ¿Su retiro es de Produbanco? (26/11) ----------
+  // Solo si es lo UNICO del mensaje: la fila queda en 'confirmar_banco' y el "si" / "no" del cliente decide (arriba).
+  // Si el mensaje trae ademas otros retiros, se le pide que lo revise y lo mande de nuevo (una fila no puede esperar y estar publicada a la vez).
+  if (dudosos.length){
+    const solo = !publicados.length && !incompletos.length && !sinGrupo.length && !repetidos.length && !jepPide && !sinBanco.length;
+    if (solo){
+      const montos = dudosos.filter(r => r.monto_usd !== null && r.monto_usd !== undefined).map(r => fmtMonto(r.monto_usd) + '$');
+      const bancos = [...new Set(dudosos.map(r => r.banco))];
+      const texto = (dudosos.length === 1 ? '¿Su retiro' : '¿Sus retiros') + (montos.length ? ' de ' + unir(montos) : '') + (dudosos.length === 1 ? ' es' : ' son') + ' de ' + unir(bancos) + '? Responda sí o no, por favor.';
+      envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto, citar: fila.mensaje_id,
+                    vista: '➡️ al cliente (escribió "' + [...new Set(dudosos.map(r => r.datos.banco_dudoso))].join('", "') + '"; citando su mensaje): "' + texto + '"' });
+      estadoFila = 'confirmar_banco';
+    } else {
+      for (const reg of dudosos) incompletos.push({ reg, f: [], rv: ['el nombre del banco ("' + reg.datos.banco_dudoso + '") no se entiende bien'] });
+    }
+  }
+  // ---------- parece un RST pero no dice de que banco ----------
+  if (sinBanco.length){
+    const posibles = [...new Set(sinBanco.flatMap(r => (r.datos && r.datos.posibles) || []))];
+    const texto = posibles.length > 1
+      ? '¿Su retiro es de ' + posibles.slice(0, -1).join(', ') + ' o de ' + posibles[posibles.length - 1] + '? Envíe todos los datos de nuevo en un solo texto, con el nombre del banco, por favor.'
+      : TEXTO_SIN_BANCO;
+    envios.push({ etapa: 'cliente', tipo: 'texto', jid: grupo.grupo_jid, texto, citar: fila.mensaje_id, vista: '➡️ al cliente (citando su mensaje): "' + texto + '"' });
+    if (!estadoFila) estadoFila = 'falta_datos';
   }
   if (incompletos.length){
     // Dos clases de problema: lo que FALTA (f) y lo que viene con el largo equivocado (rv, protocolo seccion 9).
@@ -829,14 +963,18 @@ else if (grupo.tipo === 'cliente'){
 if (!envios.length) return [];
 // La fila a la que se le anota el estado: la del cliente (en una respuesta del banco, la del RST original;
 // en una edicion, la del mensaje que edito, no la de la edicion en si).
-const filaDestino = filaEditada || ((grupo.tipo === 'destino' && pub && pub.fila_id) ? pub.fila_id : filaId);
+// (Cuando el cliente contesta "si" / "no" a la pregunta del banco, es la fila del retiro que se le pregunto.)
+const filaDestino = filaEditada || filaPendiente || ((grupo.tipo === 'destino' && pub && pub.fila_id) ? pub.fila_id : filaId);
 
 if (!real){
   // ENSAYO: nada sale a bancos ni a clientes. Una sola vista previa en el grupo de avisos.
   const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + envios.map(e => e.vista).filter(Boolean).join('\n\n');
   // En una edicion el estado SI se anota aunque sea ensayo: 'verificar' es lo que hace que el reenvio del
   // cliente no se rechace despues como "repetido" (mismo banco y mismo codigo). No se ve desde afuera.
-  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (filaEditada ? estadoFila : 'ensayo'), grupo_destino: '' } }];
+  // Igual 'confirmar_banco' (la pregunta del banco mal escrito) y el 'verificar' de un "no": son los que dicen si el retiro
+  // sigue esperando la respuesta. Un "si" en ensayo deja la fila en 'ensayo' (no se publico nada de verdad).
+  const anotar = filaEditada || estadoFila === 'confirmar_banco' || (pendiente && respuesta === 'no');
+  return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (anotar ? estadoFila : 'ensayo'), grupo_destino: '' } }];
 }
 // REAL: los RST salen de verdad, pero los PEDIDOS siguen siendo solo vista previa en el grupo de avisos.
 const salida = envios.filter(e => !e.soloEnsayo).map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
@@ -847,7 +985,7 @@ if (soloVista.length){
 }
 return salida;
 '@
-$decidirPublicacionCode = $decidirPublicacionCode.Replace('__HORARIO_JK__', $horarioJs).Replace('__PUBLICAR_COMUN__', $publicarJs)
+$decidirPublicacionCode = $decidirPublicacionCode.Replace('__HORARIO_JK__', $horarioJs).Replace('__PUBLICAR_COMUN__', $publicarJs).Replace('__SI_NO__', $siNoJs)
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__MODO__', $MAYOR_MODO).Replace('__GRUPO_AVISOS__', $GRUPO_AVISOS).Replace('__STICKER_BASE__', $STICKER_BASE)
 
 # ===================== CODIGO: ARMAR MAPA (Fase 2) =====================
@@ -981,6 +1119,8 @@ El bot principal le pasa a este workflow cada mensaje de los **grupos del mayor*
 **Solidario, clave temporal**: el cobrador cita el RST en el grupo de Solidario y escribe "temporal"; el bot se la pide al cliente, le dice "Ok, recibido" y se la entrega al grupo citando el RST.
 
 **Si el cliente EDITA un mensaje** (26/11): WhatsApp manda las ediciones cifradas, asi que el bot sabe CUAL mensaje cambio pero nunca que dice ahora. Si lo editado fue un retiro o una cuenta de los ultimos 30 minutos, se le pide que lo mande de nuevo y la fila vieja queda en **verificar** (asi el reenvio no se rechaza como repetido ni se le avisa de vencimiento a un codigo que va a ser reemplazado). Editar un saludo o una foto no dispara nada.
+
+**Banco mal escrito** (26/11): si al nombre del banco le falta, le sobra o le cambia una letra ("produbaco", "pichinca"; en los nombres largos hasta dos), el bot lo reconoce pero NO lo publica: le pregunta al cliente "¿Su retiro es de Produbanco? Responda sí o no" y la fila queda en **confirmar_banco**. Con un "sí" lo publica normal; con un "no" le pide que lo mande de nuevo (fila en verificar). Si la palabra se parece a dos bancos, o el mensaje parece un RST (celular + código + monto) sin ningún banco, le pregunta de qué banco es y que lo mande de nuevo.
 
 **Alertas de vencimiento** (filas de abajo): cada RST que esta en el grupo de su banco se anota en `vigilancia_rst_mayor` con su hora de vencimiento (los pegados a mano y los del bot). Las reacciones de los cobradores (cualquier emoji menos la X = cobrado) se anotan alli. El workflow "Mayor: alertas de vencimiento" avisa en el grupo del banco, citando el RST, cuando falta 1 hora (5 min en JEP) y nadie lo marco como cobrado.
 

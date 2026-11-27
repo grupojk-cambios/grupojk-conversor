@@ -282,7 +282,8 @@ console.log('=== 9b) Grupos de DESTINO (abonos, RST por banco, paises...): se re
   const CAP = { grupo_jid: '120363000000000054@g.us', nombre: 'Captures USDT', tipo: 'destino', operadora_whatsapp: '593990000003' };
   chk(entender('', { imagen: true, fromMe: true }, CAP).pais === null, 'Captures USDT NO pone pais (ahi llegan abonos de todo tipo)');
   const cliPich = entender('Tlf 0999999999 Código 5678 Monto 20', {}, Object.assign({}, GRUPO, { nombre: 'Pichincha Prueba PEDIDOS' }));
-  chk(cliPich.tipo !== 'rst', 'en un grupo de CLIENTES no hay pista, aunque su nombre diga un banco', '-> ' + cliPich.tipo);
+  // (desde el 26/11 se registra como un RST SIN banco, para preguntarle al cliente de que banco es; nunca como Pichincha)
+  chk(cliPich.banco === null && cliPich.datos.registros[0].datos.sin_banco === true, 'en un grupo de CLIENTES no hay pista, aunque su nombre diga un banco', '-> ' + cliPich.tipo + ' ' + cliPich.banco);
 }
 
 console.log('');
