@@ -25,7 +25,8 @@ export default function GeneradorEstados() {
   const [chunks, setChunks] = useState([])
   const [expandido, setExpandido] = useState(null)
   const [copiado, setCopiado] = useState(false)
-  const [copiadoAvisoMayor, setCopiadoAvisoMayor] = useState(false)
+  const [copiadoUSDT, setCopiadoUSDT] = useState(false)
+  const [copiadoBS, setCopiadoBS] = useState(false)
   const [modoCalculo, setModoCalculo] = useState('detal') // 'detal' | 'mayor'
   const cardRefs = useRef([])
   const captureRefs = useRef([])
@@ -279,63 +280,62 @@ export default function GeneradorEstados() {
     return texto;
   };
 
-  const generarAvisoMayor = () => {
-    const vzla = todosPaises.find(p => p.codigo === 'VES' || p.id === 10);
+  const generarAvisoUSDT = () => {
     const usdt = todosPaises.find(p => (p.codigo || '').toUpperCase() === 'USDT' || (p.nombre || '').toUpperCase().includes('USDT'));
+    if (!usdt) return '';
 
-    const bloques = [];
+    const mCuenta = (usdt.margenEnvioMayor !== undefined && usdt.margenEnvioMayor !== null && !isNaN(parseFloat(usdt.margenEnvioMayor)))
+      ? parseFloat(usdt.margenEnvioMayor)
+      : (parseFloat(usdt.margenEnvio) || 0);
+    const mRST = tieneTasaMayorRST(usdt) ? parseFloat(usdt.margenMayorRST) : null;
+    const mVol = tieneTasaMayorVolumen(usdt) ? parseFloat(usdt.margenMayorVolumen) : null;
 
-    // Bloque 1: USDT al Mayor
-    if (usdt) {
-      const mCuenta = (usdt.margenEnvioMayor !== undefined && usdt.margenEnvioMayor !== null && !isNaN(parseFloat(usdt.margenEnvioMayor)))
-        ? parseFloat(usdt.margenEnvioMayor)
-        : (parseFloat(usdt.margenEnvio) || 0);
-      const mRST = tieneTasaMayorRST(usdt) ? parseFloat(usdt.margenMayorRST) : null;
-      const mVol = tieneTasaMayorVolumen(usdt) ? parseFloat(usdt.margenMayorVolumen) : null;
-
-      let txtUsdt = `*RECIBIENDO PARA USDT* 💵\n\n`;
-      if (mRST !== null) {
-        txtUsdt += `• Precio *${mRST}% RST* A MI FAVOR\n`;
-        txtUsdt += `• Precio *${mCuenta}% POR CUENTA* A MI FAVOR\n`;
-      } else {
-        txtUsdt += `• Precio *${mCuenta}%* A MI FAVOR\n`;
-      }
-      if (mVol !== null) {
-        txtUsdt += `• Pedido $1,000+: *${mVol}%* A MI FAVOR\n`;
-      }
-      txtUsdt += `\n*PEDIDO MINIMO $200*\n*PEDIDO PAGADO, PEDIDO DESPACHADO* ‼️`;
-      bloques.push(txtUsdt);
+    let txtUsdt = `*RECIBIENDO PARA USDT* 💵\n\n`;
+    if (mRST !== null) {
+      txtUsdt += `• Precio *${mRST}% RST* A MI FAVOR\n`;
+      txtUsdt += `• Precio *${mCuenta}% POR CUENTA* A MI FAVOR\n`;
+    } else {
+      txtUsdt += `• Precio *${mCuenta}%* A MI FAVOR\n`;
     }
-
-    // Bloque 2: Bolívares al Mayor
-    if (vzla) {
-      const tCuenta = calcularTasaEnvio(vzla, 'mayor');
-      const tRST = calcularTasaEnvioMayorRST(vzla);
-      const tVol = calcularTasaEnvioMayorVolumen(vzla);
-
-      let txtBs = `*TENGO BOLIVARES* 🚛🚀\n\n`;
-      if (tRST > 0) {
-        txtBs += `BANESCO *${formatearTasa(tRST)}* RST 🏦\n`;
-        txtBs += `VENEZUELA *${formatearTasa(tRST)}* RST 🏦\n`;
-        txtBs += `PROVINCIAL *${formatearTasa(tRST)}* RST 🏦\n`;
-        txtBs += `MERCANTIL *${formatearTasa(tRST)}* RST 🏦\n\n`;
-      }
-      if (tCuenta > 0) {
-        txtBs += `*${formatearTasa(tCuenta)} POR CUENTA* 🏦\n`;
-      }
-      if (tVol > 0) {
-        txtBs += `\n*1.000$ = ${formatearTasa(tVol)} RST* ‼️\n*(OJO ESTA TASA ES PARA UN SOLO PEDIDO)*`;
-      }
-      bloques.push(txtBs);
+    if (mVol !== null) {
+      txtUsdt += `• Pedido $1,000+: *${mVol}%* A MI FAVOR\n`;
     }
-
-    return bloques.join('\n\n────────────────\n\n');
+    txtUsdt += `\n*PEDIDO MINIMO $200*\n*PEDIDO PAGADO, PEDIDO DESPACHADO* ‼️`;
+    return txtUsdt;
   };
 
-  const copiarAvisoMayor = () => {
-    navigator.clipboard.writeText(generarAvisoMayor());
-    setCopiadoAvisoMayor(true);
-    setTimeout(() => setCopiadoAvisoMayor(false), 2500);
+  const generarAvisoBS = () => {
+    const vzla = todosPaises.find(p => p.codigo === 'VES' || p.id === 10);
+    if (!vzla) return '';
+
+    const tCuenta = calcularTasaEnvio(vzla, 'mayor');
+    const tRST = calcularTasaEnvioMayorRST(vzla);
+    const tVol = calcularTasaEnvioMayorVolumen(vzla);
+
+    let txtBs = `*TENGO BOLIVARES* 🚛🚀\n\n`;
+    if (tRST > 0) {
+      txtBs += `BANESCO *${formatearTasa(tRST)}* RST 🏦\n`;
+      txtBs += `VENEZUELA *${formatearTasa(tRST)}* RST 🏦\n\n\n`;
+    }
+    if (tCuenta > 0) {
+      txtBs += `*${formatearTasa(tCuenta)} POR CUENTA* 🏦\n`;
+    }
+    if (tVol > 0) {
+      txtBs += `\n*1.000$ = ${formatearTasa(tVol)} RST* ‼️\n*(OJO ESTA TASA ES PARA UN SOLO PEDIDO)*`;
+    }
+    return txtBs;
+  };
+
+  const copiarAvisoUSDT = () => {
+    navigator.clipboard.writeText(generarAvisoUSDT());
+    setCopiadoUSDT(true);
+    setTimeout(() => setCopiadoUSDT(false), 2500);
+  };
+
+  const copiarAvisoBS = () => {
+    navigator.clipboard.writeText(generarAvisoBS());
+    setCopiadoBS(true);
+    setTimeout(() => setCopiadoBS(false), 2500);
   };
 
   const copiarAlPortapapeles = () => {
@@ -1074,26 +1074,48 @@ export default function GeneradorEstados() {
           </div>
 
           {modoCalculo === 'mayor' && (
-            <button
-              onClick={copiarAvisoMayor}
-              style={{
-                background: copiadoAvisoMayor ? 'rgba(16, 185, 129, 0.25)' : 'rgba(251, 191, 36, 0.16)',
-                border: copiadoAvisoMayor ? '1px solid #10b981' : '1px solid rgba(251, 191, 36, 0.45)',
-                color: copiadoAvisoMayor ? '#10b981' : '#fbbf24',
-                padding: '0.5rem 1.1rem',
-                borderRadius: '100px',
-                cursor: 'pointer',
-                fontWeight: 800,
-                fontSize: '0.85rem',
-                transition: 'all 0.25s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem'
-              }}
-              title="Copiar texto listo para tu grupo VENTAS MAYOR (Bs y USDT)"
-            >
-              {copiadoAvisoMayor ? '✅ Aviso Mayor Copiado' : '📋 Copiar Aviso Mayor'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={copiarAvisoUSDT}
+                style={{
+                  background: copiadoUSDT ? 'rgba(16, 185, 129, 0.25)' : 'rgba(56, 189, 248, 0.16)',
+                  border: copiadoUSDT ? '1px solid #10b981' : '1px solid rgba(56, 189, 248, 0.45)',
+                  color: copiadoUSDT ? '#10b981' : '#38bdf8',
+                  padding: '0.5rem 1.05rem',
+                  borderRadius: '100px',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.25s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+                title="Copiar aviso mayorista de USDT"
+              >
+                {copiadoUSDT ? '✅ USDT Copiado' : '📋 TASA USDT'}
+              </button>
+              <button
+                onClick={copiarAvisoBS}
+                style={{
+                  background: copiadoBS ? 'rgba(16, 185, 129, 0.25)' : 'rgba(251, 191, 36, 0.16)',
+                  border: copiadoBS ? '1px solid #10b981' : '1px solid rgba(251, 191, 36, 0.45)',
+                  color: copiadoBS ? '#10b981' : '#fbbf24',
+                  padding: '0.5rem 1.05rem',
+                  borderRadius: '100px',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.25s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+                title="Copiar aviso mayorista de Bolívares"
+              >
+                {copiadoBS ? '✅ BS Copiado' : '📋 TASA BS'}
+              </button>
+            </div>
           )}
         </div>
       </div>
