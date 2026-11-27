@@ -239,8 +239,7 @@ export default function GeneradorEstados() {
         if (!paisReferencia || pais.id === paisReferencia.id) {
           tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
         } else {
-          const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
-          tasaRecibo = tOrigR;
+          tasaRecibo = calcularConversionInversa(pais, paisReferencia, 1, todosPaises, modoCalculo);
         }
       }
       
@@ -768,8 +767,7 @@ export default function GeneradorEstados() {
               if (!paisReferencia || pais.id === paisReferencia.id) {
                 tasaRecibo = calcularTasaRecibo(pais, modoCalculo);
               } else {
-                const { tasaOrigenParaDolares: tOrigR } = obtenerTasasProcesadas(pais, paisReferencia, todosPaises, modoCalculo);
-                tasaRecibo = tOrigR;
+                tasaRecibo = calcularConversionInversa(pais, paisReferencia, 1, todosPaises, modoCalculo);
               }
             }
             
