@@ -11,8 +11,9 @@ const _getConn = (conns, n) => {
 //
 // Hay dos formas de limitarlo:
 //   1) $SOLO_ESTOS   -> lista escrita en build_v12.ps1 (modo prueba)
-//   2) $MODO_SOLO_CLIENTES -> los numeros salen de Supabase, de las tablas
-//      clientes_bot_detal y clientes_bot_mayor
+//   2) $MODO_SOLO_CLIENTES -> los numeros salen de Supabase: la tabla clientes_bot_detal
+//      y los registrados en la app como detal (perfiles_detal). Los mayoristas NO
+//      (ni clientes_bot_mayor ni perfiles_mayor): el mayor se atiende por sus grupos (26/11).
 //
 // Lo que mas importa de todo esto, y por eso va primero, es que el bot NO se
 // quede mudo sin que nadie se entere:
@@ -61,11 +62,11 @@ function correr(lista, modo, jids, tablas, edadMin, extra) {
 
   // Por defecto las tablas de la app van vacias: la mayoria de las pruebas son de las
   // tablas que carga Kelvin a mano.
+  // Los nodos del mayor (Clientes Mayor Permitidos / Perfiles Mayor App) ya NO existen: si el
+  // codigo los volviera a pedir, aqui no estan y las pruebas lo destapan.
   const porNodo = {
     'Clientes Detal Permitidos': t.detal,
-    'Clientes Mayor Permitidos': t.mayor,
     'Perfiles Detal App':        (t.appDetal === undefined ? [] : t.appDetal),
-    'Perfiles Mayor App':        (t.appMayor === undefined ? [] : t.appMayor),
     'Redis Leer Pausa':          [ ex.enPausa  ? { pausaBot: 'auto' } : {} ],
     'Redis Leer Aviso':          [ ex.yaAvisado ? { avisoPausa: '1' }  : {} ]
   };
@@ -84,7 +85,7 @@ function correr(lista, modo, jids, tablas, edadMin, extra) {
   // IMPORTANTE: asi es como llega de verdad. Justo antes de este nodo hay dos consultas a
   // Supabase, y un nodo de Supabase devuelve LAS FILAS DE LA TABLA: eso es lo que trae
   // $input. Si el nodo leyera de ahi, creeria que el mensaje es una fila de la tabla.
-  const filasQueLleganPorInput = (t.appMayor && t.appMayor !== 'CAIDA') ? t.appMayor : [{}];
+  const filasQueLleganPorInput = (Array.isArray(t.appDetal) && t.appDetal.length) ? t.appDetal : [{}];
   const $input = { all: () => filasQueLleganPorInput.map(json => ({ json })) };
 
   const salida = new Function('$input', '$', js)($input, $);
@@ -121,8 +122,8 @@ console.log('=== 2) Si Supabase no se puede LEER, contesta a todos ===');
   // en silencio. Esto es distinto de la tabla vacia de arriba.
   chk(correr([], true, TODOS, { detal: 'CAIDA', mayor: [] }).length === 4,
       'modo prendido y Supabase CAIDO -> contesta a todos');
-  chk(correr([], true, TODOS, { detal: [], mayor: 'CAIDA' }).length === 4,
-      'si falla la tabla de mayor, igual contesta a todos');
+  chk(correr([], true, TODOS, { detal: [], appDetal: 'CAIDA' }).length === 4,
+      'si falla la consulta a la app, igual contesta a todos');
   chk(correr([], true, TODOS, {}).length === 4,
       'si los nodos de Supabase ni corrieron -> contesta a todos');
 }
@@ -132,11 +133,11 @@ console.log('=== 3) Los numeros salen de Supabase ===');
 {
   const tablas = {
     detal: [{ whatsapp: '593961230380', nombre: 'Kelvin' }],
-    mayor: [{ whatsapp: '584121234567', nombre: 'Cliente mayor' }]
+    appDetal: [{ whatsapp: '584121234567' }]
   };
   const r = correr([], true, TODOS, tablas);
   chk(r.length === 2, 'pasan los 2 cargados', '-> ' + r.length);
-  chk(r.indexOf(KELVIN) !== -1 && r.indexOf(CLIENTE) !== -1, 'uno de detal y uno de mayor');
+  chk(r.indexOf(KELVIN) !== -1 && r.indexOf(CLIENTE) !== -1, 'uno cargado a mano y uno de la app (detal)');
   chk(r.indexOf(OTRO) === -1, 'el que no esta cargado NO pasa');
   chk(r.indexOf(GRUPO) === -1, 'los grupos tampoco');
 }
@@ -205,12 +206,11 @@ console.log('=== 9) El nombre cargado viaja pegado al mensaje ===');
 {
   // El agente lo usa para saludar por el nombre que Kelvin escribio en Supabase.
   const tablas = {
-    detal: [{ whatsapp: '593961230380', nombre: 'Maria Perez' }],
-    mayor: [{ whatsapp: '584121234567', nombre: 'Jose Mayorista' }]
+    detal: [{ whatsapp: '593961230380', nombre: 'Maria Perez' }, { whatsapp: '584121234567', nombre: 'Jose Perez' }]
   };
   const r = correr([], true, [KELVIN, CLIENTE], tablas);
-  chk(r.nombres[0] === 'Maria Perez', 'el de detal trae su nombre', '-> "' + r.nombres[0] + '"');
-  chk(r.nombres[1] === 'Jose Mayorista', 'el de mayor tambien', '-> "' + r.nombres[1] + '"');
+  chk(r.nombres[0] === 'Maria Perez', 'el cargado trae su nombre', '-> "' + r.nombres[0] + '"');
+  chk(r.nombres[1] === 'Jose Perez', 'y el otro el suyo', '-> "' + r.nombres[1] + '"');
 
   // Sin nombre cargado no se inventa nada.
   const r2 = correr([], true, [KELVIN], { detal: [{ whatsapp: '593961230380' }], mayor: [] });
@@ -223,54 +223,51 @@ console.log('=== 9) El nombre cargado viaja pegado al mensaje ===');
 }
 
 console.log('');
-console.log('=== 10) Cada tabla da su tarifa ===');
+console.log('=== 10) clientes_bot_detal fija la tarifa detal ===');
 {
-  // clientes_bot_mayor -> tarifa mayor | clientes_bot_detal -> tarifa detal.
-  const r = correr([], true, [KELVIN, CLIENTE], {
-    detal: [{ whatsapp: '593961230380', nombre: 'Kelvin' }],
-    mayor: [{ whatsapp: '584121234567', nombre: 'Jose' }]
-  });
+  const r = correr([], true, [KELVIN], { detal: [{ whatsapp: '593961230380', nombre: 'Kelvin' }] });
   chk(r.tarifas[0] === 'detal', 'el de clientes_bot_detal -> detal', '-> "' + r.tarifas[0] + '"');
-  chk(r.tarifas[1] === 'mayor', 'el de clientes_bot_mayor -> mayor', '-> "' + r.tarifas[1] + '"');
-
-  // Cargado por error en las DOS: gana detal. Darle tarifa de mayorista a un cliente de
-  // detal cuesta plata; al reves solo es un reclamo que se corrige.
-  const r2 = correr([], true, [KELVIN], {
-    detal: [{ whatsapp: '593961230380' }],
-    mayor: [{ whatsapp: '593961230380' }]
-  });
-  chk(r2.tarifas[0] === 'detal', 'cargado en las dos -> gana detal', '-> "' + r2.tarifas[0] + '"');
 
   // Apagado con activo=false no deberia fijar tarifa.
-  const r3 = correr([], false, [KELVIN], {
-    detal: [], mayor: [{ whatsapp: '593961230380', activo: false }]
-  });
+  const r3 = correr([], false, [KELVIN], { detal: [{ whatsapp: '593961230380', activo: false }] });
   chk(r3.tarifas[0] === '', 'un numero apagado no fija tarifa', '-> "' + r3.tarifas[0] + '"');
 }
 
 console.log('');
-console.log('=== 11) Los registrados en la APP tambien entran ===');
+console.log('=== 11) Los registrados en la APP como DETAL tambien entran ===');
 {
   // Kelvin no tiene que cargar a mano a quien ya se registro en la app. Esto se agrego
   // despues de que su propio numero, que SI estaba en perfiles_detal, quedara afuera.
   const r = correr([], true, [KELVIN, CLIENTE, OTRO], {
-    detal: [], mayor: [],
-    appDetal: [{ whatsapp: '+593961230380' }],
-    appMayor: [{ whatsapp: '584121234567' }]
+    detal: [],
+    appDetal: [{ whatsapp: '+593961230380' }]
   });
-  chk(r.length === 2, 'entran los dos de la app', '-> ' + r.length);
+  chk(r.length === 1 && r[0] === KELVIN, 'entra el de la app (detal)', '-> ' + JSON.stringify(r));
   chk(r.indexOf(OTRO) === -1, 'el que no esta en ningun lado sigue afuera');
 
-  // Estar en la app NO les fija tarifa: eso lo decide perfiles_mayor mas adelante,
-  // igual que siempre.
-  chk(r.tarifas[0] === '' && r.tarifas[1] === '',
-      'estar en la app no fija tarifa', '-> "' + r.tarifas[0] + '" / "' + r.tarifas[1] + '"');
+  // Estar en la app NO le fija tarifa: eso lo decide "Consultar Mayorista" mas adelante.
+  chk(r.tarifas[0] === '', 'estar en la app no fija tarifa', '-> "' + r.tarifas[0] + '"');
 
-  // Si una de las cuatro consultas falla, se abre la puerta a todos.
-  const r2 = correr([], true, [KELVIN, CLIENTE, OTRO], {
-    detal: [], mayor: [], appDetal: 'CAIDA', appMayor: []
-  });
+  // Si una de las dos consultas falla, se abre la puerta a todos.
+  const r2 = correr([], true, [KELVIN, CLIENTE, OTRO], { detal: [], appDetal: 'CAIDA' });
   chk(r2.length === 3, 'si falla la consulta a la app -> contesta a todos', '-> ' + r2.length);
+}
+
+console.log('');
+console.log('=== 11b) Los MAYORISTAS no abren el chat privado (26/11) ===');
+{
+  // Pedido de Kelvin: el mayor se atiende por sus grupos (tabla grupos_mayor). Un mayorista que
+  // se registre en la app (perfiles_mayor) NO debe hacer que el bot le conteste por privado.
+  const tablas = wf.nodes.map(n => (n.parameters || {}).tableId).filter(Boolean);
+  chk(tablas.indexOf('perfiles_mayor') === -1, 'el bot ya no lee perfiles_mayor (los mayoristas de la app)', '-> ' + tablas.join(', '));
+  chk(tablas.indexOf('clientes_bot_mayor') === -1, 'ni clientes_bot_mayor');
+  chk(tablas.indexOf('clientes_bot_detal') !== -1 && tablas.indexOf('perfiles_detal') !== -1 && tablas.indexOf('grupos_mayor') !== -1,
+      'y sigue leyendo clientes_bot_detal, perfiles_detal y grupos_mayor');
+  const js = nodo.parameters.jsCode;
+  chk(!/Clientes Mayor Permitidos|Perfiles Mayor App/.test(js), 'el filtro no pide los nodos del mayor que se quitaron');
+  // Un mayorista (que no esta en el detal) escribe por privado: no pasa.
+  chk(correr([], true, [CLIENTE], { detal: [{ whatsapp: '593961230380' }] }).length === 0,
+      'un numero que no esta en el detal no pasa');
 }
 
 console.log('');

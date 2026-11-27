@@ -44,7 +44,7 @@ function filtrar({ jid, fromMe = false, texto = 'hola', mensaje, grupos = [FILA_
                  message: mensaje || { conversation: texto }, messageTimestamp: Math.floor(Date.now() / 1000) };
   const items = [{ json: { body: { data } } }];
   // Igual que en produccion: el filtro de clientes esta PRENDIDO (MODO_SOLO_CLIENTES = true) y hay un cliente del detal cargado.
-  const t = Object.assign({ 'Clientes Detal Permitidos': [{ whatsapp: '593990000050', nombre: 'Cliente Detal' }], 'Clientes Mayor Permitidos': [], 'Perfiles Detal App': [], 'Perfiles Mayor App': [],
+  const t = Object.assign({ 'Clientes Detal Permitidos': [{ whatsapp: '593990000050', nombre: 'Cliente Detal' }], 'Perfiles Detal App': [],
                             'Redis Leer Pausa': [{}], 'Redis Leer Aviso': [{}] }, tablas || {});
   const $ = (n) => {
     if (n === 'Webhook Evolution API' || _strip(n) === 'Webhook Evolution API') return { all: () => items, first: () => items[0] };
@@ -124,7 +124,8 @@ console.log('=== 3) Router Pausa y el nodo que llama al workflow ===');
   chk(e.onError === 'continueRegularOutput', 'si el sub-workflow falla, el bot sigue');
   const sale = (n) => (((bot.connections[n] || {}).main || [])[0] || []).map(c => _strip(c.node)).join();
   chk(sale('Mayor Escuchar') === '', 'y no sigue a ningun otro nodo (despues de llamarlo, termina)');
-  chk(sale('Perfiles Mayor App') === 'Grupos Mayor' && sale('Grupos Mayor') === 'Redis Leer Pausa', 'Grupos Mayor va entre Perfiles Mayor App y Redis Leer Pausa');
+  // (26/11) Perfiles Mayor App y Clientes Mayor Permitidos se quitaron: el mayor se atiende por sus grupos.
+  chk(sale('Perfiles Detal App') === 'Grupos Mayor' && sale('Grupos Mayor') === 'Redis Leer Pausa', 'Grupos Mayor va entre Perfiles Detal App y Redis Leer Pausa');
   const g = nodo(bot, 'Grupos Mayor');
   chk(g.parameters.tableId === 'grupos_mayor' && g.parameters.operation === 'getAll' && g.parameters.returnAll === true, 'lee toda la tabla grupos_mayor');
   chk(g.executeOnce === true && g.onError === 'continueRegularOutput' && g.alwaysOutputData === true, 'una vez por evento, y si falla sigue');

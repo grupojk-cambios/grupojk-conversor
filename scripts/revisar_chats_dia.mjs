@@ -56,7 +56,9 @@ const limpio = s => String(s || '').replace(/\n+/g, ' / ')
   .replace(/\d[\d .\-]{6,}\d/g, '[núm]').slice(0, 140);
 function textoDe(m) {
   const x = m.message || {};
-  if (x.reactionMessage || x.protocolMessage || x.senderKeyDistributionMessage) return null;
+  if (x.reactionMessage || x.protocolMessage) return null;
+  // La "llave del grupo" viene PEGADA al primer mensaje de alguien (con su texto o foto): solo se descarta si viene sola.
+  if (x.senderKeyDistributionMessage && !x.conversation && !x.extendedTextMessage && !x.imageMessage && !x.audioMessage && !x.videoMessage && !x.documentMessage) return null;
   if (x.conversation) return x.conversation;
   if (x.extendedTextMessage) return x.extendedTextMessage.text || '';
   if (x.imageMessage) return '[foto]' + (x.imageMessage.caption ? ' ' + x.imageMessage.caption : '');

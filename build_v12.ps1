@@ -49,8 +49,11 @@ $SOLO_ESTOS_JS = "[" + (($SOLO_ESTOS | ForEach-Object { "'" + $_ + "'" }) -join 
 #   SOLO ATENDER A CLIENTES CARGADOS   (interruptor)
 # ============================================================================
 #  $false -> el bot le contesta a todo el mundo. Es como trabaja hoy.
-#  $true  -> el bot SOLO le contesta a los numeros cargados en Supabase, en las
-#            tablas clientes_bot_detal y clientes_bot_mayor.
+#  $true  -> el bot SOLO le contesta a los numeros cargados en Supabase en la tabla
+#            clientes_bot_detal, y a los que se registraron en la app como DETAL
+#            (perfiles_detal). Los mayoristas NO: el mayor se atiende por sus grupos
+#            (tabla grupos_mayor), asi que un mayorista que se registre en la app no
+#            abre el chat privado del bot (pedido de Kelvin, 26/11).
 #
 #  Los numeros se agregan y se quitan DESDE SUPABASE, sin volver a desplegar.
 #  Este interruptor solo decide si la lista se respeta o no, y se deja en $false
@@ -298,9 +301,9 @@ if (!esMayorista) {
     esMayorista = filasMayor.some(it => it.json && (it.json.id || it.json.whatsapp));
   } catch(e) {}
 }
-// La tabla en la que Kelvin lo cargo MANDA sobre perfiles_mayor: clientes_bot_mayor da
-// tarifa mayor y clientes_bot_detal da detal, asi las dos listas funcionan por separado.
-// Si no esta en ninguna (filtro apagado, o Supabase caido) queda lo de arriba, como antes.
+// Si Kelvin lo cargo en clientes_bot_detal, su tarifa es detal: eso MANDA sobre perfiles_mayor.
+// (clientes_bot_mayor ya no existe desde el 26/11: el mayor se atiende por sus grupos.)
+// Si no esta cargado (filtro apagado, o Supabase caido) queda lo de arriba, como antes.
 let tarifaCargada = '';
 try { tarifaCargada = String($('Solo Estos Numeros').first().json.tarifaCargada || ''); } catch(e){}
 if (tarifaCargada === 'mayor') esMayorista = true;
@@ -491,7 +494,7 @@ for (const c of cuentas) {
 let clienteContexto = '';
 let nombreCliente = '';
 try {
-  // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal / _mayor).
+  // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal).
   //    Le gana al del historial: ese lo escribio el, sabe como se llama el cliente.
   //    Viene pegado al mensaje por el nodo "Solo Estos Numeros".
   let nombre = '';
@@ -1613,7 +1616,7 @@ function numerosDe(nodo){
 // El nombre que Kelvin le puso al cliente en Supabase, para que el agente lo salude por su
 // nombre. Se busca aunque el filtro este apagado: no tiene que ver con dejar pasar o no.
 function nombreCargado(j){
-  for (const nodo of ['Clientes Detal Permitidos', 'Clientes Mayor Permitidos']){
+  for (const nodo of ['Clientes Detal Permitidos']){
     let items;
     try { items = $(nodo).all(); } catch(e){ continue; }
     for (const it of items){
@@ -1624,24 +1627,15 @@ function nombreCargado(j){
   return '';
 }
 
-// De que tabla salio el cliente: eso decide su tarifa.
-//   clientes_bot_mayor -> mayor   |   clientes_bot_detal -> detal
-// Si por error esta cargado en LAS DOS, gana DETAL. Darle tarifa de mayorista a un cliente
-// de detal es plata perdida; al reves solo es un cliente que reclama y se corrige.
+// Si Kelvin lo cargo en clientes_bot_detal, su tarifa es DETAL (manda sobre perfiles_mayor).
+// Ya no hay lista de mayoristas para el chat privado: el mayor se atiende por sus grupos (26/11).
 function tarifaCargada(j){
-  let enDetal = false, enMayor = false;
-  for (const par of [['Clientes Detal Permitidos','detal'], ['Clientes Mayor Permitidos','mayor']]){
-    let items;
-    try { items = $(par[0]).all(); } catch(e){ continue; }
-    for (const it of items){
-      const f = (it && it.json) || {};
-      if (f.whatsapp && f.activo !== false && mismoNumero(j, f.whatsapp)){
-        if (par[1] === 'detal') enDetal = true; else enMayor = true;
-      }
-    }
+  let items;
+  try { items = $('Clientes Detal Permitidos').all(); } catch(e){ return ''; }
+  for (const it of items){
+    const f = (it && it.json) || {};
+    if (f.whatsapp && f.activo !== false && mismoNumero(j, f.whatsapp)) return 'detal';
   }
-  if (enDetal) return 'detal';
-  if (enMayor) return 'mayor';
   return '';
 }
 
@@ -1662,16 +1656,16 @@ let permitidos = null;
 if (SOLO_ESTOS.length){
   permitidos = SOLO_ESTOS;                       // modo prueba: manda el codigo
 } else if (MODO_SOLO_CLIENTES){
+  // Solo el DETAL: los cargados a mano y los registrados en la app como detal. Los mayoristas
+  // (perfiles_mayor) NO entran: el mayor se atiende por sus grupos (pedido de Kelvin, 26/11).
   const detal = numerosDe('Clientes Detal Permitidos');
-  const mayor = numerosDe('Clientes Mayor Permitidos');
   const appDetal = numerosDe('Perfiles Detal App');
-  const appMayor = numerosDe('Perfiles Mayor App');
-  // Si CUALQUIERA de las cuatro no se pudo leer, se le contesta a todos: no sabemos quien
+  // Si CUALQUIERA de las dos no se pudo leer, se le contesta a todos: no sabemos quien
   // esta autorizado, y dejar gente afuera en silencio es peor que contestar de mas.
-  if (detal === null || mayor === null || appDetal === null || appMayor === null){
+  if (detal === null || appDetal === null){
     return entran.map(marcar);
   }
-  permitidos = detal.concat(mayor, appDetal, appMayor);
+  permitidos = detal.concat(appDetal);
 }
 
 let pasan;
@@ -2899,15 +2893,8 @@ $nodes = @(
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
-  [ordered]@{
-    # Lo mismo para los clientes MAYOR. Por ahora solo decide a quien le contesta el bot:
-    # NO cambia la tarifa. La tarifa mayor la sigue dando perfiles_mayor, como siempre.
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'clientes_bot_mayor'; returnAll = $true }
-    executeOnce = $true
-    id = 'd0e1f2a3-0000-4b00-9000-cliesmayor001'; name = 'Clientes Mayor Permitidos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-380,-160)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
+  # (26/11) Ya NO se leen clientes_bot_mayor ni perfiles_mayor: el mayor se atiende por sus
+  # grupos (tabla grupos_mayor, nodo "Grupos Mayor"), no por el chat privado del bot.
   [ordered]@{
     # Clientes que YA se registraron en la app (tabla perfiles_detal). Tambien les abre la
     # puerta, para no tener que cargarlos a mano. NO decide tarifa: eso lo sigue haciendo
@@ -2915,14 +2902,6 @@ $nodes = @(
     parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_detal'; returnAll = $false; limit = 5; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'').slice(-9) }}" }
     executeOnce = $true
     id = 'd0e1f2a3-0000-4b00-9000-perfdetalapp1'; name = 'Perfiles Detal App'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-520,-300)
-    onError = 'continueRegularOutput'; alwaysOutputData = $true
-    credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
-  },
-  [ordered]@{
-    # Lo mismo con los mayoristas registrados en la app (tabla perfiles_mayor).
-    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'perfiles_mayor'; returnAll = $false; limit = 5; filterType = 'string'; filterString = "={{ 'whatsapp=like.*' + `$('Webhook Evolution API').first().json.body.data.key.remoteJid.split('@')[0].replace(/\D/g,'').slice(-9) }}" }
-    executeOnce = $true
-    id = 'd0e1f2a3-0000-4b00-9000-perfmayorapp1'; name = 'Perfiles Mayor App'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(-380,-300)
     onError = 'continueRegularOutput'; alwaysOutputData = $true
     credentials = @{ supabaseApi = @{ id = 'JCvvp9JkZ15OpA9E'; name = 'Supabase Cambios JK' } }
   },
@@ -3038,10 +3017,8 @@ $nodes = @(
 
 $connections = [ordered]@{
   'Webhook Evolution API'  = @{ main = @( ,@( @{ node='Clientes Detal Permitidos'; type='main'; index=0 } ) ) }
-  'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Clientes Mayor Permitidos'; type='main'; index=0 } ) ) }
-  'Clientes Mayor Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
-  'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Perfiles Mayor App'; type='main'; index=0 } ) ) }
-  'Perfiles Mayor App'     = @{ main = @( ,@( @{ node='Grupos Mayor'; type='main'; index=0 } ) ) }
+  'Clientes Detal Permitidos' = @{ main = @( ,@( @{ node='Perfiles Detal App'; type='main'; index=0 } ) ) }
+  'Perfiles Detal App'     = @{ main = @( ,@( @{ node='Grupos Mayor'; type='main'; index=0 } ) ) }
   'Grupos Mayor'           = @{ main = @( ,@( @{ node='Redis Leer Pausa'; type='main'; index=0 } ) ) }
   'Redis Leer Pausa'       = @{ main = @( ,@( @{ node='Redis Leer Aviso'; type='main'; index=0 } ) ) }
   'Redis Leer Aviso'       = @{ main = @( ,@( @{ node='Solo Estos Numeros'; type='main'; index=0 } ) ) }

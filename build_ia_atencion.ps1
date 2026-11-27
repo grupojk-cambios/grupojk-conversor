@@ -226,9 +226,9 @@ if (!esMayorista) {
     esMayorista = filasMayor.some(it => it.json && (it.json.id || it.json.whatsapp));
   } catch(e) {}
 }
-// La tabla en la que Kelvin lo cargo MANDA sobre perfiles_mayor: clientes_bot_mayor da
-// tarifa mayor y clientes_bot_detal da detal, asi las dos listas funcionan por separado.
-// Si no esta en ninguna (filtro apagado, o Supabase caido) queda lo de arriba, como antes.
+// Si Kelvin lo cargo en clientes_bot_detal, su tarifa es detal: eso MANDA sobre perfiles_mayor.
+// (clientes_bot_mayor ya no existe desde el 26/11: el mayor se atiende por sus grupos.)
+// Si no esta cargado (filtro apagado, o Supabase caido) queda lo de arriba, como antes.
 let tarifaCargada = '';
 try { tarifaCargada = String($('Cuando lo Llama el Bot').first().json.tarifaCargada || ''); } catch(e){}
 if (tarifaCargada === 'mayor') esMayorista = true;
@@ -419,7 +419,7 @@ for (const c of cuentas) {
 let clienteContexto = '';
 let nombreCliente = '';
 try {
-  // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal / _mayor).
+  // 1) El nombre que Kelvin le cargo a mano en Supabase (clientes_bot_detal).
   //    Le gana al del historial: ese lo escribio el, sabe como se llama el cliente.
   //    Viene pegado al mensaje por el nodo "Solo Estos Numeros".
   let nombre = '';

@@ -5,7 +5,9 @@
 // "Decidir Publicacion" de workflow_mayor.json), asi el informe dice que habria hecho el bot en modo REAL con cada
 // mensaje de un cliente. Tambien cuenta cuantos RST de los grupos de bancos recibieron una reaccion de "cobrado"
 // (para saber si las alertas de vencimiento van a ser utiles o ruidosas), las vistas previas de ensayo que salieron
-// en el grupo de avisos y los errores de n8n. NO cambia nada: ni el bot, ni los workflows, ni manda mensajes.
+// en el grupo de avisos y los errores de n8n. Desde el 26/11 tambien mide los PEDIDOS A PAISES (cuentas de beneficiario):
+// que tan bien los lee el bot y si coinciden con lo que el equipo paso a mano a cada grupo de pais.
+// NO cambia nada: ni el bot, ni los workflows, ni manda mensajes.
 //
 // Uso (desde la raiz del proyecto):
 //     node scripts/revisar_mayor_dia.mjs              # ultimas 24 horas
@@ -177,7 +179,50 @@ const tardanzas = vigilados.filter(m => m.cobrado).map(m => m.minutos).filter(n 
 const porBanco = {};
 for (const m of vigilados) { const b = porBanco[m.banco] = porBanco[m.banco] || { n: 0, cobrados: 0 }; b.n++; if (m.cobrado) b.cobrados++; }
 const alertasEnsayo = (avisos || []).filter(a => /la alerta iría/.test(a.t));
-const previas = (avisos || []).filter(a => !/la alerta iría/.test(a.t));
+// La vista previa de un pedido dice "📦 PEDIDO → iría a..."; las de retiros usan "➡️". Un mensaje con las dos cuenta en las dos.
+const previasDePedidos = (avisos || []).filter(a => /📦 PEDIDO/.test(a.t));
+const previas = (avisos || []).filter(a => !/la alerta iría/.test(a.t) && (/➡️/.test(a.t) || !/📦 PEDIDO/.test(a.t)));
+
+// ---------- PEDIDOS A PAISES (beneficiario): como los lee el bot (pedido de Kelvin, 26/11) ----------
+// Un pedido = la cuenta a la que hay que pagarle al cliente (Venezuela, Banesco, Colombia, Peru, Binance...). Hoy los pasa
+// la operadora a mano al grupo del pais: el NOMBRE del cliente en el primer renglon y debajo sus datos. El bot solo hace
+// una vista previa en avisos. Aqui se mide que tan bien los lee y se compara con lo que el equipo paso de verdad.
+const regsDe = x => ((x.fila.datos || {}).registros || []);
+const conPedido = deClientes.filter(x => regsDe(x).some(r => r.tipo === 'beneficiario'));
+const pedidosRegs = conPedido.flatMap(x => regsDe(x).filter(r => r.tipo === 'beneficiario').map(r => ({ x, r })));
+const destinoDe = r => (r.datos && r.datos.destino_sugerido) || '';
+const sinMontoP = o => [o.r.monto_usd, o.r.monto_local, o.r.datos && o.r.datos.monto_sin_moneda].every(v => v === null || v === undefined);
+const pedidosPorDestino = contar(pedidosRegs, o => destinoDe(o.r) || (o.r.pais ? o.r.pais + ' (sin grupo)' : 'SIN PAÍS'));
+const previasSimuladas = conPedido.map(x => ((simular(x.grupo, x.fila, x.ts) || []).find(e => /📦 PEDIDO/.test(String(e.texto || ''))) || {}).texto || '').filter(Boolean);
+const GRUPOS_PAIS = ['venezuela', 'banesco', 'colombia', 'peru', 'brasil', 'chile', 'argentina', 'mexico', 'ecuador', 'panama', 'cuba', 'paraguay', 'zelle', 'binance', 'euro'];
+const tokens = s => quitar(s).split(/[^a-z0-9ñ]+/).filter(w => w.length >= 2);
+const clientesG = [...grupos.values()].filter(g => g.tipo === 'cliente').map(g => ({ g, toks: tokens(g.nombre.replace(/pedidos?|\bjk\b|kelvin/gi, ' ')) }));
+// "LINDA OM" -> el grupo "Linda Omaña PEDIDOS JK"; si hay dos grupos posibles, no se adivina.
+const grupoDelNombre = cab => { const t = tokens(cab); if (!t.length) return null; const c = clientesG.filter(o => t.every(w => o.toks.some(k => k.startsWith(w)))); return c.length === 1 ? c[0].g : null; };
+const textoMsg = m => { const x = m.message || {}; return x.conversation || (x.extendedTextMessage || {}).text || (x.imageMessage || {}).caption || ''; };
+const pasados = [];
+// Solo los que el equipo paso en la SEGUNDA mitad del periodo (hasta 12 h): el equipo pasa el pedido horas despues de que
+// el cliente lo manda (al llegar el pago), y si el cliente lo mando antes del periodo el informe no lo tiene y saldria
+// como "no lo leyo" sin serlo.
+const HORAS_COMPARA = Math.min(12, HORAS / 2);
+const desdeComparar = desde + (HORAS - HORAS_COMPARA) * 3600000;
+for (const g of destinosTabla.filter(g => GRUPOS_PAIS.includes(quitar(g.nombre)))) {
+  for (const m of porGrupo.get(g.grupo_jid) || []) {
+    const lineas = textoMsg(m).split('\n').map(s => s.trim()).filter(Boolean);
+    if (lineas.length < 3 || /\d/.test(lineas[0]) || lineas[0].split(/\s+/).length > 4) continue;
+    const gc = grupoDelNombre(lineas[0]);
+    if (!gc) continue;
+    const ts = Number(m.messageTimestamp) * 1000;
+    if (ts < desdeComparar) continue;
+    const delCliente = pedidosRegs.filter(o => o.x.grupo.grupo_jid === gc.grupo_jid && o.x.ts <= ts && o.x.ts >= ts - 24 * 3600000);
+    const mismo = delCliente.some(o => quitar(destinoDe(o.r)) === quitar(g.nombre));
+    pasados.push({ pais: g.nombre, cliente: gc.nombre, resultado: mismo ? 'igual' : (delCliente.length ? 'otro grupo' : 'no lo leyó'),
+                   botDijo: [...new Set(delCliente.map(o => destinoDe(o.r) || 'sin país'))].join(', '), texto: lineas.slice(1).join('\n') });
+  }
+}
+// mensajes de clientes que parecen un pedido (cuenta, billetera, Nequi...) y el bot no saco ningun registro
+const PEDIDO_NO_LEIDO = deClientes.filter(x => !regsDe(x).length && x.fila.tipo !== 'captura' && !NO_ENTENDIDOS.includes(x)
+  && /\d{8,}|nequi|yape|\bpix\b|binance|usdt|trc20|pago movil|bancolombia|banesco|@[a-z0-9.-]+\.[a-z]{2,}/i.test(x.fila.texto));
 
 // ---------- 3) errores de n8n ----------
 let errores = null;
@@ -205,7 +250,34 @@ L.push('- Grupos del mayor que el informe mira: **' + grupos.size + '** (' + [..
 L.push('- Mensajes: **' + mensajes + '** (' + ignorados + ' ignorados por el lector: stickers, reacciones sueltas...). Mensajes de clientes / su operador: **' + deClientes.length + '**');
 L.push('- Retiros (RST/RCT/fotos de retiro) escritos por clientes: **' + retiros.length + '**; fuera de horario: **' + fueraHorario + '**');
 L.push('- Errores en los 3 workflows del mayor (n8n): ' + (errores === null ? '(no se pudo consultar)' : '**' + errores.length + '**' + (errores.length ? ' (' + errores.map(e => e.nombre.replace('Mayor: ', '') + ' #' + e.id + ' ' + e.cuando).join(', ') + ')' : '')));
-L.push('- Vistas previas de ENSAYO que salieron en el grupo de avisos: **' + (avisos === null ? '(no se pudo leer)' : previas.length + ' de retiros + ' + alertasEnsayo.length + ' de alertas') + '**');
+L.push('- Pedidos a países (cuentas de beneficiario) escritos por clientes: **' + pedidosRegs.length + '** cuentas en ' + conPedido.length + ' mensajes');
+L.push('- Vistas previas de ENSAYO que salieron en el grupo de avisos: **' + (avisos === null ? '(no se pudo leer)' : previas.length + ' de retiros + ' + previasDePedidos.length + ' de pedidos + ' + alertasEnsayo.length + ' de alertas') + '**');
+L.push('');
+L.push('## Pedidos a países: qué tan bien los lee el bot');
+if (!pedidosRegs.length) L.push('- (ningún pedido en el período)');
+else {
+  const n = pedidosRegs.length;
+  L.push('- Con país: **' + pedidosRegs.filter(o => o.r.pais).length + '** de ' + n + ' (' + pct(pedidosRegs.filter(o => o.r.pais).length, n) + ') · con grupo al que pasarlo: **' + pedidosRegs.filter(o => destinoDe(o.r)).length + '** · sin monto: **' + pedidosRegs.filter(sinMontoP).length + '**');
+  L.push('- A qué grupo iría cada uno: ' + top(pedidosPorDestino, 20).map(([k, v]) => k + ' ×' + v).join(' · '));
+}
+const cmp = contar(pasados, p => p.resultado);
+L.push('- Comparado con lo que **el equipo pasó a mano** a los grupos de países en las últimas ' + HORAS_COMPARA + ' h (nombre del cliente arriba): **' + pasados.length + '** reconocidos → igual que el bot: **' + (cmp['igual'] || 0) + '** · el bot lo mandaba a otro grupo: **' + (cmp['otro grupo'] || 0) + '** · el bot no lo leyó: **' + (cmp['no lo leyó'] || 0) + '**');
+L.push('  ("no lo leyó" también puede ser un pedido mandado en foto, por audio, en varios mensajes o antes del período.)');
+const difs = pasados.filter(p => p.resultado !== 'igual');
+if (difs.length) {
+  L.push('');
+  L.push('### Diferencias con el equipo (datos tapados)');
+  for (const p of difs.slice(0, 20)) L.push('- [' + p.pais + ' ← ' + p.cliente.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 18) + '] ' + (p.resultado === 'otro grupo' ? 'el bot decía ' + p.botDijo : 'el bot no lo leyó') + ' · ' + tapar(p.texto));
+}
+L.push('');
+L.push('### Mensajes de clientes que parecen un pedido y el bot no leyó (datos tapados)');
+const vistosP = new Set();
+for (const x of PEDIDO_NO_LEIDO) { const t = tapar(x.fila.texto); if (vistosP.has(t)) continue; vistosP.add(t); if (vistosP.size <= 15) L.push('- [' + x.grupo.nombre.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 14) + '] (' + x.fila.tipo + ') ' + t); }
+if (!vistosP.size) L.push('- (ninguno)');
+L.push('');
+L.push('### Cómo se ve la vista previa de un pedido (3 ejemplos, datos tapados)');
+if (!previasSimuladas.length) L.push('- (ninguna)');
+for (const t of previasSimuladas.slice(0, 3)) L.push('- ' + tapar(t));
 L.push('');
 L.push('## Qué habría hecho el bot con cada retiro de un cliente');
 if (!retiros.length) L.push('- (ningún retiro en el período)');
