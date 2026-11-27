@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, calcularConversionVIP, calcularConversionInversaVIP, tieneTasaVIP, obtenerComisionVIP, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput, obtenerTasasProcesadas } from './constants'
+import { cargarPaises, calcularTasaPublica, calcularConversion, calcularConversionInversa, calcularConversionVIP, calcularConversionInversaVIP, tieneTasaVIP, obtenerComisionVIP, tieneTasaMayorRST, tieneTasaMayorVolumen, isCajaDolar, formatearMonto, calcularTasaEnvio, calcularTasaRecibo, getFlagUrl, isCustomFlag, isEfectivoVenSubEntry, agruparEfectivoVenezuela, getPaisesParaSelector, parsearMonto, formatearMontoInput, obtenerTasasProcesadas } from './constants'
 import { supabase } from './lib/supabase'
 
 // Componente interno para selector de países con buscador responsivo
@@ -216,6 +216,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
   
   const [procesandoEnlace, setProcesandoEnlace] = useState(false)
   const [usarTasaVIP, setUsarTasaVIP] = useState(false)
+  const [tipoTasaMayor, setTipoTasaMayor] = useState('mayor') // 'mayor' (x Cuenta) | 'mayor_rst' | 'mayor_volumen' ($1,000+)
 
   const esMayor = modo === 'mayor'
   const isEfectivoVen = (p) => p?.nombre?.toUpperCase().includes('EFECTIVO VENEZUELA') || p?.nombre?.toUpperCase().includes('EFECTIVO VEN');
@@ -223,11 +224,27 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
   const vipActivo = Boolean(vipDisponible && usarTasaVIP)
   const comisionVIPUSD = vipDisponible ? obtenerComisionVIP(destino) : 0
 
+  const mayorRSTDisponible = Boolean(esMayor && destino && tieneTasaMayorRST(destino) && !isEfectivoVen(destino))
+  const mayorVolDisponible = Boolean(esMayor && destino && tieneTasaMayorVolumen(destino) && !isEfectivoVen(destino))
+  const mayorExtrasDisponibles = mayorRSTDisponible || mayorVolDisponible
+
   useEffect(() => {
     if (!vipDisponible && usarTasaVIP) {
       setUsarTasaVIP(false)
     }
   }, [vipDisponible, usarTasaVIP])
+
+  useEffect(() => {
+    if (!esMayor) {
+      if (tipoTasaMayor !== 'mayor') setTipoTasaMayor('mayor')
+      return
+    }
+    if (tipoTasaMayor === 'mayor_rst' && !mayorRSTDisponible) {
+      setTipoTasaMayor('mayor')
+    } else if (tipoTasaMayor === 'mayor_volumen' && !mayorVolDisponible) {
+      setTipoTasaMayor('mayor')
+    }
+  }, [esMayor, tipoTasaMayor, mayorRSTDisponible, mayorVolDisponible])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600)
@@ -314,7 +331,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
 
   useEffect(() => {
     if (origen && destino && paises.length > 0) {
-      const modoEfectivo = vipActivo ? 'vip' : modo
+      const modoEfectivo = esMayor ? tipoTasaMayor : (vipActivo ? 'vip' : modo)
       const tOrigenRecibo = calcularTasaRecibo(origen, modo)
       const tDestinoEnvio = calcularTasaEnvio(destino, modoEfectivo)
       const isDisp = tOrigenRecibo > 0 && tDestinoEnvio > 0
@@ -338,7 +355,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
         if (isDisp && numMonto > 0) {
           const res = vipActivo
             ? calcularConversionVIP(origen, destino, numMonto, paises)
-            : calcularConversion(origen, destino, numMonto, paises, modo)
+            : calcularConversion(origen, destino, numMonto, paises, modoEfectivo)
           setMontoRecibir(formatearMontoInput(res.toFixed(2)))
         } else if (numMonto === 0) {
           setMontoRecibir('0')
@@ -347,14 +364,14 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
         if (isDisp && numMontoRecibir > 0) {
           const nuevoMonto = vipActivo
             ? calcularConversionInversaVIP(origen, destino, numMontoRecibir, paises)
-            : calcularConversionInversa(origen, destino, numMontoRecibir, paises, modo)
+            : calcularConversionInversa(origen, destino, numMontoRecibir, paises, modoEfectivo)
           setMonto(formatearMontoInput(nuevoMonto.toFixed(2)))
         } else {
           setMonto('0')
         }
       }
     }
-  }, [origen, destino, paises, monto, montoRecibir, lastEdited, modo, vipActivo])
+  }, [origen, destino, paises, monto, montoRecibir, lastEdited, modo, esMayor, vipActivo, tipoTasaMayor])
 
 
   const handleMontoEnviarChange = (valStr) => {
@@ -484,9 +501,12 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     const numMontoRecibir = parsearMonto(montoRecibir)
     const resFormateado = formatearMonto(numMontoRecibir, codDestino)
     const montoEnvFormateado = formatearMonto(numMonto, codOrigen)
+    const labelMayor = esMayor && mayorExtrasDisponibles
+      ? (tipoTasaMayor === 'mayor_rst' ? ' (⚡ Tasa RST)' : tipoTasaMayor === 'mayor_volumen' ? ' (🚀 Tasa $1,000+)' : ' (🏦 Tasa x Cuenta)')
+      : ''
     const notaVIP = vipActivo ? ` (⭐ Tasa VIP • Comisión -$${formatearMonto(comisionVIPUSD)} USD descontada)` : ''
     
-    return `Estás enviando ${montoEnvFormateado} ${codOrigen} (${origen.nombre}) → ${resFormateado} ${codDestino} (${destino.nombre})${notaVIP}`
+    return `Estás enviando ${montoEnvFormateado} ${codOrigen} (${origen.nombre}) → ${resFormateado} ${codDestino} (${destino.nombre})${notaVIP}${labelMayor}`
   }
 
   const handleGenerarCotizacion = async (vendedorWhatsapp, nombreVendedor) => {
@@ -505,6 +525,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
 
     setProcesandoEnlace(true)
     const codigoUnico = `JK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const subTipoMayor = tipoTasaMayor === 'mayor_rst' ? 'Mayorista RST' : tipoTasaMayor === 'mayor_volumen' ? 'Mayorista $1,000+' : 'Mayorista';
 
     try {
       const { data, error } = await supabase.from('transacciones').insert([{
@@ -519,7 +540,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
         moneda_destino: destino.codigo,
         monto_recibir: parseFloat(parsearMonto(montoRecibir)),
         tasa_pactada: tasaDisplay.valor,
-        tipo_cliente: modo === 'mayor' ? 'Mayorista' : (vipActivo ? 'Estándar VIP' : 'Estándar'),
+        tipo_cliente: modo === 'mayor' ? subTipoMayor : (vipActivo ? 'Estándar VIP' : 'Estándar'),
         vendedor: nombreVendedor
       }])
       
@@ -534,8 +555,11 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
     const montRec = formatearMonto(parsearMonto(montoRecibir), destino.codigo);
     const msjTasa = `${tasaDisplay.base} = ${formatearMonto(tasaDisplay.valor, tasaDisplay.unidad)} ${tasaDisplay.unidad}`;
     const lineaVIP = vipActivo ? `\n🔹 Modalidad: ⭐ Tasa VIP (Comisión -$${formatearMonto(comisionVIPUSD)} USD)` : '';
+    const lineaMayor = esMayor && mayorExtrasDisponibles
+      ? `\n🔹 Modalidad Mayor: ${tipoTasaMayor === 'mayor_rst' ? '⚡ RST' : tipoTasaMayor === 'mayor_volumen' ? '🚀 $1,000+ (Un solo pedido)' : '🏦 TASA 1 x CUENTA'}`
+      : '';
 
-    const mensaje = `¡Hola ${nombreVendedor}! Mi código es *${codigoUnico}*\nQuiero realizar esta transacción:\n\n🔹 Envío: ${montEnv} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montRec} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${msjTasa}${lineaVIP}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito? Mi nombre en la App es ${nombreUsuario}.`
+    const mensaje = `¡Hola ${nombreVendedor}! Mi código es *${codigoUnico}*\nQuiero realizar esta transacción:\n\n🔹 Envío: ${montEnv} ${origen.codigo} (${origen.nombre})\n🔹 Recibo: ${montRec} ${destino.codigo} (${destino.nombre})\n🔹 Tasa: ${msjTasa}${lineaVIP}${lineaMayor}\n\n¿Me ayudas con los datos de ${origen.nombre} para el depósito? Mi nombre en la App es ${nombreUsuario}.`
     
     window.open(`https://wa.me/${vendedorWhatsapp}?text=${encodeURIComponent(mensaje)}`, '_blank')
   }
@@ -880,6 +904,108 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
           </div>
         )}
 
+        {/* Selector de Modalidad Mayor (Solo Mayor cuando destino tiene RST y/o $1,000+) */}
+        {origen && destino && isDisponible && esMayor && mayorExtrasDisponibles && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.6rem',
+            marginTop: '-1.5rem',
+            marginBottom: '2rem',
+            animation: 'fadeIn 0.3s'
+          }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${1 + (mayorRSTDisponible ? 1 : 0) + (mayorVolDisponible ? 1 : 0)}, 1fr)`,
+              gap: '0.45rem',
+              padding: '0.35rem',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '1rem',
+              width: '100%',
+              maxWidth: '520px'
+            }}>
+              <button
+                type="button"
+                onClick={() => setTipoTasaMayor('mayor')}
+                style={{
+                  padding: '0.6rem 0.5rem',
+                  borderRadius: '0.75rem',
+                  border: tipoTasaMayor === 'mayor' ? '1px solid var(--primary-color)' : '1px solid transparent',
+                  background: tipoTasaMayor === 'mayor' ? 'rgba(16, 185, 129, 0.16)' : 'transparent',
+                  color: tipoTasaMayor === 'mayor' ? 'var(--primary-color)' : 'var(--text-low)',
+                  fontWeight: 800,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                🏦 TASA 1 x CUENTA
+              </button>
+              {mayorRSTDisponible && (
+                <button
+                  type="button"
+                  onClick={() => setTipoTasaMayor('mayor_rst')}
+                  style={{
+                    padding: '0.6rem 0.5rem',
+                    borderRadius: '0.75rem',
+                    border: tipoTasaMayor === 'mayor_rst' ? '1px solid #38bdf8' : '1px solid transparent',
+                    background: tipoTasaMayor === 'mayor_rst' ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                    color: tipoTasaMayor === 'mayor_rst' ? '#38bdf8' : 'var(--text-low)',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  ⚡ RST
+                </button>
+              )}
+              {mayorVolDisponible && (
+                <button
+                  type="button"
+                  onClick={() => setTipoTasaMayor('mayor_volumen')}
+                  style={{
+                    padding: '0.6rem 0.5rem',
+                    borderRadius: '0.75rem',
+                    border: tipoTasaMayor === 'mayor_volumen' ? '1px solid #fbbf24' : '1px solid transparent',
+                    background: tipoTasaMayor === 'mayor_volumen' ? 'rgba(251, 191, 36, 0.16)' : 'transparent',
+                    color: tipoTasaMayor === 'mayor_volumen' ? '#fbbf24' : 'var(--text-low)',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  🚀 $1,000+
+                </button>
+              )}
+            </div>
+            {tipoTasaMayor === 'mayor_volumen' && (() => {
+              const { tasaOrigenParaDolares } = obtenerTasasProcesadas(origen, destino, paises, 'mayor_volumen');
+              const dolaresEnv = tasaOrigenParaDolares > 0 ? (parsearMonto(monto) / tasaOrigenParaDolares) : 0;
+              if (dolaresEnv > 0 && dolaresEnv < 999.99) {
+                return (
+                  <div style={{
+                    fontSize: '0.8rem',
+                    color: '#fbbf24',
+                    background: 'rgba(251, 191, 36, 0.1)',
+                    border: '1px solid rgba(251, 191, 36, 0.3)',
+                    borderRadius: '0.7rem',
+                    padding: '0.45rem 0.9rem',
+                    fontWeight: 600,
+                    textAlign: 'center'
+                  }}>
+                    ⚠️ Esta tasa aplica para un solo pedido desde <strong>$1,000 USD</strong>.
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+        )}
+
         {/* Resumen de la operación y Pactar Cambio (Pegado al destino) */}
         {origen && destino && isDisponible && monto && (
           <div style={{
@@ -887,7 +1013,7 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
             border: vipActivo ? '1px solid rgba(251, 191, 36, 0.28)' : '1px solid rgba(16,185,129,0.2)',
             borderRadius: '1.2rem',
             padding: '1.2rem',
-            marginTop: vipDisponible ? '0' : '-1.5rem',
+            marginTop: (vipDisponible || (esMayor && mayorExtrasDisponibles)) ? '0' : '-1.5rem',
             marginBottom: '2rem',
             animation: 'fadeIn 0.4s'
           }}>
@@ -913,7 +1039,11 @@ export default function Cotizador({ modo = 'detal', profile, onSwitchMode }) {
                 maxWidth: '340px'
               }}>
                 <span style={{ fontSize: '0.65rem', color: vipActivo ? '#fbbf24' : 'var(--text-low)', textTransform: 'uppercase', letterSpacing: '0.12rem', marginBottom: '0.2rem', fontWeight: vipActivo ? 800 : 600 }}>
-                  {vipActivo ? '⭐ Tasa VIP Aplicada' : 'Tasa Aplicada'}
+                  {vipActivo
+                    ? '⭐ Tasa VIP Aplicada'
+                    : (esMayor && mayorExtrasDisponibles
+                      ? (tipoTasaMayor === 'mayor_rst' ? '⚡ Tasa RST Aplicada' : tipoTasaMayor === 'mayor_volumen' ? '🚀 Tasa $1,000+ Aplicada' : '🏦 Tasa 1 x Cuenta Aplicada')
+                      : 'Tasa Aplicada')}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', width: '100%' }}>
                   <div style={{ fontSize: '1.4rem', fontWeight: 900, color: vipActivo ? '#fbbf24' : 'var(--primary-color)', fontFamily: 'Manrope, sans-serif' }}>

@@ -58,6 +58,46 @@ export function calcularTasaEnvioVIP(pais) {
 }
 
 /**
+ * Verifica si un país tiene Tasa Mayor X RST configurada (Columna Q).
+ */
+export function tieneTasaMayorRST(pais) {
+  if (!pais) return false;
+  return pais.margenMayorRST !== undefined && pais.margenMayorRST !== null && !isNaN(parseFloat(pais.margenMayorRST));
+}
+
+/**
+ * Verifica si un país tiene Tasa Mayor $1,000+ configurada (Columna R).
+ */
+export function tieneTasaMayorVolumen(pais) {
+  if (!pais) return false;
+  return pais.margenMayorVolumen !== undefined && pais.margenMayorVolumen !== null && !isNaN(parseFloat(pais.margenMayorVolumen));
+}
+
+/**
+ * Tasa de Envío Mayor X RST (solo Mayor). Retorna 0 si no está configurada.
+ */
+export function calcularTasaEnvioMayorRST(pais) {
+  if (!tieneTasaMayorRST(pais)) return 0;
+  const rawProveedor = pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0);
+  const tProveedor = parseFloat(rawProveedor) || 0;
+  if (tProveedor === 0) return 0;
+  const margen = parseFloat(pais.margenMayorRST) || 0;
+  return tProveedor * (1 - margen / 100);
+}
+
+/**
+ * Tasa de Envío Mayor $1,000+ (solo Mayor). Retorna 0 si no está configurada.
+ */
+export function calcularTasaEnvioMayorVolumen(pais) {
+  if (!tieneTasaMayorVolumen(pais)) return 0;
+  const rawProveedor = pais.tasaProveedorEnvio !== undefined ? pais.tasaProveedorEnvio : (pais.tasaProveedor || 0);
+  const tProveedor = parseFloat(rawProveedor) || 0;
+  if (tProveedor === 0) return 0;
+  const margen = parseFloat(pais.margenMayorVolumen) || 0;
+  return tProveedor * (1 - margen / 100);
+}
+
+/**
  * Tasa de Envío (cuando el sistema vende USD y entrega esta moneda).
  * Se RESTA el margen al proveedor.
  */
@@ -71,7 +111,11 @@ export function calcularTasaEnvio(pais, modo = 'detal') {
   let rawMargen;
   if (modo === 'vip' && tieneTasaVIP(pais)) {
     rawMargen = pais.margenEnvioVIP;
-  } else if (modo === 'mayor' && pais.margenEnvioMayor !== undefined && pais.margenEnvioMayor !== null && !isNaN(parseFloat(pais.margenEnvioMayor))) {
+  } else if (modo === 'mayor_rst' && tieneTasaMayorRST(pais)) {
+    rawMargen = pais.margenMayorRST;
+  } else if (modo === 'mayor_volumen' && tieneTasaMayorVolumen(pais)) {
+    rawMargen = pais.margenMayorVolumen;
+  } else if ((modo === 'mayor' || modo === 'mayor_rst' || modo === 'mayor_volumen') && pais.margenEnvioMayor !== undefined && pais.margenEnvioMayor !== null && !isNaN(parseFloat(pais.margenEnvioMayor))) {
     rawMargen = pais.margenEnvioMayor;
   } else {
     rawMargen = pais.margenEnvio !== undefined ? pais.margenEnvio : (pais.margen || 0);
@@ -91,8 +135,9 @@ export function calcularTasaRecibo(pais, modo = 'detal') {
   if (tProveedor === 0) return 0
   // Eliminamos el retorno forzado de 1 para USD para permitir ver la "Tasa Real" con margen
 
+  const esModoMayor = modo === 'mayor' || modo === 'mayor_rst' || modo === 'mayor_volumen';
   let rawMargen;
-  if (modo === 'mayor' && pais.margenReciboMayor !== undefined && pais.margenReciboMayor !== null && !isNaN(parseFloat(pais.margenReciboMayor))) {
+  if (esModoMayor && pais.margenReciboMayor !== undefined && pais.margenReciboMayor !== null && !isNaN(parseFloat(pais.margenReciboMayor))) {
     rawMargen = pais.margenReciboMayor;
   } else {
     rawMargen = pais.margenRecibo !== undefined ? pais.margenRecibo : (pais.margen || 0);
@@ -171,10 +216,12 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
     const origDolar = isCajaDolar(origen)
     const destDolar = isCajaDolar(destino)
 
+    const esModoMayor = modo === 'mayor' || modo === 'mayor_rst' || modo === 'mayor_volumen';
+
     if (origFuerte) {
       // Para Monedas Fuertes (EUR, GBP) como origen:
       // Al recibir Euros, el margen descuenta al cliente: montoEUR * tBase * (1 - mO / 100)
-      let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+      let mO = (esModoMayor && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
         ? parseFloat(origen.margenReciboMayor)
         : (parseFloat(origen.margenRecibo) || 0);
       const rawBaseO = origen.tasaProveedorRecibo !== undefined ? origen.tasaProveedorRecibo : (origen.tasaProveedor || 1);
@@ -190,14 +237,18 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
       // Suma directa de márgenes: margenRecibo(origen) + margenEnvio(destino).
       // Se suman directamente los porcentajes (ej: Zelle 5% + Ecuador 1% = 6%; Zelle 5% + USDT 5% = 10%).
       // Ecuador sí suma su comisión cuando se envía o recibe entre cajas dólar.
-      let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+      let mO = (esModoMayor && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
         ? parseFloat(origen.margenReciboMayor)
         : (parseFloat(origen.margenRecibo) || 0);
       let mD = (modo === 'vip' && tieneTasaVIP(destino))
         ? parseFloat(destino.margenEnvioVIP)
-        : (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
-          ? parseFloat(destino.margenEnvioMayor)
-          : (parseFloat(destino.margenEnvio) || 0);
+        : (modo === 'mayor_rst' && tieneTasaMayorRST(destino))
+          ? parseFloat(destino.margenMayorRST)
+          : (modo === 'mayor_volumen' && tieneTasaMayorVolumen(destino))
+            ? parseFloat(destino.margenMayorVolumen)
+            : (esModoMayor && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+              ? parseFloat(destino.margenEnvioMayor)
+              : (parseFloat(destino.margenEnvio) || 0);
 
       const mTotal = mO + mD;
       tasaOrigenParaDolares = 1;
@@ -208,7 +259,7 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
         // El margen de recibo (mO) se calcula sobre base 1 fija e independiente.
         // Así puedes anotar tu costo real (ej. 1.01) en Excel para tu sistema contable,
         // y la app descontará el margen limpio sobre 100 (ej: 8% -> 92.00 USD exactos).
-        let mO = (modo === 'mayor' && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
+        let mO = (esModoMayor && origen.margenReciboMayor !== undefined && origen.margenReciboMayor !== null && !isNaN(parseFloat(origen.margenReciboMayor)))
           ? parseFloat(origen.margenReciboMayor)
           : (parseFloat(origen.margenRecibo) || 0);
         // Si Ecuador es la base de referencia hacia moneda local, se mantiene neutro (base limpia para la pizarra)
@@ -225,9 +276,13 @@ export function obtenerTasasProcesadas(paisOrigen, paisDestino, paises, modo = '
         // Si el margen es 7%, entrega 93.00 USDT exactos (100 * 0.93 = 93.00).
         let mD = (modo === 'vip' && tieneTasaVIP(destino))
           ? parseFloat(destino.margenEnvioVIP)
-          : (modo === 'mayor' && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
-            ? parseFloat(destino.margenEnvioMayor)
-            : (parseFloat(destino.margenEnvio) || 0);
+          : (modo === 'mayor_rst' && tieneTasaMayorRST(destino))
+            ? parseFloat(destino.margenMayorRST)
+            : (modo === 'mayor_volumen' && tieneTasaMayorVolumen(destino))
+              ? parseFloat(destino.margenMayorVolumen)
+              : (esModoMayor && destino.margenEnvioMayor !== undefined && destino.margenEnvioMayor !== null && !isNaN(parseFloat(destino.margenEnvioMayor)))
+                ? parseFloat(destino.margenEnvioMayor)
+                : (parseFloat(destino.margenEnvio) || 0);
 
         tasaDestinoDesdeDolares = 1 * (1 - mD / 100);
       }

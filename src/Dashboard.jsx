@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, calcularTasaEnvioVIP, obtenerComisionVIP, formatearMonto } from './constants'
+import { cargarPaises, calcularTasaEnvio, calcularTasaRecibo, calcularTasaEnvioVIP, obtenerComisionVIP, calcularTasaEnvioMayorRST, calcularTasaEnvioMayorVolumen, formatearMonto } from './constants'
 import './Dashboard.css'
 
 export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitchMode }) {
@@ -78,6 +78,8 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
   const jkRecibo = paisVzla ? calcularTasaRecibo(paisVzla, modo) : 0
   const jkEnvioVIP = (!esMayor && paisVzla) ? calcularTasaEnvioVIP(paisVzla) : 0
   const jkComisionVIP = paisVzla ? obtenerComisionVIP(paisVzla) : 1
+  const jkEnvioMayorRST = (esMayor && paisVzla) ? calcularTasaEnvioMayorRST(paisVzla) : 0
+  const jkEnvioMayorVol = (esMayor && paisVzla) ? calcularTasaEnvioMayorVolumen(paisVzla) : 0
 
   return (
     <div className="dashboard-container">
@@ -216,7 +218,9 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
               <span style={{ fontWeight: 800, color: 'white', fontSize: '0.95rem' }}>Tasa Cambios JK:</span>
             </div>
             <div className="monitor-jk-rate-item">
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-low)', fontWeight: 600 }}>📤 Envío:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-low)', fontWeight: 600 }}>
+                {esMayor && (jkEnvioMayorRST > 0 || jkEnvioMayorVol > 0) ? '🏦 x Cuenta:' : '📤 Envío:'}
+              </span>
               <span style={{ fontWeight: 800, color: 'var(--primary-color)', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
                 Bs. {jkEnvio > 0 ? formatearMonto(jkEnvio, 'VES') : 'N/A'}
               </span>
@@ -229,6 +233,22 @@ export default function Dashboard({ onNavegar, modo = 'detal', profile, onSwitch
                 </span>
                 <span style={{ fontSize: '0.7rem', color: 'rgba(251, 191, 36, 0.85)', fontWeight: 700 }}>
                   (+${jkComisionVIP} com.)
+                </span>
+              </div>
+            )}
+            {jkEnvioMayorRST > 0 && (
+              <div className="monitor-jk-rate-item">
+                <span style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: 700 }}>⚡ RST:</span>
+                <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                  Bs. {formatearMonto(jkEnvioMayorRST, 'VES')}
+                </span>
+              </div>
+            )}
+            {jkEnvioMayorVol > 0 && (
+              <div className="monitor-jk-rate-item">
+                <span style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 700 }}>🚀 $1,000+:</span>
+                <span style={{ fontWeight: 800, color: '#fbbf24', fontSize: '1.1rem', fontFamily: 'Manrope, sans-serif' }}>
+                  Bs. {formatearMonto(jkEnvioMayorVol, 'VES')}
                 </span>
               </div>
             )}

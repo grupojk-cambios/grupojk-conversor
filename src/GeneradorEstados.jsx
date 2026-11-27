@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import html2canvas from 'html2canvas'
-import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa, calcularTasaEnvio, calcularTasaRecibo, tieneTasaVIP, obtenerComisionVIP, calcularTasaEnvioVIP } from './constants'
+import { cargarPaises, obtenerTasasProcesadas, getFlagUrl, formatearMonto, sincronizarGoogleSheets, isCajaDolar, calcularConversionInversa, calcularTasaEnvio, calcularTasaRecibo, tieneTasaVIP, obtenerComisionVIP, calcularTasaEnvioVIP, tieneTasaMayorRST, tieneTasaMayorVolumen, calcularTasaEnvioMayorRST, calcularTasaEnvioMayorVolumen } from './constants'
 import './GeneradorEstados.css'
 
 /**
@@ -25,6 +25,7 @@ export default function GeneradorEstados() {
   const [chunks, setChunks] = useState([])
   const [expandido, setExpandido] = useState(null)
   const [copiado, setCopiado] = useState(false)
+  const [copiadoAvisoMayor, setCopiadoAvisoMayor] = useState(false)
   const [modoCalculo, setModoCalculo] = useState('detal') // 'detal' | 'mayor'
   const cardRefs = useRef([])
   const captureRefs = useRef([])
@@ -199,6 +200,8 @@ export default function GeneradorEstados() {
       let tasaEnvio = 0;
       let tasaRecibo = 0;
       let tasaEnvioVIP = 0;
+      let tasaMayorRST = 0;
+      let tasaMayorVol = 0;
       const comVIP = obtenerComisionVIP(pais);
       
       if (rawEnvio > 0) {
@@ -207,12 +210,26 @@ export default function GeneradorEstados() {
           if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
             tasaEnvioVIP = calcularTasaEnvioVIP(pais);
           }
+          if (modoCalculo === 'mayor') {
+            if (tieneTasaMayorRST(pais)) tasaMayorRST = calcularTasaEnvioMayorRST(pais);
+            if (tieneTasaMayorVolumen(pais)) tasaMayorVol = calcularTasaEnvioMayorVolumen(pais);
+          }
         } else {
           const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
           tasaEnvio = (1 / tOrigE) * tDestE;
           if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
             const { tasaOrigenParaDolares: tOrigV, tasaDestinoDesdeDolares: tDestV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'vip');
             tasaEnvioVIP = (1 / tOrigV) * tDestV;
+          }
+          if (modoCalculo === 'mayor') {
+            if (tieneTasaMayorRST(pais)) {
+              const { tasaOrigenParaDolares: tOR, tasaDestinoDesdeDolares: tDR } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'mayor_rst');
+              tasaMayorRST = (1 / tOR) * tDR;
+            }
+            if (tieneTasaMayorVolumen(pais)) {
+              const { tasaOrigenParaDolares: tOV, tasaDestinoDesdeDolares: tDV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'mayor_volumen');
+              tasaMayorVol = (1 / tOV) * tDV;
+            }
           }
         }
       }
@@ -247,13 +264,78 @@ export default function GeneradorEstados() {
       else bandera = '📍';
       
       const sufijoVIP = tasaEnvioVIP > 0 ? ` | ⭐ *VIP ${formatearTasa(tasaEnvioVIP)}* (+$${comVIP})` : '';
-      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ 📤 *${formatearTasa(tasaEnvio)}*${sufijoVIP} | 📥 *${formatearTasa(tasaRecibo)}*\n`;
+      let sufijoMayor = '';
+      if (modoCalculo === 'mayor' && (tasaMayorRST > 0 || tasaMayorVol > 0)) {
+        if (tasaMayorRST > 0) sufijoMayor += ` | ⚡ *RST ${formatearTasa(tasaMayorRST)}*`;
+        if (tasaMayorVol > 0) sufijoMayor += ` | 🚀 *$1,000+ ${formatearTasa(tasaMayorVol)}*`;
+      }
+      const etiquetaEnvio = (modoCalculo === 'mayor' && (tasaMayorRST > 0 || tasaMayorVol > 0)) ? `🏦 *${formatearTasa(tasaEnvio)}* (x Cuenta)` : `📤 *${formatearTasa(tasaEnvio)}*`;
+      texto += `${bandera} *${pais.nombre} (${pais.codigo})* ➔ ${etiquetaEnvio}${sufijoVIP}${sufijoMayor} | 📥 *${formatearTasa(tasaRecibo)}*\n`;
     });
     
     texto += `\n⚠️ *Todos monto mínimo de $20*\n`;
     texto += `*Tasas referenciales sujetas a cambio*`;
     
     return texto;
+  };
+
+  const generarAvisoMayor = () => {
+    const vzla = todosPaises.find(p => p.codigo === 'VES' || p.id === 10);
+    const usdt = todosPaises.find(p => (p.codigo || '').toUpperCase() === 'USDT' || (p.nombre || '').toUpperCase().includes('USDT'));
+
+    const bloques = [];
+
+    // Bloque 1: USDT al Mayor
+    if (usdt) {
+      const mCuenta = (usdt.margenEnvioMayor !== undefined && usdt.margenEnvioMayor !== null && !isNaN(parseFloat(usdt.margenEnvioMayor)))
+        ? parseFloat(usdt.margenEnvioMayor)
+        : (parseFloat(usdt.margenEnvio) || 0);
+      const mRST = tieneTasaMayorRST(usdt) ? parseFloat(usdt.margenMayorRST) : null;
+      const mVol = tieneTasaMayorVolumen(usdt) ? parseFloat(usdt.margenMayorVolumen) : null;
+
+      let txtUsdt = `*RECIBIENDO PARA USDT* 💵\n\n`;
+      if (mRST !== null) {
+        txtUsdt += `• Precio *${mRST}% RST* A MI FAVOR\n`;
+        txtUsdt += `• Precio *${mCuenta}% POR CUENTA* A MI FAVOR\n`;
+      } else {
+        txtUsdt += `• Precio *${mCuenta}%* A MI FAVOR\n`;
+      }
+      if (mVol !== null) {
+        txtUsdt += `• Pedido $1,000+: *${mVol}%* A MI FAVOR\n`;
+      }
+      txtUsdt += `\n*PEDIDO MINIMO $200*\n*PEDIDO PAGADO, PEDIDO DESPACHADO* ‼️`;
+      bloques.push(txtUsdt);
+    }
+
+    // Bloque 2: Bolívares al Mayor
+    if (vzla) {
+      const tCuenta = calcularTasaEnvio(vzla, 'mayor');
+      const tRST = calcularTasaEnvioMayorRST(vzla);
+      const tVol = calcularTasaEnvioMayorVolumen(vzla);
+
+      let txtBs = `*TENGO BOLIVARES* 🚛🚀\n\n`;
+      if (tRST > 0) {
+        txtBs += `BANESCO *${formatearTasa(tRST)}* RST 🏦\n`;
+        txtBs += `VENEZUELA *${formatearTasa(tRST)}* RST 🏦\n`;
+        txtBs += `PROVINCIAL *${formatearTasa(tRST)}* RST 🏦\n`;
+        txtBs += `MERCANTIL *${formatearTasa(tRST)}* RST 🏦\n\n`;
+      }
+      if (tCuenta > 0) {
+        txtBs += `*${formatearTasa(tCuenta)} POR CUENTA* 🏦\n`;
+      }
+      if (tVol > 0) {
+        txtBs += `\n*1.000$ = ${formatearTasa(tVol)} RST* ‼️\n*(OJO ESTA TASA ES PARA UN SOLO PEDIDO)*`;
+      }
+      bloques.push(txtBs);
+    }
+
+    return bloques.join('\n\n────────────────\n\n');
+  };
+
+  const copiarAvisoMayor = () => {
+    navigator.clipboard.writeText(generarAvisoMayor());
+    setCopiadoAvisoMayor(true);
+    setTimeout(() => setCopiadoAvisoMayor(false), 2500);
   };
 
   const copiarAlPortapapeles = () => {
@@ -648,6 +730,8 @@ export default function GeneradorEstados() {
             let tasaEnvio = 0;
             let tasaRecibo = 0;
             let tasaEnvioVIP = 0;
+            let tasaMayorRST = 0;
+            let tasaMayorVol = 0;
             const comVIP = obtenerComisionVIP(pais);
             
             if (rawEnvio > 0) {
@@ -656,12 +740,26 @@ export default function GeneradorEstados() {
                 if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
                   tasaEnvioVIP = calcularTasaEnvioVIP(pais);
                 }
+                if (modoCalculo === 'mayor') {
+                  if (tieneTasaMayorRST(pais)) tasaMayorRST = calcularTasaEnvioMayorRST(pais);
+                  if (tieneTasaMayorVolumen(pais)) tasaMayorVol = calcularTasaEnvioMayorVolumen(pais);
+                }
               } else {
                 const { tasaOrigenParaDolares: tOrigE, tasaDestinoDesdeDolares: tDestE } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, modoCalculo);
                 tasaEnvio = (1 / tOrigE) * tDestE;
                 if (modoCalculo === 'detal' && tieneTasaVIP(pais)) {
                   const { tasaOrigenParaDolares: tOrigV, tasaDestinoDesdeDolares: tDestV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'vip');
                   tasaEnvioVIP = (1 / tOrigV) * tDestV;
+                }
+                if (modoCalculo === 'mayor') {
+                  if (tieneTasaMayorRST(pais)) {
+                    const { tasaOrigenParaDolares: tOR, tasaDestinoDesdeDolares: tDR } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'mayor_rst');
+                    tasaMayorRST = (1 / tOR) * tDR;
+                  }
+                  if (tieneTasaMayorVolumen(pais)) {
+                    const { tasaOrigenParaDolares: tOV, tasaDestinoDesdeDolares: tDV } = obtenerTasasProcesadas(paisReferencia, pais, todosPaises, 'mayor_volumen');
+                    tasaMayorVol = (1 / tOV) * tDV;
+                  }
                 }
               }
             }
@@ -745,6 +843,39 @@ export default function GeneradorEstados() {
                       whiteSpace: 'nowrap'
                     }}>
                       ⭐ VIP {formatearTasa(tasaEnvioVIP)} (+${comVIP})
+                    </div>
+                  ) : (tasaMayorRST > 0 || tasaMayorVol > 0) ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.12em', marginTop: '0.12em' }}>
+                      {tasaMayorRST > 0 && (
+                        <div style={{
+                          fontSize: '0.5em',
+                          fontWeight: 800,
+                          color: '#38bdf8',
+                          background: 'rgba(56, 189, 248, 0.14)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          borderRadius: '0.35em',
+                          padding: '0.08em 0.35em',
+                          lineHeight: 1.15,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          ⚡ RST {formatearTasa(tasaMayorRST)}
+                        </div>
+                      )}
+                      {tasaMayorVol > 0 && (
+                        <div style={{
+                          fontSize: '0.5em',
+                          fontWeight: 800,
+                          color: '#fbbf24',
+                          background: 'rgba(251, 191, 36, 0.14)',
+                          border: '1px solid rgba(251, 191, 36, 0.35)',
+                          borderRadius: '0.35em',
+                          padding: '0.08em 0.35em',
+                          lineHeight: 1.15,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          🚀 $1k+ {formatearTasa(tasaMayorVol)}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{ fontSize: '0.55em', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>
@@ -941,6 +1072,29 @@ export default function GeneradorEstados() {
               📝 Texto
             </button>
           </div>
+
+          {modoCalculo === 'mayor' && (
+            <button
+              onClick={copiarAvisoMayor}
+              style={{
+                background: copiadoAvisoMayor ? 'rgba(16, 185, 129, 0.25)' : 'rgba(251, 191, 36, 0.16)',
+                border: copiadoAvisoMayor ? '1px solid #10b981' : '1px solid rgba(251, 191, 36, 0.45)',
+                color: copiadoAvisoMayor ? '#10b981' : '#fbbf24',
+                padding: '0.5rem 1.1rem',
+                borderRadius: '100px',
+                cursor: 'pointer',
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                transition: 'all 0.25s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+              title="Copiar texto listo para tu grupo VENTAS MAYOR (Bs y USDT)"
+            >
+              {copiadoAvisoMayor ? '✅ Aviso Mayor Copiado' : '📋 Copiar Aviso Mayor'}
+            </button>
+          )}
         </div>
       </div>
 

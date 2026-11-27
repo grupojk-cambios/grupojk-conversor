@@ -35,6 +35,10 @@ export {
   tieneTasaVIP,
   obtenerComisionVIP,
   calcularTasaEnvioVIP,
+  tieneTasaMayorRST,
+  tieneTasaMayorVolumen,
+  calcularTasaEnvioMayorRST,
+  calcularTasaEnvioMayorVolumen,
   calcularTasaEnvio,
   calcularTasaRecibo,
   calcularTasaPublica,
@@ -271,10 +275,12 @@ export async function sincronizarGoogleSheets() {
     const idxUSDT = headRow.findIndex(h => h.includes('FACTOR USDT') || h.includes('VALOR USDT'));
     const idxISO = headRow.findIndex(h => h.includes('ISO') || h.includes('BANDERA'));
     const idxCod = headRow.findIndex(h => h.includes('CÓDIGO') || h.includes('CODIGO') || h.includes('BANCO'));
-    const idxMargenEnvioMayor = headRow.findIndex(h => h.includes('MARGEN ENVIO MAYOR') || h.includes('MARGEN ENVÍO MAYOR'));
+    const idxMargenEnvioMayor = headRow.findIndex(h => h.includes('MARGEN ENVIO MAYOR') || h.includes('MARGEN ENVÍO MAYOR') || h.includes('TASA 1 X CUENTA') || h.includes('TASA 1 CUENTA'));
     const idxMargenReciboMayor = headRow.findIndex(h => h.includes('MARGEN RECIBO MAYOR'));
     const idxMargenEnvioVIP = headRow.findIndex(h => h.includes('MARGEN ENVIO VIP') || h.includes('MARGEN ENVÍO VIP') || h.trim() === 'MARGEN VIP' || h.trim() === 'VIP');
     const idxComisionVIP = headRow.findIndex(h => h.includes('COMISION VIP') || h.includes('COMISIÓN VIP') || h.includes('FEE VIP'));
+    const idxMargenMayorRST = headRow.findIndex(h => h.includes('MARGEN MAYOR X RST') || h.includes('MARGEN MAYOR RST') || h.includes('MAYOR X RST') || h.includes('MAYOR RST'));
+    const idxMargenMayorVolumen = headRow.findIndex(h => h.includes('MARGEN MAYOR 1000') || h.includes('MARGEN MAYOR VOLUMEN') || h.includes('MAYOR 1000'));
     const idxCiudades = headRow.findIndex(h => h.includes('CIUDADES'));
     const idxMon = headRow.findIndex(h => h.includes('NOMBRE') || h.includes('MONEDA'));
     const idxMinimo = headRow.findIndex(h => h.includes('MINIMO') || h.includes('MÍNIMO') || h.includes('MONTO MIN') || h === 'MIN');
@@ -354,6 +360,8 @@ export async function sincronizarGoogleSheets() {
           margenReciboMayor: idxMargenReciboMayor !== -1 && row.length > idxMargenReciboMayor ? parseValNullable(row[idxMargenReciboMayor]) : null,
           margenEnvioVIP: idxMargenEnvioVIP !== -1 && row.length > idxMargenEnvioVIP ? parseValNullable(row[idxMargenEnvioVIP]) : null,
           comisionVIP: idxComisionVIP !== -1 && row.length > idxComisionVIP ? parseValNullable(row[idxComisionVIP]) : null,
+          margenMayorRST: idxMargenMayorRST !== -1 && row.length > idxMargenMayorRST ? parseValNullable(row[idxMargenMayorRST]) : null,
+          margenMayorVolumen: idxMargenMayorVolumen !== -1 && row.length > idxMargenMayorVolumen ? parseValNullable(row[idxMargenMayorVolumen]) : null,
           ciudades: idxCiudades !== -1 && row.length > idxCiudades && row[idxCiudades].trim() !== '' ? row[idxCiudades].trim() : ''
         });
       }
