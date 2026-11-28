@@ -94,6 +94,14 @@ console.log('=== 2) LAS REACCIONES DE LOS COBRADORES (cobrado / no cobrado) ==='
   chk(cobro(reaccion('❌')).soloPendiente === true && cobro(reaccion('')).soloPendiente === true && cobro(reaccion('✅')).soloPendiente === false && cobro({ conversation: 'Verificar datos' }, { cita: 'M5' }).soloPendiente === false,
       'la X y quitar la reaccion NO pisan un "verificar"/"se dañó" (en cualquier orden que lleguen); un cobrado o un "verificar" si se aplican siempre');
   chk(cobro(reaccion('✅'), {}, GRUPO_CLIENTE) === null, 'una reaccion en un grupo de CLIENTE no se mira');
+  // QUIEN lo marco (la caja de cada cobrador, 27/11): su numero (participantAlt) y su nombre en WhatsApp
+  {
+    const o = new Function('$input', code(mayor, 'Entender Cobro'))({ first: () => ({ json: { grupo: DESTINOS[0], data: { key: { remoteJid: ID('PICHINCHA'), fromMe: false, id: 'RQ1', participant: '9@lid', participantAlt: '593990000077@s.whatsapp.net' },
+      pushName: 'Cobrador Prueba', message: reaccion('✅'), messageTimestamp: 1795000999 } } }) });
+    chk(o.length === 1 && o[0].json.por === '593990000077' && o[0].json.por_nombre === 'Cobrador Prueba', 'la reaccion trae QUIEN la puso (numero y nombre): la cuenta va por cobrador', '-> ' + JSON.stringify(o.map(i => [i.json.por, i.json.por_nombre])));
+    const k = new Function('$input', code(mayor, 'Entender Cobro'))({ first: () => ({ json: { grupo: DESTINOS[0], data: { key: { remoteJid: ID('PICHINCHA'), fromMe: true, id: 'RQ2' }, message: reaccion('✅'), messageTimestamp: 1795001000 } } }) });
+    chk(k.length === 1 && k[0].json.por === 'kelvin', 'si la marca Kelvin, queda "kelvin"');
+  }
   chk(cobro({ imageMessage: { caption: '' } }) === null, 'una foto: nada');
 }
 
@@ -235,7 +243,9 @@ console.log('=== 5) EL CABLEADO DEL WORKFLOW DE ALERTAS ===');
   chk(JSON.stringify(mayorEnvia) === JSON.stringify(['Enviar', 'Reenviar sin Cita']), 'en el workflow del mayor los reaccionar/anotar NO envian: solo "Enviar" y "Reenviar sin Cita"', '-> ' + mayorEnvia);
   chk(JSON.stringify(mayor.nodes.filter(n => /httpRequest/.test(n.type) && soloLee(n)).map(n => n.name).sort()) === '["Descargar Foto","Leer Tasas"]', 'los otros pedidos HTTP del mayor solo LEEN: "Leer Tasas" (la hoja) y "Descargar Foto" (la foto del cliente)');
   const cobro = nodo(mayor, 'Marcar Cobro').parameters;
-  chk(/grupo_jid=eq\./.test(cobro.filterString) && /mensaje_id=eq\./.test(cobro.filterString) && cobro.fieldsUi.fieldValues.map(f => f.fieldId).join() === 'cobro,cobro_en,cobro_emoji', '"Marcar Cobro" actualiza solo ese mensaje de ese grupo', '-> ' + cobro.filterString);
+  chk(/grupo_jid=eq\./.test(cobro.filterString) && /mensaje_id=eq\./.test(cobro.filterString) && cobro.fieldsUi.fieldValues.map(f => f.fieldId).join() === 'cobro,cobro_en,cobro_emoji,cobrado_por,cobrado_por_nombre', '"Marcar Cobro" actualiza solo ese mensaje de ese grupo (y guarda quien lo cobro)', '-> ' + cobro.filterString);
+  const por = cobro.fieldsUi.fieldValues.find(f => f.fieldId === 'cobrado_por').fieldValue;
+  chk(/\$json\.cobro === "cobrado" \? \(\$json\.por \|\| ""\) : ""/.test(por), '...quien lo cobro se guarda solo si quedo "cobrado" (si lo desmarcan, se borra)', '-> ' + por);
   chk(/cobro=not\.in\.\(verificar,danado\)/.test(cobro.filterString), '"Marcar Cobro" no deja que una X pise un "verificar"/"se dañó"', '-> ' + cobro.filterString);
   const con = mayor.connections;
   chk(con['Redis Leer Publicacion'].main[0].map(x => _strip(x.node)).join() === 'Redis Leer Temporal' && con['Redis Leer Temporal'].main[0].map(x => _strip(x.node)).join() === 'Grupos Destino' && nodo(mayor, 'Redis Leer Temporal').type === 'n8n-nodes-base.redis', 'la clave temporal de Solidario se lee en la cadena (Redis Leer Publicacion -> Redis Leer Temporal -> Grupos Destino)');

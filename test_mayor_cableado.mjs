@@ -182,15 +182,24 @@ console.log('=== 5) El workflow del mayor ===');
   const sale = n => (((mayor.connections[n] || {}).main || [])[0] || []).map(c => c.node);
   chk(JSON.stringify(sale('Grupos Destino')) === '["Retiros Recientes"]' && JSON.stringify(sale('Retiros Recientes')) === '["Redis Leer Sin Banco"]'
       && JSON.stringify(sale('Redis Leer Sin Banco')) === '["Leer Tasas"]' && JSON.stringify(sale('Leer Tasas')) === '["Formas de Pago Vistas"]'
-      && JSON.stringify(sale('Formas de Pago Vistas')) === '["Saldo del Cliente"]' && JSON.stringify(sale('Saldo del Cliente')) === '["¿Foto de Pago?"]'
+      && JSON.stringify(sale('Formas de Pago Vistas')) === '["Saldo del Cliente"]' && JSON.stringify(sale('Saldo del Cliente')) === '["Corte del Cobrador"]'
+      && JSON.stringify(sale('Corte del Cobrador')) === '["¿Foto de Pago?"]'
       && JSON.stringify(sale('Leer Pago')) === '["Decidir Publicacion"]',
       'el orden es Grupos Destino -> Retiros Recientes -> Redis Leer Sin Banco -> Leer Tasas -> Formas de Pago Vistas -> Saldo del Cliente -> ¿Foto de Pago? -> Decidir Publicacion');
   // el saldo (Parte B): lee la vista saldo_mayor y anota en movimientos_mayor, sin caerse si la tabla no esta
   const sc = nodo(mayor, 'Saldo del Cliente'), gm = nodo(mayor, 'Guardar Movimientos');
   chk(sc.parameters.tableId === 'saldo_mayor' && sc.executeOnce === true && sc.onError === 'continueRegularOutput' && sc.alwaysOutputData === true
       && gm.parameters.tableId === 'movimientos_mayor' && gm.parameters.operation === 'create' && gm.onError === 'continueRegularOutput'
-      && JSON.stringify(sale('Decidir Publicacion')) === '["Enviar","Armar Movimientos"]' && JSON.stringify(sale('Armar Movimientos')) === '["Guardar Movimientos"]',
+      && JSON.stringify(sale('Decidir Publicacion')) === '["Enviar","Armar Movimientos","Armar Corte","Armar Entrega"]' && JSON.stringify(sale('Armar Movimientos')) === '["Guardar Movimientos"]',
       'el saldo: lee saldo_mayor y anota en movimientos_mayor (Decidir Publicacion -> Armar Movimientos -> Guardar Movimientos)');
+  // el corte del cobrador (27/11): lee corte_pendiente SOLO si el mensaje es un corte, y guarda el corte en cortes_cobradores
+  const cc = nodo(mayor, 'Corte del Cobrador'), gc = nodo(mayor, 'Guardar Corte');
+  const ge = nodo(mayor, 'Guardar Entrega');
+  chk(cc.parameters.tableId === 'caja_consulta' && /motivo === "corte"/.test(cc.parameters.filterString) && /motivo === "recibido"/.test(cc.parameters.filterString) && /"nadie"/.test(cc.parameters.filterString)
+      && cc.executeOnce === true && cc.onError === 'continueRegularOutput'
+      && gc.parameters.tableId === 'cortes_cobradores' && gc.parameters.operation === 'create' && gc.onError === 'continueRegularOutput' && JSON.stringify(sale('Armar Corte')) === '["Guardar Corte"]'
+      && ge.parameters.tableId === 'entregas_cobradores' && ge.parameters.operation === 'create' && ge.onError === 'continueRegularOutput' && JSON.stringify(sale('Armar Entrega')) === '["Guardar Entrega"]',
+      'la caja: lee caja_consulta solo con un corte o un "recibido", guarda el corte (cortes_cobradores) y la entrega (entregas_cobradores)');
   // como pasa la operadora los pedidos del cliente (27/11): una sola consulta, de solo lectura, y si falla igual sigue
   const fp = nodo(mayor, 'Formas de Pago Vistas');
   chk(fp.parameters.operation === 'getAll' && fp.parameters.tableId === 'transacciones_mayor_por_whatsapp' && /datos->>cabecera=ilike/.test(fp.parameters.filterString)
@@ -205,7 +214,7 @@ console.log('=== 5) El workflow del mayor ===');
       && /sinBanco:/.test(sb.parameters.key), '"Redis Leer Sin Banco": una sola lectura (sinBanco:<grupo>), con credencial, y si falla no se cae');
   // el lienzo en orden de proceso (de izquierda a derecha)
   const x = n => nodo(mayor, n).position[0];
-  const fila = ['Hace Falta Publicar?', 'Redis Leer Publicacion', 'Redis Leer Temporal', 'Grupos Destino', 'Retiros Recientes', 'Redis Leer Sin Banco', 'Leer Tasas', 'Formas de Pago Vistas', 'Saldo del Cliente', '¿Foto de Pago?', 'Descargar Foto', 'Foto a Binario', 'Leer Pago', 'Decidir Publicacion', 'Enviar', 'Fallo la Cita?'];
+  const fila = ['Hace Falta Publicar?', 'Redis Leer Publicacion', 'Redis Leer Temporal', 'Grupos Destino', 'Retiros Recientes', 'Redis Leer Sin Banco', 'Leer Tasas', 'Formas de Pago Vistas', 'Saldo del Cliente', 'Corte del Cobrador', '¿Foto de Pago?', 'Descargar Foto', 'Foto a Binario', 'Leer Pago', 'Decidir Publicacion', 'Enviar', 'Fallo la Cita?'];
   chk(fila.every((n, i) => i === 0 || x(n) > x(fila[i - 1])), 'en el lienzo los nodos van en el orden del proceso, de izquierda a derecha');
   chk(!!nodo(mayor, 'Nota') && /FASE 2/.test(nodo(mayor, 'Nota').parameters.content) && /ENSAYO/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 2 y el modo ensayo');
 }

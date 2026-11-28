@@ -620,6 +620,28 @@ return [{ json: fila }];
 # ===================== CODIGO COMUN: ¿EL CLIENTE CONTESTA SI O NO? =====================
 # Lo usan "Hace Falta Publicar?" (para dejarlo pasar) y "Decidir Publicacion" (para saber que contesto).
 $siNoJs = @'
+// "corte hasta aqui" / "corte" / "dame el corte" de un cobrador en el grupo de un BANCO (27/11). Corto, y no de Kelvin.
+// (Lo usan "Hace Falta Publicar?" y "Decidir Publicacion".)
+function esCorte(grupo, fila){
+  const t = String((fila && fila.texto) || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  // (Kelvin, la operadora y los de operadores_caja no son cobradores: su "corte" no es el corte de un cobrador)
+  return !!grupo && grupo.tipo === 'destino' && !!fila && !puedeConfirmarCaja(grupo, fila) && t.length > 0 && t.length <= 60 && /\bcorte\b/.test(t);
+}
+// "recibido 4100" (o solo "recibido") de KELVIN o de la OPERADORA en el grupo de un banco, CITANDO el "corte hasta aqui" de un
+// cobrador: el cobrador entrego el efectivo y se anota la entrega (27/11). Corto y con cita.
+// Ademas de Kelvin y la operadora del grupo, los numeros de grupos_mayor.operadores_caja (Kelvin, 27/11; los numeros estan en
+// Supabase, no en el codigo, porque el repositorio es publico). Se comparan los ultimos 9 digitos.
+function puedeConfirmarCaja(grupo, fila){
+  if (!fila) return false;
+  if (fila.autor_rol === 'kelvin' || fila.autor_rol === 'operadora') return true;
+  const mio = String(fila.autor_numero || '').replace(/\D/g, '').slice(-9);
+  return !!mio && String((grupo && grupo.operadores_caja) || '').split(/[,;\s]+/).some(n => n.replace(/\D/g, '').slice(-9) === mio);
+}
+function esRecibido(grupo, fila){
+  const t = String((fila && fila.texto) || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  return !!grupo && grupo.tipo === 'destino' && !!fila && puedeConfirmarCaja(grupo, fila)
+    && !!(fila.datos && fila.datos.cita_id) && t.length > 0 && t.length <= 60 && /\brecibid[oa]s?\b/.test(t);
+}
 // "si", "sí", "siii", "claro", "correcto", "👍" = 'si' | "no", "nop", "negativo" = 'no' | lo demas = ''. Solo mensajes CORTOS:
 // un "no tengo el codigo todavia, ya se lo paso" no es contestar la pregunta. "no se" (no sé) tampoco.
 function respuestaSiNo(texto){
@@ -667,6 +689,10 @@ const cabeceraCliente = String(fila.cliente_nombre || '').normalize('NFD').repla
 if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pieza || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente', cabecera: cabeceraCliente } }];
 // Una FOTO del cliente (sin un RST en el pie): puede ser la captura de su PAGO. "Leer Pago" la lee con IA, como en el detal (27/11).
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'captura') return [{ json: { motivo: 'foto', cabecera: cabeceraCliente } }];
+// Un cobrador pide su CORTE en el grupo de su banco ("corte hasta aqui"): se le dice cuanto cobro desde su ultimo corte (27/11).
+if (esCorte(grupo, fila)) return [{ json: { motivo: 'corte', cabecera: '' } }];
+// Kelvin o la operadora: "recibido 4100" citando el corte de un cobrador -> se anota la entrega (27/11).
+if (esRecibido(grupo, fila)) return [{ json: { motivo: 'recibido', cabecera: '' } }];
 // El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
 // "Decidir Publicacion" contra los mensajes recientes del grupo.
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
@@ -988,6 +1014,11 @@ try {
   const j = $('Leer Pago').first().json || {};
   FOTO = JSON.parse(String(j.content || j.text || '').replace(/```json/gi, '').replace(/```/g, '').trim());
 } catch(e){ FOTO = null; }
+// El corte que pide un cobrador ("Corte del Cobrador" lee la vista corte_pendiente: lo que cobro desde su ultimo corte, 27/11).
+let CORTE = null;
+try { const c = $('Corte del Cobrador').first().json || {}; CORTE = c.error ? { error: true } : c; } catch(e){ CORTE = null; }
+const cortes = [];                 // el corte de ESTE mensaje (se guarda en cortes_cobradores: el proximo corte empieza aqui)
+const entregas = [];               // el "recibido" de ESTE mensaje (se guarda en entregas_cobradores)
 const nuevos = [];                 // los movimientos de ESTE mensaje (se anotan y se usan para el saldo)
 const diaEcuador = iso => new Date((Date.parse(iso) || Date.now()) - 5 * 3600000).toISOString().slice(0, 10);
 function anotar(tipo, forma, monto, detalle, msgId){
@@ -1399,6 +1430,58 @@ else if (grupo.tipo === 'cliente'){
     const vistaSaldo = lineas.join('\n');
     envios.push({ etapa: 'saldo', soloEnsayo: true, tipo: 'texto', jid: GRUPO_AVISOS, texto: vistaSaldo, vista: vistaSaldo });
   }
+} else if (esCorte(grupo, fila)){
+  // ---------- CORTE DEL COBRADOR: "corte hasta aqui" (Kelvin, 27/11) ----------
+  // Lo que cobro este cobrador (los RST que el marco como cobrados, en todos los bancos) desde su ultimo corte hasta la hora de
+  // este mensaje. Solo el total: Kelvin lo compara con el efectivo que le entrega. El corte se guarda: el proximo empieza aqui.
+  real = (MODO === 'real') && grupo.publicar === true;
+  const hasta = fila.fecha_mensaje || new Date().toISOString();
+  const ec = iso => new Date((Date.parse(iso) || Date.now()) - 5 * 3600000);
+  const hora12 = iso => { const d = ec(iso); let h = d.getUTCHours(); const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return h + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ' ' + ap; };
+  const mismoDia = iso => ec(iso).toISOString().slice(0, 10) === ec(hasta).toISOString().slice(0, 10);
+  const cuando = iso => (mismoDia(iso) ? 'las ' : 'el ' + ec(iso).toISOString().slice(8, 10) + '/' + ec(iso).toISOString().slice(5, 7) + ' a las ') + hora12(iso);
+  const desdeCorte = iso => (mismoDia(iso) ? 'de las ' : 'del ' + ec(iso).toISOString().slice(8, 10) + '/' + ec(iso).toISOString().slice(5, 7) + ' a las ') + hora12(iso);
+  const quien = String(datos.autor_nombre || '').trim() || 'el cobrador';
+  if (!CORTE || CORTE.error){
+    const aviso = '⚠️ ' + quien + ' pidió su corte en ' + (grupo.nombre || 'un banco') + ', pero no pude sacarlo: ¿ya está creada la vista corte_pendiente en Supabase (sql/mayor_caja_cobradores.sql)?';
+    envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
+  } else {
+    const n = Number(CORTE.n_rst) || 0, total = Math.round((Number(CORTE.total_usd) || 0) * 100) / 100;
+    const texto = '✂️ Corte hasta ' + cuando(hasta) + ': ' + (n ? fmt2(total) + '$ (' + n + ' RST)' : 'no tienes RST cobrados') + (CORTE.ultimo_corte ? ', desde tu corte ' + desdeCorte(CORTE.ultimo_corte) : '') + '.';
+    envios.push({ etapa: 'banco', tipo: 'texto', jid: grupo.grupo_jid, texto, citar: fila.mensaje_id, vista: '➡️ a ' + quien + ' en ' + (grupo.nombre || 'su grupo') + ' (citando su mensaje): "' + texto + '"' });
+    cortes.push({ hasta, cobrador: fila.autor_numero || 'desconocido', cobrador_nombre: String(datos.autor_nombre || '').slice(0, 60) || null, grupo_jid: grupo.grupo_jid,
+                  n_rst: n, total_usd: total, mensaje_id: fila.mensaje_id });
+  }
+} else if (esRecibido(grupo, fila)){
+  // ---------- "RECIBIDO": el cobrador entrego el efectivo de su corte (Kelvin, 27/11) ----------
+  // Kelvin o la operadora citan el "corte hasta aqui" del cobrador y escriben "recibido 4100" (o solo "recibido" = el total del
+  // corte). Se anota la entrega a nombre de ESE cobrador y se dice cuanto queda debiendo (lo cobrado menos lo entregado).
+  real = (MODO === 'real') && grupo.publicar === true;
+  const quienRecibe = fila.autor_rol === 'kelvin' ? 'Kelvin' : fila.autor_rol === 'operadora' ? 'la operadora' : (String(datos.autor_nombre || '').trim() || 'un operador');
+  if (!CORTE || CORTE.error || !CORTE.cobrador){
+    const aviso = '⚠️ ' + quienRecibe + ' escribió "recibido" en ' + (grupo.nombre || 'un banco') + ', pero no encontré el corte que citó'
+      + (CORTE && CORTE.error ? ' (¿ya está creada la vista caja_consulta en Supabase? sql/mayor_caja_recibido.sql)' : ': hay que citar el mensaje "corte hasta aquí" del cobrador') + '.';
+    envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
+  } else {
+    // el monto que escribio ("recibido 4.100" / "recibido 4100,50"); si no escribio ninguno, es el total del corte
+    const s = (String(fila.texto || '').match(/\d[\d.,]*/) || [''])[0].replace(/[.,]+$/, '');
+    const u = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+    const escrito = !s ? null : (u === -1 ? parseFloat(s) : (s.length - u - 1 === 3 ? parseFloat(s.replace(/[.,]/g, '')) : parseFloat(s.slice(0, u).replace(/[.,]/g, '') + '.' + s.slice(u + 1))));
+    const total = Math.round((Number(CORTE.total_usd) || 0) * 100) / 100;
+    const monto = Math.round(((escrito > 0) ? escrito : total) * 100) / 100;
+    const cobrador = String(CORTE.cobrador_nombre || '').trim() || 'el cobrador';
+    if (!(monto > 0)){
+      const aviso = '⚠️ ' + quienRecibe + ' escribió "recibido" para el corte de ' + cobrador + ', pero ese corte era de 0$ y no dijo cuánto recibió.';
+      envios.push({ etapa: 'aviso', tipo: 'texto', jid: GRUPO_AVISOS, texto: aviso, vista: aviso });
+    } else {
+      const debe = Math.round(((Number(CORTE.debe_entregar) || 0) - monto) * 100) / 100;
+      const texto = '💵 Recibido de ' + cobrador + ': ' + fmt2(monto) + '$' + (Math.abs(monto - total) > 0.5 ? ' (el corte era de ' + fmt2(total) + '$)' : '') + '. '
+        + (debe > 0.5 ? 'Queda debiendo ' + fmt2(debe) + '$.' : debe < -0.5 ? 'Entregó ' + fmt2(-debe) + '$ de más.' : 'Queda en cero.');
+      envios.push({ etapa: 'banco', tipo: 'texto', jid: grupo.grupo_jid, texto, citar: fila.mensaje_id, vista: '➡️ en ' + (grupo.nombre || 'el grupo') + ' (citando el "recibido" de ' + quienRecibe + '): "' + texto + '"' });
+      entregas.push({ fecha: fila.fecha_mensaje || new Date().toISOString(), cobrador: CORTE.cobrador, cobrador_nombre: CORTE.cobrador_nombre || null, monto_usd: monto,
+                      nota: 'recibido por ' + quienRecibe + ' (corte de ' + fmt2(total) + '$)', mensaje_id: fila.mensaje_id });
+    }
+  }
 } else if (grupo.tipo === 'destino' && pub && pub.cliente_jid && datos.cita_id){
   // ---------- el banco responde a UNA publicacion nuestra ----------
   // (solo existe si el bot publico de verdad; si el modo volvio a 'ensayo', no se manda nada)
@@ -1436,10 +1519,12 @@ if (!envios.length) return [];
 // en una edicion, la del mensaje que edito, no la de la edicion en si).
 // (Cuando el cliente contesta "si" / "no" a la pregunta del banco, es la fila del retiro que se le pregunto.)
 const filaDestino = filaEditada || filaPendiente || ((grupo.tipo === 'destino' && pub && pub.fila_id) ? pub.fila_id : filaId);
+// El encabezado de la vista previa: el cliente y su grupo; en un grupo de BANCO (un corte), solo el nombre del grupo.
+const cabeceraVista = (grupo.tipo === 'destino') ? String(grupo.nombre || 'grupo del banco') : nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '');
 
 if (!real){
   // ENSAYO: nada sale a bancos ni a clientes. Una sola vista previa en el grupo de avisos.
-  const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + envios.map(e => e.vista).filter(Boolean).join('\n\n');
+  const vista = '🧪 ENSAYO — ' + cabeceraVista + '\n\n' + envios.map(e => e.vista).filter(Boolean).join('\n\n');
   // En una edicion el estado SI se anota aunque sea ensayo: 'verificar' es lo que hace que el reenvio del
   // cliente no se rechace despues como "repetido" (mismo banco y mismo codigo). No se ve desde afuera.
   // Igual 'confirmar_banco' (la pregunta del banco mal escrito) y el 'verificar' de un "no": son los que dicen si el retiro
@@ -1447,19 +1532,23 @@ if (!real){
   const anotar = filaEditada || estadoFila === 'confirmar_banco' || (pendiente && respuesta === 'no');
   // El contador de "sin banco" SI se anota en ensayo: asi la vista previa muestra el recordatorio firme cuando toca.
   return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (anotar ? estadoFila : 'ensayo'), grupo_destino: '',
-                    redisSet: redisSiempre.length ? redisSiempre : undefined, movimientos: nuevos.length ? nuevos : undefined } }];
+                    redisSet: redisSiempre.length ? redisSiempre : undefined, movimientos: nuevos.length ? nuevos : undefined, cortes: cortes.length ? cortes : undefined, entregas: entregas.length ? entregas : undefined } }];
 }
 // REAL: los RST salen de verdad, pero los PEDIDOS siguen siendo solo vista previa en el grupo de avisos.
 const salida = envios.filter(e => !e.soloEnsayo).map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
 const soloVista = envios.filter(e => e.soloEnsayo);
 if (soloVista.length){
-  const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + soloVista.map(e => e.vista).join('\n\n');
+  const vista = '🧪 ENSAYO — ' + cabeceraVista + '\n\n' + soloVista.map(e => e.vista).join('\n\n');
   salida.push({ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: estadoFila || 'ensayo', grupo_destino: grupoDestinoFila } });
 }
 // (despues de armar TODA la salida: un mensaje que solo trae un pedido sale solo con la vista previa, y ahi van tambien)
 if (redisSiempre.length && salida.length) salida[0].json.redisSet = (salida[0].json.redisSet || []).concat(redisSiempre);
 // los pagos y pedidos de este mensaje se anotan en movimientos_mayor ("Armar Movimientos"), en ensayo y en real
 if (nuevos.length && salida.length) salida[0].json.movimientos = nuevos;
+// y el corte del cobrador ("Armar Corte" -> "Guardar Corte")
+if (cortes.length && salida.length) salida[0].json.cortes = cortes;
+// y la entrega del cobrador ("Armar Entrega" -> "Guardar Entrega")
+if (entregas.length && salida.length) salida[0].json.entregas = entregas;
 return salida;
 '@
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__HORARIO_JK__', $horarioJs).Replace('__PUBLICAR_COMUN__', $publicarJs).Replace('__SI_NO__', $siNoJs)
@@ -1489,6 +1578,32 @@ return [{ json: { mimetype: $json.mimetype || 'image/jpeg' }, binary: { data: { 
 '@
 $PROMPT_LEER_PAGO = @'
 Esta imagen la envio un cliente MAYORISTA de una casa de cambio de Ecuador (Cambios JK) en su grupo de WhatsApp. Responde SOLO un JSON valido, sin texto extra. Si es el comprobante o la captura de un pago, deposito o transferencia que hizo el cliente: {"tipo": "comprobante", "monto": <numero con punto decimal, sin simbolos ni separador de miles>, "moneda": "USD | USDT | VES | COP | PEN | ... (el codigo de la moneda del monto; en Ecuador es USD)", "banco": "<banco desde donde pago o al que deposito>", "fecha": "<fecha>", "referencia": "<numero de referencia o de comprobante>"}. Si son los datos de una cuenta bancaria o una billetera (un pedido): {"tipo": "cuenta"}. Si es otra cosa: {"tipo": "otra"}. Si un dato no se ve, escribe "no visible".
+'@
+$armarCorteCode = @'
+// El corte que pidio un cobrador ("corte hasta aqui", 27/11): "Decidir Publicacion" lo trae en el campo "cortes". Se guarda en
+// cortes_cobradores: el proximo corte de ese cobrador cuenta desde aqui. El mensaje_id es unico: no se guarda dos veces.
+const out = [], vistos = new Set();
+for (const it of $input.all()){
+  for (const c of ((it.json || {}).cortes || [])){
+    if (!c || !c.mensaje_id || vistos.has(c.mensaje_id)) continue;
+    vistos.add(c.mensaje_id);
+    out.push({ json: c });
+  }
+}
+return out;
+'@
+$armarEntregaCode = @'
+// El "recibido" de Kelvin o de la operadora (27/11): "Decidir Publicacion" trae la entrega del cobrador en el campo "entregas".
+// Se guarda en entregas_cobradores. El mensaje_id es unico: un mismo "recibido" no se anota dos veces.
+const out = [], vistos = new Set();
+for (const it of $input.all()){
+  for (const e of ((it.json || {}).entregas || [])){
+    if (!e || !e.mensaje_id || vistos.has(e.mensaje_id)) continue;
+    vistos.add(e.mensaje_id);
+    out.push({ json: e });
+  }
+}
+return out;
 '@
 $armarMovimientosCode = @'
 // Los pagos y pedidos de este mensaje (Parte B, 27/11): "Decidir Publicacion" los trae en el campo "movimientos".
@@ -1554,8 +1669,13 @@ const esX = e => /[❌✖❎🚫⛔]/u.test(String(e || ''));
 const grupoJid = String(grupo.grupo_jid || llave.remoteJid || '');
 if (!grupoJid) return [];
 const enJep = /\bjep\b/.test(quitar(grupo.nombre));
+// QUIEN lo marco (el cobrador): su numero y su nombre en WhatsApp. La caja va por cobrador: en un grupo puede haber varios (27/11).
+const quienMarca = [llave.participantAlt, llave.participant, llave.remoteJidAlt].map(x => String(x || '')).find(x => /@s\.whatsapp\.net$/.test(x)) || '';
+const porNumero = (llave.fromMe === true) ? 'kelvin' : quienMarca.replace(/\D/g, '');
+const porNombre = String(ev.pushName || '').slice(0, 60);
 // Un "verificar" o "se dañó" ya pidio un RST nuevo: una ❌ o un "pendiente" que llegue DESPUES (en cualquier orden) no lo pisa.
-const salida = (mensajeId, cobro, emoji) => [{ json: { grupo_jid: grupoJid, mensaje_id: String(mensajeId), cobro, emoji, soloPendiente: cobro === 'pendiente' || cobro === 'no_cobrado' } }];
+const salida = (mensajeId, cobro, emoji) => [{ json: { grupo_jid: grupoJid, mensaje_id: String(mensajeId), cobro, emoji, soloPendiente: cobro === 'pendiente' || cobro === 'no_cobrado',
+                                                      por: porNumero, por_nombre: porNombre } }];
 
 // 1) Una REACCION al mensaje (lo normal): WhatsApp la manda como un mensaje con reactionMessage; texto vacio = la quito.
 if (msg.reactionMessage){
@@ -1642,7 +1762,9 @@ El bot principal le pasa a este workflow cada mensaje de los **grupos del mayor*
 
 **Pedidos a países** (solo vista previa en avisos, aun en modo real), según `EJEMPLOS PARA EL BOT/protocolo_para_pedidos.md` (27/11): el NOMBRE del cliente arriba, en la 2da línea cómo paga (**RST** o **CUENTA**: un RST suyo de los últimos 30 min = RST; la foto de su pago = CUENTA) y debajo los datos. **BINANCE y ZELLE van en 2 mensajes**: 1) Binance: solo el destino que gana (BEP20 > TRC20 > correo > teléfono > ID; si es BEP20, otro mensaje "BEP20") / Zelle: los datos tal cual; 2) lo cobrado / NOMBRE / lo que se entrega, con los precios de la APP (nodo "Leer Tasas" = la hoja publicada + `src/motor.js`: RST, por cuenta o $1,000+). Venezuela: la cuenta debe tener 20 dígitos (si no, avisa); el Pago Móvil por ahora sí se acepta. La 2da línea (RST o CUENTA) sale de la tasa que usó el cliente, de `grupos_mayor.forma_pago` o de cómo pasa siempre la operadora a ese cliente (nodo "Formas de Pago Vistas").
 
-**Saldo del cliente** (Parte B, 27/11, en ensayo): cada pago (un RST completo apenas llega, o la FOTO de su pago leída con IA en "Leer Pago") y cada pedido en $ se anotan en `movimientos_mayor` ("Armar Movimientos" → "Guardar Movimientos"); "Saldo del Cliente" lee la vista `saldo_mayor` (saldo corrido + movimientos de hoy). Con el saldo del DÍA se ve si cada pedido ya está pagado o espera su pago (sticker "esperando su pago para procesar"), y cuando llega un pago, qué pedidos ya pasarían. Los saldos de antes los anota Kelvin a mano como "ajuste" (ver `sql/mayor_saldos.sql`). Si el pedido viene en varios mensajes del mismo cliente con menos de 3 minutos entre uno y otro (la cuenta en uno y el monto en otro, o billetera + correo + monto), los junta en un solo pedido. En Brasil la llave PIX puede ser el mismo número de la cédula (CPF).
+**Saldo del cliente** (Parte B, 27/11, en ensayo): cada pago (un RST completo apenas llega, o la FOTO de su pago leída con IA en "Leer Pago") y cada pedido en $ se anotan en `movimientos_mayor` ("Armar Movimientos" → "Guardar Movimientos"); "Saldo del Cliente" lee la vista `saldo_mayor` (saldo corrido + movimientos de hoy). Con el saldo del DÍA se ve si cada pedido ya está pagado o espera su pago (sticker "esperando su pago para procesar"), y cuando llega un pago, qué pedidos ya pasarían. Los saldos de antes los anota Kelvin a mano como "ajuste" (ver `sql/mayor_saldos.sql`).
+
+**Caja de los bancos y de cada cobrador** (27/11): cuando un cobrador marca un RST como cobrado (su reacción), "Marcar Cobro" guarda también QUIÉN fue (`cobrado_por`). En Supabase: `caja_bancos_diario` (por banco y día: llegados, cobrados, pendientes, con problema, vencidos), `caja_cobradores` (por cobrador: cobrado, entregado —Kelvin anota las entregas en efectivo en `entregas_cobradores`— y lo que debe). Si el cobrador escribe "corte hasta aquí" en el grupo de su banco, "Corte del Cobrador" lee lo que cobró desde su último corte, el bot le contesta solo el total (en ensayo, vista previa) y el corte se guarda en `cortes_cobradores` ("Armar Corte" → "Guardar Corte"). Cuando el cobrador entrega el efectivo, Kelvin o la operadora citan su "corte hasta aquí" con **"recibido 4100"** (o solo "recibido" = el total del corte): se anota en `entregas_cobradores` ("Armar Entrega" → "Guardar Entrega") y el bot dice cuánto queda debiendo. Ver `sql/mayor_caja_cobradores.sql` y `sql/mayor_caja_recibido.sql`. Si el pedido viene en varios mensajes del mismo cliente con menos de 3 minutos entre uno y otro (la cuenta en uno y el monto en otro, o billetera + correo + monto), los junta en un solo pedido. En Brasil la llave PIX puede ser el mismo número de la cédula (CPF).
 
 **Alertas de vencimiento** (filas de abajo): cada RST que esta en el grupo de su banco se anota en `vigilancia_rst_mayor` con su hora de vencimiento (los pegados a mano y los del bot). Las reacciones de los cobradores (cualquier emoji menos la X = cobrado) se anotan alli. El workflow "Mayor: alertas de vencimiento" avisa en el grupo del banco, citando el RST, cuando falta 1 hora (5 min en JEP) y nadie lo marco como cobrado.
 
@@ -1755,12 +1877,22 @@ $nodes = @(
     executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
   },
   [ordered]@{
+    # La caja del cobrador (27/11), vista caja_consulta (sql/mayor_caja_recibido.sql), una sola consulta con una "clave":
+    #   "corte hasta aqui" -> 'cobrador:<su numero>': lo que cobro desde su ultimo corte;
+    #   "recibido" (citando su corte) -> 'corte:<el mensaje citado>': de quien es ese corte y cuanto debe hoy.
+    # Si el mensaje no es ninguna de las dos cosas, busca "nadie" y no trae nada.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'caja_consulta'; returnAll = $false; limit = 1; filterType = 'string'
+                    filterString = '={{ "clave=eq." + (($("Hace Falta Publicar?").first().json.motivo === "corte") ? ("cobrador:" + ($("Decidir").first().json.autor_numero || "nadie")) : ($("Hace Falta Publicar?").first().json.motivo === "recibido") ? ("corte:" + ((($("Decidir").first().json.datos) || {}).cita_id || "nadie")) : "nadie") }}' }
+    id = 'c1d2e3f4-0038-4b00-8b00-mayor0000038'; name = 'Corte del Cobrador'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2376,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
+  },
+  [ordered]@{
     # Solo las FOTOS del cliente van a la IA (cuesta plata): lo demas sigue directo a "Decidir Publicacion".
     parameters = [ordered]@{ conditions = [ordered]@{
         options = [ordered]@{ version = 2; typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }
         conditions = @( ,[ordered]@{ id = 'foto-pago-1'; leftValue = '={{ $("Hace Falta Publicar?").first().json.motivo }}'; rightValue = 'foto'; operator = [ordered]@{ operation = 'equals'; type = 'string' } } )
         combinator = 'and' }; options = @{} }
-    id = 'c1d2e3f4-0032-4b00-8b00-mayor0000032'; name = '¿Foto de Pago?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(2376,480)
+    id = 'c1d2e3f4-0032-4b00-8b00-mayor0000032'; name = '¿Foto de Pago?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(2552,480)
   },
   [ordered]@{
     # Baja la foto de Evolution (igual que "Bot JK - Procesar Media" del detal).
@@ -1768,35 +1900,57 @@ $nodes = @(
                     authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify({ message: { key: { id: $("Decidir").first().json.mensaje_id } }, convertToMp4: false }) }}'; options = @{ timeout = 30000 } }
-    id = 'c1d2e3f4-0033-4b00-8b00-mayor0000033'; name = 'Descargar Foto'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2552,660)
+    id = 'c1d2e3f4-0033-4b00-8b00-mayor0000033'; name = 'Descargar Foto'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2728,660)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true; credentials = $evoHeaderCred
   },
   [ordered]@{
     parameters = @{ jsCode = $fotoABinarioCode }
-    id = 'c1d2e3f4-0034-4b00-8b00-mayor0000034'; name = 'Foto a Binario'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2728,660)
+    id = 'c1d2e3f4-0034-4b00-8b00-mayor0000034'; name = 'Foto a Binario'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2904,660)
   },
   [ordered]@{
     # GPT-4o-mini lee la foto (el mismo modelo y la misma credencial que el detal). Solo dice que es y, si es un pago, cuanto.
     parameters = [ordered]@{ resource = 'image'; operation = 'analyze'; inputType = 'base64'; binaryPropertyName = 'data'; text = $PROMPT_LEER_PAGO
                     modelId = [ordered]@{ __rl = $true; mode = 'list'; value = 'gpt-4o-mini'; cachedResultName = 'gpt-4o-mini' }; options = @{} }
-    id = 'c1d2e3f4-0035-4b00-8b00-mayor0000035'; name = 'Leer Pago'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(2904,660)
+    id = 'c1d2e3f4-0035-4b00-8b00-mayor0000035'; name = 'Leer Pago'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(3080,660)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
     credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
   },
   [ordered]@{
     # Los pagos y pedidos que "Decidir Publicacion" saco de este mensaje (Parte B): uno por fila, para "Guardar Movimientos".
     parameters = @{ jsCode = $armarMovimientosCode }
-    id = 'c1d2e3f4-0036-4b00-8b00-mayor0000036'; name = 'Armar Movimientos'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3256,-60)
+    id = 'c1d2e3f4-0036-4b00-8b00-mayor0000036'; name = 'Armar Movimientos'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3432,-60)
   },
   [ordered]@{
     # Se anotan en movimientos_mayor (sql/mayor_saldos.sql). La "clave" es unica: un mismo mensaje no se cuenta dos veces.
     parameters = @{ resource = 'row'; operation = 'create'; tableId = 'movimientos_mayor'; dataToSend = 'autoMapInputData' }
-    id = 'c1d2e3f4-0037-4b00-8b00-mayor0000037'; name = 'Guardar Movimientos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3432,-60)
+    id = 'c1d2e3f4-0037-4b00-8b00-mayor0000037'; name = 'Guardar Movimientos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3608,-60)
+    onError = 'continueRegularOutput'; credentials = $supaCred
+  },
+  [ordered]@{
+    # El corte que pidio un cobrador (27/11), para "Guardar Corte".
+    parameters = @{ jsCode = $armarCorteCode }
+    id = 'c1d2e3f4-0039-4b00-8b00-mayor0000039'; name = 'Armar Corte'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3432,-240)
+  },
+  [ordered]@{
+    # Se guarda en cortes_cobradores (sql/mayor_caja_cobradores.sql): el proximo corte de ese cobrador cuenta desde aqui.
+    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'cortes_cobradores'; dataToSend = 'autoMapInputData' }
+    id = 'c1d2e3f4-0040-4b00-8b00-mayor0000040'; name = 'Guardar Corte'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3608,-240)
+    onError = 'continueRegularOutput'; credentials = $supaCred
+  },
+  [ordered]@{
+    # El "recibido" de Kelvin o de la operadora citando el corte de un cobrador (27/11), para "Guardar Entrega".
+    parameters = @{ jsCode = $armarEntregaCode }
+    id = 'c1d2e3f4-0041-4b00-8b00-mayor0000041'; name = 'Armar Entrega'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3432,-420)
+  },
+  [ordered]@{
+    # Se guarda en entregas_cobradores: lo que el cobrador ya entrego se le resta de lo que debe (caja_cobradores).
+    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'entregas_cobradores'; dataToSend = 'autoMapInputData' }
+    id = 'c1d2e3f4-0042-4b00-8b00-mayor0000042'; name = 'Guardar Entrega'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3608,-420)
     onError = 'continueRegularOutput'; credentials = $supaCred
   },
   [ordered]@{
     parameters = @{ jsCode = $decidirPublicacionCode }
-    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3080,300)
+    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3256,300)
   },
   [ordered]@{
     # UN nodo para texto y sticker. En modo ensayo el unico destino es el grupo de avisos.
@@ -1805,7 +1959,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify($json.tipo === "sticker" ? { number: $json.jid, sticker: $json.sticker } : Object.assign({ number: $json.jid, text: $json.texto }, $json.citar ? { quoted: { key: { id: $json.citar } } } : {})) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3256,300)
+    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3432,300)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1813,7 +1967,7 @@ $nodes = @(
     # Si fallo y llevaba cita (el mensaje citado a veces ya no esta en Evolution), se reintenta SIN cita:
     # una cita que no funcione nunca puede dejar a un cliente sin su respuesta.
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ !!$json.error && !!$("Decidir Publicacion").item.json.citar }}'; value2 = '={{true}}' } ) } }
-    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(3432,300)
+    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(3608,300)
   },
   [ordered]@{
     parameters = @{ method = 'POST'; url = '={{ "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin" }}'
@@ -1821,7 +1975,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify({ number: $("Decidir Publicacion").item.json.jid, text: $("Decidir Publicacion").item.json.texto }) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3608,480)
+    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3784,480)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1832,17 +1986,17 @@ $nodes = @(
                     fieldsUi = @{ fieldValues = @(
                       @{ fieldId = 'estado'; fieldValue = '={{ $json.error ? "error_envio" : $("Decidir Publicacion").item.json.estado_fila }}' },
                       @{ fieldId = 'grupo_destino'; fieldValue = '={{ $("Decidir Publicacion").item.json.grupo_destino || "" }}' } ) } }
-    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3784,120)
+    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3960,120)
     onError = 'continueRegularOutput'; credentials = $supaCred
   },
   [ordered]@{
     parameters = @{ jsCode = $armarMapaCode }
-    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3784,300)
+    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3960,300)
   },
   [ordered]@{
     # Cada valor trae su propio tiempo de vida (ttl en segundos): la publicacion 7 dias, el permiso de JEP unas horas o minutos.
     parameters = @{ operation = 'set'; key = '={{ $json.clave }}'; value = '={{ $json.valor }}'; keyType = 'string'; expire = $true; ttl = ('={{ $json.ttl || ' + ($HORAS_MAPA_PUBLICACION * 3600) + ' }}') }
-    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(3960,300)
+    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(4136,300)
     onError = 'continueRegularOutput'; credentials = $redisCred
   },
   # ----- ALERTAS DE VENCIMIENTO (protocolo, seccion 7): reacciones de los cobradores y RST vigilados -----
@@ -1859,7 +2013,10 @@ $nodes = @(
                     fieldsUi = @{ fieldValues = @(
                       @{ fieldId = 'cobro'; fieldValue = '={{ $json.cobro }}' },
                       @{ fieldId = 'cobro_en'; fieldValue = '={{ new Date().toISOString() }}' },
-                      @{ fieldId = 'cobro_emoji'; fieldValue = '={{ $json.emoji || "" }}' } ) } }
+                      @{ fieldId = 'cobro_emoji'; fieldValue = '={{ $json.emoji || "" }}' },
+                      # quien lo marco cobrado (la caja de cada cobrador, 27/11; columnas de sql/mayor_caja_cobradores.sql). Si se desmarca, se borra.
+                      @{ fieldId = 'cobrado_por'; fieldValue = '={{ $json.cobro === "cobrado" ? ($json.por || "") : "" }}' },
+                      @{ fieldId = 'cobrado_por_nombre'; fieldValue = '={{ $json.cobro === "cobrado" ? ($json.por_nombre || "") : "" }}' } ) } }
     id = 'c1d2e3f4-0021-4b00-8b00-mayor0000021'; name = 'Marcar Cobro'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(352,700)
     onError = 'continueRegularOutput'; credentials = $supaCred
   },
@@ -1876,11 +2033,11 @@ $nodes = @(
   [ordered]@{
     # Un RST que publico el propio bot en el grupo de su banco (solo en modo real).
     parameters = @{ jsCode = $armarVigilanciaCode }
-    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3784,900)
+    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3960,900)
   },
   [ordered]@{
     parameters = @{ resource = 'row'; operation = 'create'; tableId = 'vigilancia_rst_mayor'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3960,900)
+    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(4136,900)
     onError = 'continueRegularOutput'; credentials = $supaCred
   }
 )
@@ -1905,7 +2062,8 @@ $connections = [ordered]@{
   'Redis Leer Sin Banco'   = @{ main = @( ,@( @{ node='Leer Tasas'; type='main'; index=0 } ) ) }
   'Leer Tasas'             = @{ main = @( ,@( @{ node='Formas de Pago Vistas'; type='main'; index=0 } ) ) }
   'Formas de Pago Vistas'  = @{ main = @( ,@( @{ node='Saldo del Cliente'; type='main'; index=0 } ) ) }
-  'Saldo del Cliente'      = @{ main = @( ,@( @{ node='¿Foto de Pago?'; type='main'; index=0 } ) ) }
+  'Saldo del Cliente'      = @{ main = @( ,@( @{ node='Corte del Cobrador'; type='main'; index=0 } ) ) }
+  'Corte del Cobrador'     = @{ main = @( ,@( @{ node='¿Foto de Pago?'; type='main'; index=0 } ) ) }
   '¿Foto de Pago?'         = @{ main = (
       @( ,@( @{ node='Descargar Foto'; type='main'; index=0 } ) ) +
       @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) )
@@ -1913,8 +2071,10 @@ $connections = [ordered]@{
   'Descargar Foto'         = @{ main = @( ,@( @{ node='Foto a Binario'; type='main'; index=0 } ) ) }
   'Foto a Binario'         = @{ main = @( ,@( @{ node='Leer Pago'; type='main'; index=0 } ) ) }
   'Leer Pago'              = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
-  'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 }, @{ node='Armar Movimientos'; type='main'; index=0 } ) ) }
+  'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 }, @{ node='Armar Movimientos'; type='main'; index=0 }, @{ node='Armar Corte'; type='main'; index=0 }, @{ node='Armar Entrega'; type='main'; index=0 } ) ) }
   'Armar Movimientos'      = @{ main = @( ,@( @{ node='Guardar Movimientos'; type='main'; index=0 } ) ) }
+  'Armar Corte'            = @{ main = @( ,@( @{ node='Guardar Corte'; type='main'; index=0 } ) ) }
+  'Armar Entrega'          = @{ main = @( ,@( @{ node='Guardar Entrega'; type='main'; index=0 } ) ) }
   'Enviar'                 = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
   'Fallo la Cita?'         = @{ main = (
       @( ,@( @{ node='Reenviar sin Cita'; type='main'; index=0 } ) ) +

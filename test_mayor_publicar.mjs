@@ -87,6 +87,7 @@ function correr(texto, opciones) {
       if (nombre === 'Leer Tasas') return { first: () => ({ json: { data: o.sinTasas ? '' : (o.tasas || CSV_TASAS) } }) };
       if (nombre === 'Formas de Pago Vistas') return { all: () => (o.vistas || []).map(json => ({ json })) };
       if (nombre === 'Saldo del Cliente') return { first: () => ({ json: o.saldo || {} }) };
+      if (nombre === 'Corte del Cobrador') return { first: () => ({ json: o.corte || {} }) };
       if (nombre === 'Leer Pago') { if (!o.foto) throw new Error('el nodo Leer Pago no corrio'); return { first: () => ({ json: { content: JSON.stringify(o.foto) } }) }; }
       throw new Error('nodo inesperado: ' + nombre);
     };
@@ -1184,6 +1185,78 @@ console.log('=== 23) SALDO DEL CLIENTE (Parte B, 27/11): pago + pedidos / pedido
   const armar = new Function('$input', code('Armar Movimientos'));
   const filas = armar({ all: () => [{ json: { movimientos: [{ clave: 'A:pago:0' }, { clave: 'A:pago:1' }] } }, { json: { movimientos: [{ clave: 'A:pago:0' }] } }, { json: {} }] });
   chk(filas.length === 2 && filas[0].json.clave === 'A:pago:0', '"Armar Movimientos": una fila por movimiento, sin repetir la clave');
+}
+
+console.log('');
+console.log('=== 24) CORTE DEL COBRADOR: "corte hasta aqui" en el grupo del banco (27/11) ===');
+{
+  const PICH = Object.assign({}, BANCO_GRUPO, { publicar: false });
+  const COBRADOR = { numero: '593990000077' };
+  const T = '2026-11-24T20:30:00Z';                    // 3:30 pm en Ecuador
+  const corte = (texto, extra) => correr(texto, Object.assign({ grupo: PICH, extra: Object.assign({}, COBRADOR, (extra || {}).extra || {}) }, extra || {}));
+  const evHora = { extra: {} };
+  // la hora del mensaje: la del evento de prueba (messageTimestamp); el texto dice "hasta las H:MM am/pm"
+  let p = corte('corte hasta aqui', { corte: { cobrador: '593990000077', n_rst: 18, total_usd: 4100, ultimo_corte: null } });
+  let t = (p.envios[0] || {}).texto || '';
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(p.pasa && /➡️ a Alguien en PICHINCHA \(citando su mensaje\): "✂️ Corte hasta las \d{1,2}:\d\d (am|pm): 4100\$ \(18 RST\)\."/.test(t), 'en ENSAYO: vista previa "✂️ Corte hasta las H:MM: 4100$ (18 RST)" (solo el total)', '-> ' + JSON.stringify(t));
+  const cs = p.envios.flatMap(e => e.cortes || []);
+  chk(cs.length === 1 && cs[0].cobrador === '593990000077' && cs[0].n_rst === 18 && cs[0].total_usd === 4100 && cs[0].mensaje_id && cs[0].hasta, '...y el corte se guarda (el proximo cuenta desde aqui)', '-> ' + JSON.stringify(cs));
+  p = corte('corte', { corte: { cobrador: '593990000077', n_rst: 2, total_usd: 350.5, ultimo_corte: '2026-11-17T23:00:00Z' } });
+  chk(/350\.50\$ \(2 RST\), desde tu corte del 17\/11 a las 6:00 pm\./.test(p.envios[0].texto), 'con un corte anterior de otro dia: "desde tu corte del DD/MM a las ..."', '-> ' + JSON.stringify(p.envios[0].texto));
+  chk(/^🧪 ENSAYO — PICHINCHA\n/.test(p.envios[0].texto), 'el encabezado de la vista previa es el grupo del banco', '-> ' + JSON.stringify(p.envios[0].texto.split(SALTO)[0]));
+  p = corte('dame el corte por favor', { corte: {} });
+  chk(/no tienes RST cobrados/.test(p.envios[0].texto), 'sin nada cobrado desde el ultimo corte: lo dice');
+  p = corte('corte hasta aqui', { corte: { cobrador: '593990000077', n_rst: 3, total_usd: 600 }, modo: 'real', grupo: Object.assign({}, PICH, { publicar: true }) });
+  const b = p.envios.filter(e => e.jid === PICH.grupo_jid);
+  chk(b.length === 1 && b[0].citar && /^✂️ Corte hasta/.test(b[0].texto), 'en modo REAL (y el grupo con publicar): se le contesta en su grupo, citando su mensaje', '-> ' + JSON.stringify(p.envios.map(e => [e.jid, e.texto])));
+  chk(p.envios.flatMap(e => e.cortes || []).length === 1, '...y tambien se guarda el corte');
+  p = corte('corte hasta aqui', { corte: { error: 'relation "corte_pendiente" does not exist' } });
+  chk(p.envios.length === 1 && /no pude sacarlo/.test(p.envios[0].texto) && !p.envios.flatMap(e => e.cortes || []).length, 'si no esta la vista en Supabase: avisa y no guarda nada');
+  // lo que NO es un corte
+  chk(!corte('corte hasta aqui', { corte: { n_rst: 1, total_usd: 1 }, extra: { fromMe: true, numero: '' } }).envios.length, 'si lo escribe Kelvin: no es el corte de un cobrador');
+  chk(!correr('corte hasta aqui', { corte: { n_rst: 1, total_usd: 1 } }).envios.some(e => /Corte hasta/.test(e.texto || '')), 'en un grupo de CLIENTE no es un corte');
+  chk(!corte('ya les paso el corte del dia de ayer completo con todos los detalles que pidieron hoy temprano', { corte: { n_rst: 1, total_usd: 1 } }).envios.length, 'un mensaje largo que dice "corte" no es el pedido de corte');
+  // "Armar Corte": una fila por corte, sin repetir
+  const armar = new Function('$input', code('Armar Corte'));
+  chk(armar({ all: () => [{ json: { cortes: [{ mensaje_id: 'C1' }] } }, { json: { cortes: [{ mensaje_id: 'C1' }] } }, { json: {} }] }).length === 1, '"Armar Corte": una fila por corte, sin repetir');
+
+  // ---------- "RECIBIDO": Kelvin o la operadora citan el corte del cobrador cuando les entrega el efectivo ----------
+  const CORTE_CITADO = { clave: 'corte:CORTE1', cobrador: '593990000077', cobrador_nombre: 'Cobrador Prueba', n_rst: 18, total_usd: 4100, debe_entregar: 4100 };
+  const KELVIN = { fromMe: true, numero: '', cita: 'CORTE1' }, OPERADORA = { numero: '593990000003', cita: 'CORTE1' };
+  const recibido = (texto, quien, corteRow, extra) => correr(texto, Object.assign({ grupo: PICH, extra: quien, corte: corteRow }, extra || {}));
+  const entregasDe = q => q.envios.flatMap(e => e.entregas || []);
+  p = recibido('Recibido', KELVIN, CORTE_CITADO);
+  t = (p.envios[0] || {}).texto || '';
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(/"💵 Recibido de Cobrador Prueba: 4100\$\. Queda en cero\."/.test(t), 'Kelvin cita el corte con "recibido": se anota el total del corte y queda en cero', '-> ' + JSON.stringify(t));
+  let es = entregasDe(p);
+  chk(es.length === 1 && es[0].cobrador === '593990000077' && es[0].monto_usd === 4100 && es[0].mensaje_id && /Kelvin/.test(es[0].nota), '...la entrega queda a nombre de ESE cobrador', '-> ' + JSON.stringify(es));
+  p = recibido('recibido 4.000', OPERADORA, CORTE_CITADO);
+  chk(/4000\$ \(el corte era de 4100\$\)\. Queda debiendo 100\$\./.test(p.envios[0].texto) && entregasDe(p)[0].monto_usd === 4000 && /operadora/.test(entregasDe(p)[0].nota),
+      'la OPERADORA tambien puede: "recibido 4.000" -> queda debiendo 100$', '-> ' + JSON.stringify(p.envios[0].texto));
+  p = recibido('recibido 4200', KELVIN, CORTE_CITADO);
+  chk(/Entregó 100\$ de más\./.test(p.envios[0].texto), 'si entrega de mas: lo dice');
+  p = recibido('recibido', KELVIN, Object.assign({}, CORTE_CITADO, { debe_entregar: 4300 }));
+  chk(/Queda debiendo 200\$\./.test(p.envios[0].texto), 'si cobró algo mas despues del corte: queda debiendo eso', '-> ' + JSON.stringify(p.envios[0].texto));
+  p = recibido('recibido', KELVIN, CORTE_CITADO, { modo: 'real', grupo: Object.assign({}, PICH, { publicar: true }) });
+  chk(p.envios.filter(e => e.jid === PICH.grupo_jid && /^💵 Recibido de/.test(e.texto) && e.citar).length === 1 && entregasDe(p).length === 1, 'en modo REAL: lo contesta en el grupo, citando el "recibido", y guarda la entrega');
+  // lo que NO es un "recibido" que cuenta
+  p = recibido('recibido', KELVIN, {});
+  chk(p.envios.length === 1 && /no encontré el corte que citó: hay que citar el mensaje "corte hasta aquí"/.test(p.envios[0].texto) && !entregasDe(p).length, 'citando otro mensaje (no un corte): avisa y no anota nada');
+  p = recibido('recibido', KELVIN, { error: 'relation "caja_consulta" does not exist' });
+  chk(/caja_consulta/.test(p.envios[0].texto) && !entregasDe(p).length, 'si no esta la vista en Supabase: avisa');
+  chk(!recibido('recibido', { numero: '593990000077', cita: 'CORTE1' }, CORTE_CITADO).envios.length, 'si el "recibido" lo escribe el COBRADOR: no cuenta (solo Kelvin o la operadora)');
+  // los numeros de grupos_mayor.operadores_caja (Kelvin, 27/11) tambien pueden confirmar; su "corte" no es el de un cobrador
+  const PICH_OPS = Object.assign({}, PICH, { operadores_caja: '593990000088, 0990000099' });
+  p = correr('recibido', { grupo: PICH_OPS, extra: { numero: '593990000099', cita: 'CORTE1' }, corte: CORTE_CITADO });
+  chk(entregasDe(p).length === 1 && /Recibido de Cobrador Prueba/.test(p.envios[0].texto) && /Alguien/.test(entregasDe(p)[0].nota), 'un numero de operadores_caja (escrito 0990000099) tambien puede confirmar', '-> ' + JSON.stringify(entregasDe(p)));
+  chk(!correr('recibido', { grupo: PICH_OPS, extra: { numero: '593990000055', cita: 'CORTE1' }, corte: CORTE_CITADO }).envios.length, 'un numero que no esta en la lista: no');
+  chk(!correr('corte hasta aqui', { grupo: PICH_OPS, extra: { numero: '593990000088' }, corte: { n_rst: 1, total_usd: 10 } }).envios.length, 'si uno de operadores_caja escribe "corte": no es el corte de un cobrador');
+  chk(!recibido('recibido', { fromMe: true, numero: '' }, CORTE_CITADO).envios.length, 'sin citar el corte: no cuenta');
+  chk(!correr('recibido', { extra: KELVIN, corte: CORTE_CITADO }).envios.length, 'en un grupo de CLIENTE: no es un "recibido" de caja');
+  const armarE = new Function('$input', code('Armar Entrega'));
+  chk(armarE({ all: () => [{ json: { entregas: [{ mensaje_id: 'E1' }] } }, { json: { entregas: [{ mensaje_id: 'E1' }] } }] }).length === 1, '"Armar Entrega": una fila por entrega, sin repetir');
 }
 
 console.log('');
