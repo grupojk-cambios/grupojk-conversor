@@ -96,7 +96,7 @@ let diffsTasa=0, diffsCross=0;
 
 console.log("===== 1) TASAS Envio/Recibo por pais (app REAL vs bot), detal y mayor =====");
 for(const k of Object.keys(byNameA)){
-  if(/^efectivo venezuela/.test(k)) continue;
+  if(/efectivo venezuela/.test(k)) continue;
   const a=byNameA[k], b=byNameB[k]; if(!b) continue;
   for(const modo of ['detal','mayor']){
     const aE=round(appTEnv(a,modo)), bE=round(B.tEnv(b,modo));

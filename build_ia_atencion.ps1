@@ -279,7 +279,7 @@ __MOTOR_JK__
 // IGUAL que el Cotizador/Pizarra de la app (GeneradorEstados.jsx): suma de margenes, sin exceptuar ningun pais.
 const ecuRef = paises.find(p => (p.nombre||'').toLowerCase()==='ecuador');
 const lista = paises
-  .filter(p => !/^efectivo venezuela/i.test(p.nombre))
+  .filter(p => !/efectivo venezuela/i.test(p.nombre))
   .map(p => {
     let envio, recibo;
     if (!ecuRef || (p.nombre||'').toLowerCase()==='ecuador') { envio = calcularTasaEnvio(p, modo); recibo = calcularTasaRecibo(p, modo); }
@@ -287,14 +287,15 @@ const lista = paises
     return { Pais:p.nombre, Codigo:p.codigo, Moneda:p.moneda, Envio: envio? Number(envio.toFixed(2)):'N/D', Recibo: recibo? Number(recibo.toFixed(2)):'N/D', EsDolar: isCajaDolar(p) };
   });
 
-// Efectivo Venezuela = dolares en efectivo. El CSV trae varias filas "Efectivo Venezuela-Estado" con sus Ciudades.
+// Efectivo Venezuela = dolares en efectivo. El CSV trae varias filas "Efectivo Venezuela-Estado" o "Estado-Efectivo Venezuela" con sus Ciudades.
 // IMPORTANTE: el precio PUEDE variar por ciudad, asi que leemos CADA fila por separado con SU propia tasa (NO se colapsa).
 // Es 100% dinamico: cualquier fila nueva (otro estado/ciudad, u otro pais) entra sola sin tocar el codigo.
-const evEntries = paises.filter(p=>/^efectivo venezuela/i.test(p.nombre));
+const evEntries = paises.filter(p=>/efectivo venezuela/i.test(p.nombre));
 let evUbicaciones = [];
 if (evEntries.length) {
   evUbicaciones = evEntries.map(p => {
-    const estado = (String(p.nombre).split('-')[1]||'').trim();
+    const partesEv = String(p.nombre).split(/\s*-\s*/).map(s=>s.trim()).filter(Boolean);
+    const estado = partesEv.find(s=>!/^efectivo\s+ven(ezuela)?$/i.test(s)) || '';
     const ciudades = p.ciudades ? String(p.ciudades).split(',').map(c=>c.trim()).filter(Boolean) : [];
     return { estado, ciudades, envio: calcularTasaEnvio(p, modo)? Number(calcularTasaEnvio(p, modo).toFixed(2)) : 'N/D', recibo: calcularTasaRecibo(p, modo)? Number(calcularTasaRecibo(p, modo).toFixed(2)) : 'N/D' };
   });
@@ -2188,7 +2189,8 @@ function construirPaises(text){
 __MOTOR_JK__
 function evMatch(evList, nq){
   // Casar por ESTADO (ej "zulia") o por CIUDAD del campo Ciudades (ej "maracaibo" -> Zulia).
-  for (const x of evList) { const e=norm(String(x.nombre).split('-')[1]||''); if (e && (nq===e || nq.indexOf(e)!==-1)) return x; }
+  // Soporta tanto "Efectivo Venezuela-Estado" como "Estado-Efectivo Venezuela".
+  for (const x of evList) { const partes=String(x.nombre).split(/\s*-\s*/).map(s=>s.trim()).filter(Boolean); const e=norm(partes.find(s=>!/^efectivo\s+ven(ezuela)?$/i.test(s))||''); if (e && (nq===e || nq.indexOf(e)!==-1)) return x; }
   for (const x of evList) { const c=norm(String(x.ciudades||'')); if (!c) continue; const toks=c.split(/[ ,]+/).filter(t=>t.length>=4); if (toks.some(t => nq.indexOf(t)!==-1)) return x; }
   return null;
 }

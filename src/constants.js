@@ -98,11 +98,12 @@ export function isCustomFlag(pais) {
 export function isEfectivoVenSubEntry(pais) {
   if (!pais) return false;
   const name = pais.nombre ? pais.nombre.toUpperCase() : '';
-  return (name.includes('EFECTIVO VENEZUELA-') || name.includes('EFECTIVO VENEZUELA -'));
+  return (name.includes('EFECTIVO VENEZUELA') || name.includes('EFECTIVO VEN')) && name.includes('-');
 }
 
 /**
  * Agrupa las entradas de Efectivo Venezuela por estado y ciudad.
+ * Soporta tanto "Efectivo Venezuela-Estado" como "Estado-Efectivo Venezuela".
  * Retorna: [{ estado, ciudadesTexto, entries: [{ ciudad, pais }] }]
  */
 export function agruparEfectivoVenezuela(paises) {
@@ -111,11 +112,10 @@ export function agruparEfectivoVenezuela(paises) {
 
   entradas.forEach(p => {
     const name = p.nombre || '';
-    // Formato: "Efectivo Venezuela-Estado" o "Efectivo Venezuela-Estado-Ciudad"
-    const partes = name.split(/\s*-\s*/).map(s => s.trim());
-    // partes[0] = "Efectivo Venezuela", [1] = Estado, [2] = Ciudad (opcional)
-    const estado = partes[1] || 'Otro';
-    const ciudad = partes[2] || null;
+    const partes = name.split(/\s*-\s*/).map(s => s.trim()).filter(Boolean);
+    const sinEv = partes.filter(s => !/^efectivo\s+ven(ezuela)?$/i.test(s));
+    const estado = sinEv[0] || 'Otro';
+    const ciudad = sinEv[1] || null;
 
     if (!grupos[estado]) {
       grupos[estado] = { estado, ciudadesTexto: p.ciudades || '', entries: [] };
