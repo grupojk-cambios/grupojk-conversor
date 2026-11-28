@@ -227,8 +227,13 @@ console.log('=== 5) EL CABLEADO DEL WORKFLOW DE ALERTAS ===');
   const reglas = js => js.slice(js.indexOf('// ===== COMUN: VIGENCIA'), js.indexOf('\nconst ', js.indexOf('function bancoDelGrupo')));
   chk(reglas(code(alertas, 'Armar Alertas')).length > 900 && reglas(code(alertas, 'Armar Alertas')) === reglas(code(mayor, 'Vigilar Vencimiento')) && reglas(code(mayor, 'Armar Vigilancia')) === reglas(code(mayor, 'Vigilar Vencimiento')) && reglas(code(noche, 'Armar Vigilancia')) === reglas(code(mayor, 'Vigilar Vencimiento')), 'las reglas de duracion son IDENTICAS en los 4 sitios que las usan (un solo origen)');
   // el workflow del mayor: lo nuevo no puede enviar nada
-  const mayorEnvia = mayor.nodes.filter(n => /httpRequest/.test(n.type)).map(n => n.name).sort();
+  // ("Leer Tasas", 27/11, es un GET a la hoja publicada de Google: lee, no envia nada)
+  // ("Descargar Foto", 27/11, baja de Evolution la foto que mando el cliente para leerla: tampoco envia nada)
+  const soloLee = n => (n.parameters.method === 'GET' && /^https:\/\/docs\.google\.com\/spreadsheets\//.test(String(n.parameters.url || '')))
+    || /\/chat\/getBase64FromMediaMessage\//.test(String(n.parameters.url || ''));
+  const mayorEnvia = mayor.nodes.filter(n => /httpRequest/.test(n.type) && !soloLee(n)).map(n => n.name).sort();
   chk(JSON.stringify(mayorEnvia) === JSON.stringify(['Enviar', 'Reenviar sin Cita']), 'en el workflow del mayor los reaccionar/anotar NO envian: solo "Enviar" y "Reenviar sin Cita"', '-> ' + mayorEnvia);
+  chk(JSON.stringify(mayor.nodes.filter(n => /httpRequest/.test(n.type) && soloLee(n)).map(n => n.name).sort()) === '["Descargar Foto","Leer Tasas"]', 'los otros pedidos HTTP del mayor solo LEEN: "Leer Tasas" (la hoja) y "Descargar Foto" (la foto del cliente)');
   const cobro = nodo(mayor, 'Marcar Cobro').parameters;
   chk(/grupo_jid=eq\./.test(cobro.filterString) && /mensaje_id=eq\./.test(cobro.filterString) && cobro.fieldsUi.fieldValues.map(f => f.fieldId).join() === 'cobro,cobro_en,cobro_emoji', '"Marcar Cobro" actualiza solo ese mensaje de ese grupo', '-> ' + cobro.filterString);
   chk(/cobro=not\.in\.\(verificar,danado\)/.test(cobro.filterString), '"Marcar Cobro" no deja que una X pise un "verificar"/"se dañó"', '-> ' + cobro.filterString);

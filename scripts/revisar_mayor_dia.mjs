@@ -86,9 +86,23 @@ function entender(grupo, m) {
   const data = { key: m.key, pushName: m.pushName, message: m.message, messageTimestamp: m.messageTimestamp, contextInfo: m.contextInfo };
   try { const r = new Function('$input', CODIGO_ENTENDER)({ first: () => ({ json: { grupo, data } }) }); return r.length ? r[0].json : null; } catch (e) { return null; }
 }
+// La hoja de tasas publicada (la misma que lee el bot en "Leer Tasas"): para simular los precios de BINANCE / ZELLE.
+const URL_TASAS = (wf.nodes.find(x => x.name === 'Leer Tasas') || { parameters: {} }).parameters.url || '';
+let CSV_TASAS = '';
+try { if (URL_TASAS) CSV_TASAS = await (await fetch(URL_TASAS, { signal: AbortSignal.timeout(30000) })).text(); } catch (e) { CSV_TASAS = ''; }
 // Que habria hecho el bot en modo REAL con este mensaje de un cliente (sin la memoria de Redis: JEP y temporal de Solidario parten de cero).
 // "recientes" = las filas de ese grupo de los 30 minutos anteriores (lo que el bot lee en "Retiros Recientes"): con ellas se ven
 // los RST repetidos y los pedidos mandados en varios mensajes.
+// Lo que el bot leeria en "Formas de Pago Vistas": las cabeceras "NOMBRE / RST" que paso el equipo en los grupos de paises ANTES de
+// este mensaje y que tienen la 1ra palabra del nombre del cliente (aqui solo las del periodo del informe; el bot mira 45 dias).
+function vistasDelEquipo(fila, ms) {
+  const tok = String(fila.cliente_nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3)[0];
+  if (!tok || typeof filas === 'undefined') return [];
+  return filas.filter(x => x.grupo.tipo === 'destino' && x.ts < ms && x.fila.datos && x.fila.datos.cabecera && x.fila.datos.cabecera.includes(tok))
+    .map(x => ({ id: x.rowId || 1, mensaje_id: x.id, datos: x.fila.datos, fecha_mensaje: new Date(x.ts).toISOString() }));
+}
+// Lo que el bot leeria en "Saldo del Cliente" (la vista saldo_mayor): lo pone la pasada del saldo (seccion SALDO), si no, vacio.
+let SALDO_SIM = null;
 function simular(grupo, fila, ms, recientes) {
   const real = Date.now; Date.now = () => ms;
   try {
@@ -101,6 +115,9 @@ function simular(grupo, fila, ms, recientes) {
       if (nombre === 'Grupos Destino') return { all: () => destinosTabla.map(json => ({ json })) };
       if (nombre === 'Retiros Recientes') return { all: () => (recientes || []).map(json => ({ json })) };
       if (nombre === 'Redis Leer Sin Banco') return { first: () => ({ json: { sinBanco: null } }) };
+      if (nombre === 'Leer Tasas') return { first: () => ({ json: { data: CSV_TASAS } }) };
+      if (nombre === 'Formas de Pago Vistas') return { all: () => vistasDelEquipo(fila, ms).map(json => ({ json })) };
+      if (nombre === 'Saldo del Cliente') return { first: () => ({ json: SALDO_SIM || {} }) };
       throw new Error('nodo inesperado ' + nombre);
     };
     if (!new Function('$', CODIGO_HACE)($).length) return null;
@@ -170,7 +187,7 @@ const retiros = deClientes.filter(x => ((x.fila.datos || {}).registros || []).so
 // Lo que el bot leeria en "Retiros Recientes": las filas del mismo grupo de los 30 minutos anteriores.
 const filasDeGrupo = new Map();
 filas.forEach((x, i) => { x.rowId = i + 1; const l = filasDeGrupo.get(x.grupo.grupo_jid) || []; l.push(x); filasDeGrupo.set(x.grupo.grupo_jid, l); });
-const TIPOS_RECIENTES = ['rst', 'rct', 'mixto', 'beneficiario', 'otro'];
+const TIPOS_RECIENTES = ['rst', 'rct', 'mixto', 'beneficiario', 'otro', 'captura'];
 const recientesDe = x => (filasDeGrupo.get(x.grupo.grupo_jid) || []).filter(y => y !== x && y.ts <= x.ts && x.ts - y.ts <= 30 * 60000 && TIPOS_RECIENTES.includes(y.fila.tipo))
   .map(y => Object.assign({}, y.fila, { id: y.rowId, estado: 'visto' }));
 const simularX = x => simular(x.grupo, x.fila, x.ts, recientesDe(x));
@@ -287,13 +304,57 @@ for (const g of destinosTabla.filter(g => GRUPOS_PAIS.includes(quitar(g.nombre))
     if (ts < desdeComparar) continue;
     const delCliente = pedidosRegs.filter(o => o.x.grupo.grupo_jid === gc.grupo_jid && o.x.ts <= ts && o.x.ts >= ts - 24 * 3600000);
     const mismo = delCliente.some(o => quitar(destinoDe(o.r)) === quitar(g.nombre));
+    // la 2da linea (como paga) que escribio la operadora vs la que habria puesto el bot en el pedido mas reciente del cliente (27/11)
+    const l2 = quitar(lineas[1]).replace(/[^a-z ]/g, ' ').trim();
+    const formaEquipo = /^(rst|est)$/.test(l2) ? 'RST' : /^(x |por )?(cuenta|transferencia|deposito)$/.test(l2) ? 'CUENTA' : '';
+    let formaBot = null;
+    const ultimo = delCliente.length ? delCliente[delCliente.length - 1].x : null;
+    if (formaEquipo && ultimo) {
+      const t = ((simularX(ultimo) || []).find(e => /📦 PEDIDO/.test(String(e.texto || ''))) || {}).texto || '';
+      formaBot = (t.match(/\n(RST|CUENTA)\n/) || t.match(/Paga con (RST|CUENTA)/) || [])[1] || '';
+    }
     pasados.push({ pais: g.nombre, cliente: gc.nombre, resultado: mismo ? 'igual' : (delCliente.length ? 'otro grupo' : 'no lo leyó'),
-                   botDijo: [...new Set(delCliente.map(o => destinoDe(o.r) || 'sin país'))].join(', '), texto: lineas.slice(1).join('\n') });
+                   botDijo: [...new Set(delCliente.map(o => destinoDe(o.r) || 'sin país'))].join(', '), texto: lineas.slice(1).join('\n'),
+                   formaEquipo, formaBot, forma: formaBot === null ? '' : (formaBot === '' ? 'el bot no sabía' : (formaBot === formaEquipo ? 'igual' : 'distinta')) });
   }
 }
 // mensajes de clientes que parecen un pedido (cuenta, billetera, Nequi...) y el bot no saco ningun registro
 const PEDIDO_NO_LEIDO = deClientes.filter(x => !regsDe(x).length && x.fila.tipo !== 'captura' && !NO_ENTENDIDOS.includes(x)
   && /\d{8,}|nequi|yape|\bpix\b|binance|usdt|trc20|pago movil|bancolombia|banesco|@[a-z0-9.-]+\.[a-z]{2,}/i.test(x.fila.texto));
+
+// ---------- SALDO DEL DIA (Parte B, 27/11): pago + pedidos / pedidos + pago, simulado EN ORDEN ----------
+// Se pasa por los mensajes de los clientes en el orden en que llegaron, dandole al bot los movimientos del dia que ya iba
+// anotando (como haria la vista saldo_mayor). OJO: aqui NO se leen las fotos de pago (eso lo hace la IA en vivo): los clientes
+// que pagan por cuenta (con foto) van a salir con pedidos "esperando su pago" de mas.
+const saldoSim = { pedidos: 0, pagadosAlLlegar: 0, esperaron: 0, liberados: 0, pagosRst: 0, fotos: 0 };
+const quedan = new Map();                 // grupo -> pedidos que al final del periodo seguian esperando
+{
+  const movs = new Map();                 // grupo|dia -> movimientos
+  for (const x of deClientes.slice().sort((a, b) => a.ts - b.ts)) {
+    if (x.fila.tipo === 'captura' && !regsDe(x).length) { saldoSim.fotos++; continue; }
+    const k = x.grupo.grupo_jid + '|' + dia(x.ts);
+    const hoy = movs.get(k) || [];
+    SALDO_SIM = { grupo_jid: x.grupo.grupo_jid, saldo_corrido: 0, hoy: hoy.slice() };
+    const out = simular(x.grupo, x.fila, x.ts, recientesDe(x)) || [];
+    SALDO_SIM = null;
+    const nuevos = out.flatMap(e => e.movimientos || []);
+    const texto = out.map(e => String(e.texto || '')).join('\n');
+    saldoSim.pedidos += nuevos.filter(m => m.tipo === 'pedido').length;
+    saldoSim.pagosRst += nuevos.filter(m => m.tipo === 'pago').length;
+    saldoSim.pagadosAlLlegar += (texto.match(/✅ Pedido pagado/g) || []).length;
+    saldoSim.esperaron += (texto.match(/⏳ Pedido esperando su pago/g) || []).length;
+    const lib = (texto.match(/✅ Con este pago ya pasarían: ([^\n]*)/) || [])[1];
+    if (lib) saldoSim.liberados += lib.split('; ').length;
+    movs.set(k, hoy.concat(nuevos.map((m, i) => Object.assign({ id: i + 1 }, m))));
+  }
+  // los que siguen esperando al final: pedidos del dia que no alcanzan a cubrirse con lo pagado
+  for (const [k, l] of movs) {
+    const pagos = l.filter(m => m.tipo !== 'pedido').reduce((a, m) => a + Number(m.monto_usd), 0);
+    let acum = 0, n = 0;
+    for (const m of l.filter(m => m.tipo === 'pedido')) { acum += Number(m.monto_usd); if (acum > pagos + 1) n++; }
+    if (n) quedan.set(k.split('|')[0], (quedan.get(k.split('|')[0]) || 0) + n);
+  }
+}
 
 // ---------- 3) errores de n8n ----------
 let errores = null;
@@ -337,6 +398,12 @@ else {
 const cmp = contar(pasados, p => p.resultado);
 L.push('- Comparado con lo que **el equipo pasó a mano** a los grupos de países en las últimas ' + HORAS_COMPARA + ' h (nombre del cliente arriba): **' + pasados.length + '** reconocidos → igual que el bot: **' + (cmp['igual'] || 0) + '** · el bot lo mandaba a otro grupo: **' + (cmp['otro grupo'] || 0) + '** · el bot no lo leyó: **' + (cmp['no lo leyó'] || 0) + '**');
 L.push('  ("no lo leyó" también puede ser un pedido mandado en foto, por audio, en varios mensajes o antes del período.)');
+{
+  const conForma = pasados.filter(p => p.forma);
+  const cf = contar(conForma, p => p.forma);
+  L.push('- **2da línea (RST o CUENTA)** comparada con la que escribió la operadora: **' + conForma.length + '** → igual: **' + (cf['igual'] || 0) + '** · distinta: **' + (cf['distinta'] || 0) + '** · el bot no sabía: **' + (cf['el bot no sabía'] || 0) + '**');
+  for (const p of conForma.filter(p => p.forma === 'distinta').slice(0, 8)) L.push('  - ❌ [' + p.pais + ' ← ' + p.cliente.replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 18) + '] la operadora puso ' + p.formaEquipo + ', el bot ' + p.formaBot);
+}
 const difs = pasados.filter(p => p.resultado !== 'igual');
 if (difs.length) {
   L.push('');
@@ -352,6 +419,12 @@ L.push('');
 L.push('### Cómo se ve la vista previa de un pedido (3 ejemplos, datos tapados)');
 if (!previasSimuladas.length) L.push('- (ninguna)');
 for (const t of previasSimuladas.slice(0, 3)) L.push('- ' + tapar(t));
+L.push('');
+L.push('## Saldo de los clientes: ¿el pedido ya estaba pagado? (simulado en orden; sin leer las fotos)');
+L.push('- Pedidos anotados: **' + saldoSim.pedidos + '** → ya pagados al llegar: **' + saldoSim.pagadosAlLlegar + '** · esperando su pago al llegar: **' + saldoSim.esperaron
+  + '** · después los liberó un pago: **' + saldoSim.liberados + '** · siguen esperando al final: **' + [...quedan.values()].reduce((a, b) => a + b, 0) + '** (en ' + quedan.size + ' clientes)');
+L.push('- Pagos con RST anotados: **' + saldoSim.pagosRst + '** · fotos de clientes: **' + saldoSim.fotos + '** (aquí NO se leen; en vivo las lee la IA, así que los que pagan por cuenta salen con pedidos esperando de más)');
+for (const [g, k] of [...quedan.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)) L.push('  - ' + nombreDe(g).replace(/PEDIDOS?( JK)?/i, '').trim().slice(0, 22) + ': ' + k + ' pedido(s) sin cubrir al final');
 L.push('');
 L.push('## Qué habría hecho el bot con cada retiro de un cliente');
 if (!retiros.length) L.push('- (ningún retiro en el período)');

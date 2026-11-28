@@ -20,6 +20,8 @@ const _getConn = (conns, n) => {
 // Todos los datos son INVENTADOS (el repositorio es publico). Correr con:  node test_mayor_publicar.mjs
 
 import { readFileSync } from 'fs';
+import * as motor from './src/motor.js';
+const motorSinExport = readFileSync('src/motor.js', 'utf8').replace(/^﻿/, '').replace(/^export\s+function\s+/gm, 'function ');
 
 const wf = JSON.parse(readFileSync('workflow_mayor.json', 'utf8').replace(/^﻿/, ''));
 const bot = JSON.parse(readFileSync('workflow_bot_whatsapp_v12.json', 'utf8').replace(/^﻿/, ''));
@@ -43,6 +45,13 @@ const ABIERTO = '2026-11-24T15:00:00Z';      // martes 10:00 am en Ecuador
 const CERRADO = '2026-11-25T03:00:00Z';      // martes 10:00 pm en Ecuador
 const DOMINGO_TARDE = '2026-11-29T20:00:00Z'; // domingo 3:00 pm en Ecuador (cerrado)
 
+// Una hoja de tasas de prueba con las MISMAS columnas que la publicada (los precios del mayor de BINANCE y ZELLE salen de aqui).
+const CSV_TASAS = ['Pais,Tasa Envio,Margen Envio,Tasa Recibo,Margen Recibo,Factor EUR,ISO Bandera,Código Banco,Nombre Moneda,Margen Envio Mayor,Margen Recibo Mayor,Ciudades,Proveedor,Monto Minimo,Margen Envío VIP,Comisión VIP,Margen Mayor X RST,Margen Mayor 1000',
+  'Ecuador,1,3,1,3,,EC,USD,Dólar estadounidense,1,1,,YO,10,,,,',
+  'Zelle,1,7,1,6,,US,USD,Dólar estadounidense,3,5,,Prueba,50,,,,',
+  'USDT,1,5,1,5,,US,USDT,TetherUS,4.5,3.5,,Prueba,50,,,3,',
+  'Venezuela,1067,6,1000,6,,VE,VES,Bolívar,5.5,,,Prueba,10,,,4.5,4',
+  'Colombia,3410,6,3400,6,,CO,COP,Peso colombiano,4,,,Prueba,10,,,,'].join('\n');
 const CAJERO = { estado: 'en_cajero', id_msg_cliente: 'MSGCLIENTE0', fila_id: 70, cliente_nombre: 'Cliente Prueba' };      // el cobrador de JEP ya avisó que está en el cajero
 let n = 0;
 function evento(texto, extra) {
@@ -75,6 +84,10 @@ function correr(texto, opciones) {
       if (nombre === 'Grupos Destino') return { all: () => (o.destinos || DESTINOS).map(json => ({ json })) };
       if (nombre === 'Retiros Recientes') return { all: () => (o.recientes || []).map(json => ({ json })) };
       if (nombre === 'Redis Leer Sin Banco') return { first: () => ({ json: { sinBanco: o.sinBanco ? JSON.stringify(o.sinBanco) : null } }) };
+      if (nombre === 'Leer Tasas') return { first: () => ({ json: { data: o.sinTasas ? '' : (o.tasas || CSV_TASAS) } }) };
+      if (nombre === 'Formas de Pago Vistas') return { all: () => (o.vistas || []).map(json => ({ json })) };
+      if (nombre === 'Saldo del Cliente') return { first: () => ({ json: o.saldo || {} }) };
+      if (nombre === 'Leer Pago') { if (!o.foto) throw new Error('el nodo Leer Pago no corrio'); return { first: () => ({ json: { content: JSON.stringify(o.foto) } }) }; }
       throw new Error('nodo inesperado: ' + nombre);
     };
     const pasa = new Function('$', code('Hace Falta Publicar?'))($).length > 0;
@@ -235,8 +248,9 @@ console.log('=== 6) BANCO SIN GRUPO, FOTOS Y LO QUE NO DEBE HACER NADA ===');
   chk(fotoRst.fila.tipo === 'captura' && fotoRst.fila.datos.es_foto === true && bancos(fotoRst).length === 1, 'foto con el RST COMPLETO escrito en el pie: se publica el texto del pie', '-> ' + fotoRst.fila.tipo + ' ' + bancos(fotoRst).length);
   const fotoIncompleta = real('retiro sin tarjeta Pichincha', { extra: { imagen: true } });
   chk(fotoIncompleta.fila.datos.pide_texto === true && clienteTxt(fotoIncompleta)[0] && /texto escrito/.test(clienteTxt(fotoIncompleta)[0].texto) && bancos(fotoIncompleta).length === 0, 'foto con un pie que habla de un retiro pero sin datos: se le pide el texto', '-> ' + JSON.stringify((clienteTxt(fotoIncompleta)[0] || {}).texto));
-  chk(!correr('', { modo: 'real', extra: { imagen: true } }).pasa, 'una foto sin pie (captura de un pago): no se toca');
-  chk(!correr('Pago de la cuenta 01020000000000012345 $50', { modo: 'real', extra: { imagen: true } }).pasa, 'una captura de pago con pie normal: no se toca');
+  // (desde el 27/11 la foto SI pasa el filtro: se lee con IA para el saldo; pero nunca publica nada ni le escribe al cliente)
+  chk(!correr('', { modo: 'real', extra: { imagen: true } }).envios.length, 'una foto sin pie (captura de un pago): no publica ni contesta nada');
+  chk(!correr('Pago de la cuenta 01020000000000012345 $50', { modo: 'real', extra: { imagen: true } }).envios.length, 'una captura de pago con pie normal: no publica ni contesta nada');
   chk(!correr('Pichincha Código: 5478 Teléfono: 0990000004 Monto: $200', { modo: 'real', extra: { fromMe: true, numero: '' } }).pasa, 'lo que escribe KELVIN en un grupo de cliente no publica nada');
   chk(!correr('Pichincha Código: 5478 Teléfono: 0990000004 Monto: $200', { modo: 'real', extra: { numero: '593990000003' } }).pasa, 'ni lo que escribe la OPERADORA');
   chk(!correr('Pichincha Código: 5478 Teléfono: 0990000004 Monto: $200', { modo: 'real', extra: { numero: '593990000077' } }).pasa, 'ni un desconocido del grupo');
@@ -668,7 +682,8 @@ console.log('=== 18) PEDIDOS A PAISES: solo VISTA PREVIA en avisos, aun en modo 
   const t = p.envios[0].texto;
   console.log('     ' + t.split(SALTO).join(SALTO + '     '));
   chk(/📦 PEDIDO → iría a VENEZUELA:/.test(t), 'dice a que grupo iria (VENEZUELA)');
-  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'Banco de Venezuela') !== -1, 'como lo pasa la operadora: el NOMBRE del cliente en mayusculas y debajo sus datos');
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'RST o CUENTA (?)' + SALTO + SALTO + 'Banco de Venezuela') !== -1,
+      'como lo pasa la operadora: el NOMBRE en mayusculas, en la 2da linea como paga y debajo sus datos', '-> ' + JSON.stringify(t));
   chk(/01020000000000000001/.test(t) && /Maria Prueba/.test(t), 'con la cuenta y el titular tal cual los mando el cliente');
   chk(!/⚠️/.test(t), 'un pedido completo no lleva advertencias');
 
@@ -678,7 +693,7 @@ console.log('=== 18) PEDIDOS A PAISES: solo VISTA PREVIA en avisos, aun en modo 
   chk(/iría a PERÚ:/.test(p.envios[0].texto) && !/No hay grupo/.test(p.envios[0].texto), 'un Yape iria a PERU (el grupo sin acento de la tabla SI se encuentra)', '-> ' + p.envios[0].texto.split(SALTO)[2]);
 
   p = correr('USDT TRC20' + SALTO + BILLETERA, CON_PAISES);
-  chk(/iría a BINANCE:/.test(p.envios[0].texto) && /Sin monto: falta que diga cuánto/.test(p.envios[0].texto), 'una billetera sin monto: va a BINANCE y avisa que falta el monto',
+  chk(/iría a BINANCE, en 2 mensajes:/.test(p.envios[0].texto) && /Sin monto: falta que diga cuánto/.test(p.envios[0].texto), 'una billetera sin monto: va a BINANCE y avisa que falta el monto',
       '-> ' + JSON.stringify(p.envios[0].texto.split(SALTO).slice(-1)));
 
   p = correr(NEQUI, { destinos: DESTINOS.concat(PAISES.filter(x => x.nombre !== 'COLOMBIA')) });
@@ -925,21 +940,21 @@ console.log('=== 21) REVISION DEL 27/11: monto pegado al banco, Guayaquil sin ba
   // el monto primero y la billetera despues
   p = correr(BIN, CON({ recientes: [fila(MONTO)] }));
   let t = previa(p);
-  chk(/📦 PEDIDO \(junté 2 mensajes\) → iría a BINANCE:/.test(t) && /300\$/.test(t) && t.indexOf(BILL) !== -1 && !/Sin monto/.test(t),
-      'monto + billetera (en 2 mensajes): UN pedido a BINANCE con los 300$', '-> ' + JSON.stringify(t));
-  chk(t.indexOf('Pedido USDT') < t.indexOf('BINANCE 🔶'), '...con los textos en el orden en que llegaron');
+  chk(/📦 PEDIDO \(junté 2 mensajes\) → iría a BINANCE, en 2 mensajes:/.test(t) && t.indexOf('— 1 —' + SALTO + BILL + SALTO + '— 2 —' + SALTO + '300' + SALTO + 'CLIENTE PRUEBA' + SALTO + '291') !== -1 && !/Sin monto/.test(t),
+      'monto + billetera (en 2 mensajes): UN pedido a BINANCE (300 → 291)', '-> ' + JSON.stringify(t));
   // la billetera primero (sale "sin monto") y el monto despues (sale el pedido entero)
   p = correr(BIN, CON());
   chk(/Sin monto/.test(previa(p)), 'la billetera sola: sale "sin monto" (como antes)');
   p = correr(MONTO, CON({ recientes: [fila(BIN)] }));
   t = previa(p);
-  chk(/junté 2 mensajes\) → iría a BINANCE/.test(t) && /300\$/.test(t) && !/Sin monto/.test(t), 'billetera + monto despues: sale el pedido entero', '-> ' + JSON.stringify(t));
+  chk(/junté 2 mensajes\) → iría a BINANCE/.test(t) && t.indexOf('300' + SALTO + 'CLIENTE PRUEBA' + SALTO + '291') !== -1 && !/Sin monto/.test(t), 'billetera + monto despues: sale el pedido entero', '-> ' + JSON.stringify(t));
   // tres mensajes: billetera, correo y monto
   const SOLO_BILL = BILL, CORREO = 'prueba.cliente@example.com', CINCUENTA = '50$';
   chk((entender(CORREO).datos.pieza || {}).clase === 'correo', 'un correo solo es un pedazo (correo)');
   p = correr(CINCUENTA, CON({ recientes: [fila(SOLO_BILL), fila(CORREO)] }));
   t = previa(p);
-  chk(/junté 3 mensajes\) → iría a BINANCE/.test(t) && /50\$/.test(t) && t.indexOf(CORREO) !== -1, 'billetera + correo + monto (3 mensajes): UN pedido a BINANCE', '-> ' + JSON.stringify(t));
+  chk(/junté 3 mensajes\) → iría a BINANCE/.test(t) && t.indexOf('50' + SALTO + 'CLIENTE PRUEBA' + SALTO + '48.50') !== -1 && t.indexOf('— 1 —' + SALTO + BILL + SALTO) !== -1
+      && /también mandó correo: no se pega/.test(t), 'billetera + correo + monto (3 mensajes): UN pedido a BINANCE (se pega solo la billetera)', '-> ' + JSON.stringify(t));
   // correo + monto: el pais lo pone el monto ("USDT")
   p = correr('USDT 120$', CON({ recientes: [fila(CORREO)] }));
   chk(/junté 2 mensajes\) → iría a BINANCE/.test(previa(p)), 'correo + "USDT 120$": a BINANCE', '-> ' + JSON.stringify(previa(p)));
@@ -970,6 +985,205 @@ console.log('=== 21) REVISION DEL 27/11: monto pegado al banco, Guayaquil sin ba
   // un saludo editado no dispara nada (ahora "Retiros Recientes" tambien trae las filas 'otro')
   p = real('', { recientes: [Object.assign(fila('Buenos dias'), { mensaje_id: 'SALUDO1' })], extra: { mensaje: { secretEncryptedMessage: { targetMessageKey: { id: 'SALUDO1' } } } } });
   chk(!p.envios.length, 'editar un saludo sigue sin disparar nada');
+}
+
+console.log('');
+console.log('=== 22) PROTOCOLO DE PEDIDOS (27/11): BINANCE y ZELLE en 2 mensajes con los precios de la hoja, RST/CUENTA y Venezuela de 20 digitos ===');
+{
+  const PAISES = ['BINANCE', 'ZELLE', 'VENEZUELA', 'BANESCO', 'COLOMBIA'].map((nombre, i) => ({ grupo_jid: '1203630000000004' + String(10 + i) + '@g.us', nombre, tipo: 'destino', activo: true }));
+  const CON = extra => Object.assign({ destinos: DESTINOS.concat(PAISES) }, extra || {});
+  const previa = q => (q.envios.find(e => /📦 PEDIDO/.test(e.texto || '')) || {}).texto || '';
+  const T0 = new Date(ABIERTO).getTime();
+  const reciente = (tipo, extra) => Object.assign({ id: 900 + (++n), mensaje_id: 'REC' + n, tipo, autor_rol: 'cliente', autor_numero: '593990000001',
+    fecha_mensaje: new Date(T0 - 5 * 60000).toISOString(), estado: 'visto', datos: {} }, extra || {});
+  // como paga el cliente, anotado a mano por Kelvin en grupos_mayor.forma_pago
+  const MANUAL = forma => ({ grupo: Object.assign({}, GRUPO, { forma_pago: forma }) });
+  // lo que escribio la operadora en los grupos de paises ("NOMBRE / RST")
+  const VISTA = (cabecera, forma) => ({ id: 950 + (++n), mensaje_id: 'EQ' + n, tipo: 'beneficiario', autor_rol: 'operadora', fecha_mensaje: new Date(T0 - 86400000).toISOString(), datos: { cabecera, forma_pago: forma } });
+  const TRC = 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE', BEP = '0x' + 'ab12'.repeat(10), CORREO = 'prueba.cliente@example.com';
+
+  // ---------- BINANCE ----------
+  let p = correr(['Binance TRC20', TRC, '150$'].join(SALTO), CON(MANUAL('rst')));
+  let t = previa(p);
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(t.indexOf('→ iría a BINANCE, en 2 mensajes:' + SALTO + '— 1 —' + SALTO + TRC + SALTO + '— 2 —' + SALTO + '150' + SALTO + 'CLIENTE PRUEBA' + SALTO + '145.50') !== -1,
+      'BINANCE con RST: 1) solo la billetera  2) 150 / NOMBRE / 145.50 (3% RST de la hoja)', '-> ' + JSON.stringify(t));
+  chk(/Paga con RST \(lo anotó Kelvin en grupos_mayor\) → 3% \(RST, de la hoja de tasas\)/.test(t), '...y dice con que precio lo calculo y por que');
+  t = previa(correr(['Binance TRC20', TRC, '150$'].join(SALTO), CON(MANUAL('cuenta'))));
+  chk(t.indexOf('150' + SALTO + 'CLIENTE PRUEBA' + SALTO + '143.25') !== -1 && /Paga con CUENTA \(lo anotó Kelvin en grupos_mayor\) → 4.5% \(por cuenta/.test(t), 'si paga por CUENTA: 4.5% → 143.25', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Binance TRC20', TRC, '150$'].join(SALTO), CON()));
+  chk(t.indexOf('145.50') !== -1 && /No sé si paga con RST o por cuenta: lo calculé con el precio RST/.test(t) && /Por cuenta sería 4.5%: 143.25/.test(t), 'si no se sabe: lo calcula con RST y dice cuanto seria por cuenta', '-> ' + JSON.stringify(t));
+  // los dos montos que escribe el cliente (caso real: "150$ ... 145.5$"): de ahi sale que calculo con el precio RST
+  t = previa(correr(['Pedido USDT', '150$', 'Cliente', '145.5$', 'BINANCE', TRC].join(SALTO), CON()));
+  chk(t.indexOf('150' + SALTO + 'CLIENTE PRUEBA' + SALTO + '145.50') !== -1 && !/⚠️/.test(t) && /Paga con RST \(por la tasa que usó: 3%\)/.test(t),
+      'con los dos montos (150 y 145.5): sale que es RST por el % que uso, y cuadra con la hoja', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Pedido USDT', '150$', '143.25$', 'BINANCE', TRC].join(SALTO), CON()));
+  chk(/Paga con CUENTA \(por la tasa que usó: 4.5%\)/.test(t), '150 y 143.25: es por CUENTA (4.5%)', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Pedido USDT', '150$', '140$', 'BINANCE', TRC].join(SALTO), CON()));
+  chk(t.indexOf('150' + SALTO + 'CLIENTE PRUEBA' + SALTO + '140') !== -1 && /⚠️ El cliente puso 150 → 140, pero con el precio RST \(3%\) sería 150 → 145.50/.test(t), 'si los dos montos no cuadran con la hoja: los usa y avisa', '-> ' + JSON.stringify(t));
+  // prioridad: BEP20 > TRC20 > correo > telefono > ID
+  t = previa(correr(['Binance', TRC, BEP, CORREO, '200$'].join(SALTO), CON()));
+  chk(t.indexOf('— 1 —' + SALTO + BEP + SALTO + '— 2 —' + SALTO + 'BEP20' + SALTO + '— 3 —' + SALTO + '200' + SALTO + 'CLIENTE PRUEBA' + SALTO + '194') !== -1,
+      'BEP20 + TRC20 + correo: gana la BEP20 y va otro mensaje que dice "BEP20"', '-> ' + JSON.stringify(t));
+  chk(/también mandó TRC20 y correo: no se pega/.test(t), '...y avisa lo que no se pega');
+  t = previa(correr(['Binance', CORREO, TRC, '200$'].join(SALTO), CON()));
+  chk(t.indexOf('— 1 —' + SALTO + TRC + SALTO + '— 2 —') !== -1, 'TRC20 + correo: gana la TRC20 (aunque el correo venga primero)');
+  t = previa(correr(['Binance', CORREO, '200$'].join(SALTO), CON()));
+  chk(t.indexOf('— 1 —' + SALTO + CORREO + SALTO + '— 2 —') !== -1, 'solo correo: se pega el correo');
+  t = previa(correr(['Binance', 'ID: 475000001', '200$'].join(SALTO), CON()));
+  chk(t.indexOf('— 1 —' + SALTO + '475000001' + SALTO + '— 2 —') !== -1, 'solo ID de Binance: se pega el ID', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Binance TRC20', TRC, '1500$'].join(SALTO), CON(Object.assign({ tasas: CSV_TASAS.replace('TetherUS,4.5,3.5,,Prueba,50,,,3,', 'TetherUS,4.5,3.5,,Prueba,50,,,3,2.5') }, MANUAL('rst')))));
+  chk(t.indexOf('1500' + SALTO + 'CLIENTE PRUEBA' + SALTO + '1462.50') !== -1 && /\$1,000\+/.test(t), '$1,000+ con la columna "Margen Mayor 1000" llena: usa ese precio (2.5%)', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Binance TRC20', TRC, '150$'].join(SALTO), CON({ sinTasas: true })));
+  chk(t.indexOf('150' + SALTO + 'CLIENTE PRUEBA' + SALTO + '¿?') !== -1 && /No pude leer el precio en la hoja de tasas/.test(t), 'si no se pudo leer la hoja: lo dice (no inventa el monto)', '-> ' + JSON.stringify(t));
+  // el % es el MISMO que calcula la app con src/motor.js
+  const fila0 = CSV_TASAS.split(SALTO)[3].split(',');
+  const usdt = { nombre: 'USDT', codigo: 'USDT', tasaProveedorEnvio: 1, margenEnvio: 5, tasaProveedorRecibo: 1, margenRecibo: 5, margenEnvioMayor: 4.5, margenReciboMayor: 3.5, margenMayorRST: Number(fila0[16]), margenMayorVolumen: null };
+  chk(Math.abs(150 * motor.calcularTasaEnvio(usdt, 'mayor_rst') - 145.5) < 0.001 && Math.abs(150 * motor.calcularTasaEnvio(usdt, 'mayor') - 143.25) < 0.001, 'los precios son los de la app (src/motor.js): RST 145.50, por cuenta 143.25');
+  chk(code('Decidir Publicacion').includes(motorSinExport.slice(0, 2000)), '"Decidir Publicacion" trae el motor de la app tal cual (src/motor.js)');
+
+  // ---------- ZELLE ----------
+  const ZELLE = ['Zelle', 'Titular: Empresa Prueba C.A', 'Correo: pagos@example.com', 'Monto: 240$', 'Descripción: PAGO FACTURA'].join(SALTO);
+  t = previa(correr(ZELLE, CON(MANUAL('rst'))));
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(t.indexOf('→ iría a ZELLE, en 2 mensajes:' + SALTO + '— 1 —' + SALTO + ZELLE + SALTO + '— 2 —' + SALTO + '247.20' + SALTO + 'CLIENTE PRUEBA' + SALTO + '240') !== -1,
+      'ZELLE: 1) los datos tal cual (con la descripcion)  2) 247.20 / NOMBRE / 240 (240 + 3%)', '-> ' + JSON.stringify(t));
+  t = previa(correr(ZELLE.replace('Monto: 240$', 'Monto: 2000$') + SALTO + '2040$', CON(MANUAL('rst'))));
+  chk(t.indexOf('2040' + SALTO + 'CLIENTE PRUEBA' + SALTO + '2000') !== -1 && /sería 2060 → 2000/.test(t), 'ZELLE con los dos montos (2040 y 2000): usa los del cliente y avisa que con la hoja (3%) seria 2060', '-> ' + JSON.stringify(t));
+
+  // ---------- la 2da linea: RST o CUENTA (los demas paises) ----------
+  // 1) por la TASA que uso (hoja de prueba: Venezuela 1067; RST 4.5% = 1018,99; cuenta 5.5% = 1008,32; $1,000+ 4% = 1024,32)
+  const VE = (montos) => ['Banco de Venezuela', '01020000000000000001', 'Maria Prueba', 'CI 10000001'].concat(montos).join(SALTO);
+  t = previa(correr(VE(['100$', 'Bs 101.899']), CON()));
+  console.log('     ' + t.split(SALTO).join(SALTO + '     '));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'RST' + SALTO + SALTO + 'Banco de Venezuela') !== -1 && /ℹ️ RST: por la tasa que usó: 1019/.test(t), '100$ = Bs 101.899 (calculó a 1019 = la tasa RST): 2da linea "RST"', '-> ' + JSON.stringify(t));
+  t = previa(correr(VE(['100$', 'Bs 100.832']), CON()));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'CUENTA' + SALTO) !== -1, '100$ = Bs 100.832 (la tasa de cuenta): "CUENTA"', '-> ' + JSON.stringify(t));
+  t = previa(correr(VE(['1.000$', 'Bs 1.024.320']), CON()));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'RST' + SALTO) !== -1 && /la de \$1,000\+/.test(t), '1.000$ con la tasa de $1,000+: "RST" (es un precio RST)', '-> ' + JSON.stringify(t));
+  t = previa(correr(VE(['100$', 'Bs 99.000']), CON()));
+  chk(t.indexOf('RST o CUENTA (?)') !== -1 && /⚠️ Calculó a 990: no cuadra con la tasa RST \(1019\) ni con la de cuenta \(1008,3\)/.test(t), 'calculó a 990 (ninguna): no adivina y avisa con los numeros', '-> ' + JSON.stringify(t));
+  // 2) lo que anoto Kelvin, cuando el pedido trae un solo monto
+  t = previa(correr(VE(['100$']), CON(MANUAL('cuenta'))));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'CUENTA' + SALTO) !== -1 && /lo anotó Kelvin/.test(t), 'un solo monto y Kelvin anoto "cuenta": "CUENTA"', '-> ' + JSON.stringify(t));
+  // 3) como lo pasa siempre la operadora ("NOMBRE / RST" en los grupos de paises)
+  const VISTAS_RST = { vistas: [VISTA('cliente pru', 'RST'), VISTA('cliente prueba', 'RST'), VISTA('cliente', 'RST')] };
+  t = previa(correr(VE(['100$']), CON(VISTAS_RST)));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'RST' + SALTO) !== -1 && /así lo pasa siempre la operadora \(3 de 3\)/.test(t), 'un solo monto y la operadora siempre le pone RST: "RST"', '-> ' + JSON.stringify(t));
+  t = previa(correr(VE(['100$']), CON({ vistas: [VISTA('cliente pru', 'RST'), VISTA('cliente pru', 'CUENTA')] })));
+  chk(t.indexOf('RST o CUENTA (?)') !== -1, 'si la operadora a veces pone RST y a veces CUENTA: no adivina');
+  t = previa(correr(VE(['100$']), CON({ vistas: [VISTA('maria lopez', 'CUENTA'), VISTA('pedro', 'CUENTA')] })));
+  chk(t.indexOf('RST o CUENTA (?)') !== -1, 'lo de OTROS clientes no cuenta');
+  t = previa(correr(VE(['100$']), CON(Object.assign({}, VISTAS_RST, MANUAL('cuenta')))));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'CUENTA' + SALTO) !== -1, 'lo que anoto Kelvin manda sobre lo que aprendio de la operadora');
+  t = previa(correr(VE(['100$', 'Bs 100.832']), CON(VISTAS_RST)));
+  chk(t.indexOf('CLIENTE PRUEBA' + SALTO + 'CUENTA' + SALTO) !== -1 && /⚠️ Calculó con el precio CUENTA, pero normalmente paga RST/.test(t), 'la tasa manda, pero si no es lo de siempre lo avisa', '-> ' + JSON.stringify(t));
+  // Colombia: en la hoja la RST y la de cuenta son iguales: la tasa no dice nada; manda lo de la operadora
+  const CO = ['Nequi 3000000001', 'Pedro Prueba', '100$', '327.360 cop'].join(SALTO);
+  chk(/ahí la tasa RST y la de cuenta son iguales/.test(previa(correr(CO, CON()))), 'Colombia (RST = cuenta en la hoja): lo dice');
+  chk(previa(correr(CO, CON(VISTAS_RST))).indexOf('CLIENTE PRUEBA' + SALTO + 'RST' + SALTO) !== -1, '...y usa lo de la operadora');
+  // lo que aprende el lector de los grupos de paises
+  const PAIS = { tipo: 'destino', nombre: 'VENEZUELA', grupo_jid: '120363000000000009@g.us', operadora_whatsapp: '593990000003' };
+  let f = entender(['ROSA PR', 'RST', '', 'Banco de Venezuela', '01020000000000000001', 'Maria Prueba', '100$'].join(SALTO), { numero: '593990000003' }, PAIS);
+  chk(f.datos.cabecera === 'rosa pr' && f.datos.forma_pago === 'RST', 'la operadora pasa "ROSA PR / RST" en VENEZUELA: se guarda la cabecera y la forma de pago', '-> ' + JSON.stringify([f.datos.cabecera, f.datos.forma_pago]));
+  chk(entender(['MARÍA ÁVILA', 'EST', '', '01020000000000000001'].join(SALTO), { numero: '593990000003' }, PAIS).datos.forma_pago === 'RST', '"EST" (error de tipeo) = RST; y sin acentos ("maria avila")');
+  chk(entender(['JOSE PRUEBA', 'Cuenta', '', '01020000000000000001'].join(SALTO), { numero: '593990000003' }, PAIS).datos.forma_pago === 'CUENTA', '"Cuenta" = CUENTA');
+  chk(!entender(['ROSA PR', 'RST', 'Código: 5478', 'Teléfono: 0990000004'].join(SALTO), { numero: '593990000003' }, BANCO_GRUPO).datos.cabecera, 'en un grupo de BANCO (Pichincha) no se toma como cabecera de pedido');
+  chk(!entender(['01020000000000000001', 'RST'].join(SALTO), { numero: '593990000003' }, PAIS).datos.cabecera, 'si el 1er renglon tiene numeros, no es un nombre');
+
+  // ---------- VENEZUELA: cuentas de 20 digitos ----------
+  t = previa(correr(['Banco de Venezuela', '0102 05182300 0007 2054', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO), CON()));
+  chk(/→ iría a VENEZUELA:/.test(t) && !/dígitos/.test(t), 'cuenta con espacios donde caigan ("0102 05182300 0007 2054"): se lee como UNA cuenta de 20', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Banco de Venezuela', '0102000000000000001', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO), CON()));
+  chk(/La cuenta de Venezuela tiene 19 dígitos \(deben ser 20\)/.test(t), 'cuenta de 19 digitos: avisa que deben ser 20', '-> ' + JSON.stringify(t));
+  t = previa(correr(['0102000000000000001', 'Maria Prueba', 'CI 10000001', '100$'].join(SALTO), CON()));
+  chk(/→ iría a VENEZUELA:/.test(t) && /19 dígitos/.test(t), '...aunque no diga el banco: es de Venezuela y le faltan digitos', '-> ' + JSON.stringify(t));
+  t = previa(correr(['Pago movil', '0102', '04140000001', 'V-10000001', 'Maria Prueba', '50$'].join(SALTO), CON()));
+  chk(/→ iría a VENEZUELA:/.test(t) && !/⚠️/.test(t), 'Pago Movil: por ahora SI se acepta (Kelvin, 27/11) y va a VENEZUELA', '-> ' + JSON.stringify(t));
+  chk(/→ iría a BANESCO:/.test(previa(correr(['01340000000000000002', 'Jose Prueba', 'V-10000002', '$100'].join(SALTO), CON()))), 'Banesco (0134) sigue yendo a BANESCO');
+}
+
+console.log('');
+console.log('=== 23) SALDO DEL CLIENTE (Parte B, 27/11): pago + pedidos / pedidos + pago, la foto del pago leida con IA ===');
+{
+  const PAISES = ['BINANCE', 'ZELLE', 'VENEZUELA'].map((nombre, i) => ({ grupo_jid: '1203630000000005' + String(10 + i) + '@g.us', nombre, tipo: 'destino', activo: true }));
+  const RST_CLIENTE = { grupo: Object.assign({}, GRUPO, { forma_pago: 'rst' }) };
+  const CON = extra => Object.assign({ destinos: DESTINOS.concat(PAISES) }, RST_CLIENTE, extra || {});
+  const T0 = new Date(ABIERTO).getTime();
+  const hora = min => new Date(T0 - min * 60000).toISOString();
+  const mov = (tipo, monto, detalle, min) => ({ id: 800 + (++n), fecha: hora(min || 30), tipo, forma: 'rst', monto_usd: monto, detalle, mensaje_id: 'M' + n });
+  const SALDO = (hoy, corrido) => ({ saldo: { grupo_jid: GRUPO.grupo_jid, saldo_corrido: corrido === undefined ? 0 : corrido, hoy } });
+  const vistaDe = q => (q.envios[0] || {}).texto || '';
+  const movs = q => q.envios.flatMap(e => e.movimientos || []);
+  const TRC = 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE';
+  const PEDIDO = ['Binance TRC20', TRC, '150$'].join(SALTO);
+  const PICH = ['Pichincha código: 5478', 'Teléfono: 0990000004', 'Monto: $200'].join(SALTO);
+
+  // pedido sin haber pagado nada hoy -> espera su pago
+  let p = correr(PEDIDO, CON(SALDO([])));
+  let t = vistaDe(p);
+  console.log('     ' + t.split(SALTO).slice(-5).join(SALTO + '     '));
+  chk(/⏳ Pedido esperando su pago: BINANCE 150 → 145.50 = 150\$/.test(t) && /💰 Hoy: pagó 0\$ · pidió 150\$ → le faltan 150\$/.test(t) && /sticker "Esperando su pago para procesar"/.test(t),
+      'pedido sin pago: "⏳ esperando su pago", le faltan 150$ y el sticker (vista previa)', '-> ' + JSON.stringify(t.split(SALTO).slice(-4)));
+  const m1 = movs(p);
+  chk(m1.length === 1 && m1[0].tipo === 'pedido' && m1[0].monto_usd === 150 && m1[0].forma === 'rst' && m1[0].grupo_jid === GRUPO.grupo_jid && /:pedido:0$/.test(m1[0].clave) && m1[0].dia,
+      '...y se anota el pedido (150$, rst) para el saldo', '-> ' + JSON.stringify(m1));
+  // en modo REAL tambien (el pedido sale solo como vista previa: ahi tienen que ir los movimientos)
+  p = correr(PEDIDO, CON(Object.assign({ modo: 'real' }, SALDO([]))));
+  chk(movs(p).length === 1 && movs(p)[0].tipo === 'pedido', 'en modo REAL el pedido tambien se anota (va con la vista previa)', '-> ' + JSON.stringify(p.envios.map(e => [e.etapa, (e.movimientos || []).length])));
+  // pago primero y despues el pedido
+  t = vistaDe(correr(PEDIDO, CON(SALDO([mov('pago', 200, 'RST Pichincha')]))));
+  chk(/✅ Pedido pagado: BINANCE/.test(t) && /pagó 200\$ · pidió 150\$ → le sobran 50\$/.test(t) && !/sticker "Esperando/.test(t), 'pago + pedido: "✅ pagado", le sobran 50$', '-> ' + JSON.stringify(t.split(SALTO).slice(-3)));
+  // el pedido primero y despues el pago (RST)
+  p = correr(PICH, CON(SALDO([mov('pedido', 150, 'BINANCE 150 → 145.50', 20)])));
+  t = vistaDe(p);
+  chk(/✅ Con este pago ya pasarían: BINANCE 150 → 145.50 \(\d\d:\d\d, 150\$\)/.test(t) && /💵 Pago: 200\$ \(RST Pichincha\)/.test(t) && /le sobran 50\$/.test(t),
+      'pedido + pago: con el RST ya pasaría el pedido que esperaba', '-> ' + JSON.stringify(t.split(SALTO).slice(-4)));
+  chk(movs(p).length === 1 && movs(p)[0].tipo === 'pago' && movs(p)[0].forma === 'rst' && movs(p)[0].monto_usd === 200, '...y el RST se anota como pago (cuenta apenas llega)');
+  // un pago que no alcanza
+  t = vistaDe(correr(PICH, CON(SALDO([mov('pedido', 500, 'VENEZUELA', 20)]))));
+  chk(!/ya pasarían/.test(t) && /le faltan 300\$/.test(t), 'si el pago no alcanza: no libera nada y dice cuanto falta', '-> ' + JSON.stringify(t.split(SALTO).slice(-3)));
+  // un RST sin pedidos de por medio: se anota callado (en real no manda un aviso de mas)
+  p = correr(PICH, CON(Object.assign({ modo: 'real' }, SALDO([]))));
+  chk(!p.envios.some(e => e.jid === AVISOS) && movs(p).length === 1, 'un RST sin pedidos: se anota el pago pero no sale ningun aviso de saldo');
+  // dos RST en el mismo mensaje: dos pagos, cada uno con su clave
+  p = correr([PICH, '', 'Guayaquil C1: 2403 C2: 2790 Teléfono: 0990000005 Monto: 100$'].join(SALTO), CON(SALDO([])));
+  const m2 = movs(p);
+  chk(m2.length === 2 && m2[0].clave !== m2[1].clave && m2.reduce((a, m) => a + m.monto_usd, 0) === 300, 'dos RST en un mensaje: dos pagos con claves distintas', '-> ' + JSON.stringify(m2.map(m => [m.clave, m.monto_usd])));
+  // corrido
+  t = vistaDe(correr(PEDIDO, CON(SALDO([], 100))));
+  chk(/corrido: -50\$/.test(t), 'el corrido suma lo de antes: +100 a favor - 150 del pedido = -50$', '-> ' + JSON.stringify(t.split(SALTO).slice(-2)));
+  t = vistaDe(correr(PEDIDO, CON(SALDO([mov('ajuste', -40, 'saldo inicial')]))));
+  chk(/pagó -40\$ · pidió 150\$ → le faltan 190\$/.test(t) || /le faltan 190\$/.test(t), 'un ajuste de Kelvin (debe 40) cuenta en el saldo del dia', '-> ' + JSON.stringify(t.split(SALTO).slice(-2)));
+  // pedido de Venezuela con solo Bs: se pasa a $ con la tasa RST de la hoja (1018,985)
+  p = correr(['Banco de Venezuela', '01020000000000000001', 'Maria Prueba', 'CI 10000001', 'Bs 101.898,50'].join(SALTO), CON(SALDO([])));
+  chk(movs(p).length === 1 && Math.abs(movs(p)[0].monto_usd - 100) < 0.01 && /convertido/.test(movs(p)[0].detalle), 'pedido solo en Bs: se anota en $ con la tasa (Bs 101.898,50 / 1018,985 = 100$)', '-> ' + JSON.stringify(movs(p)));
+  // si la tabla todavia no esta
+  t = vistaDe(correr(PEDIDO, CON({ saldo: { error: 'relation "saldo_mayor" does not exist' } })));
+  chk(/No pude leer los saldos/.test(t), 'si no hay tabla de saldos todavia: lo dice');
+
+  // ---------- la FOTO del pago (leida con IA) ----------
+  const FOTO = (extra) => Object.assign({ extra: { imagen: true } }, extra);
+  p = correr('', CON(Object.assign(FOTO({ foto: { tipo: 'comprobante', monto: '300,00', moneda: 'USD', banco: 'Banco Pichincha', referencia: '123456' } }), SALDO([mov('pedido', 250, 'ZELLE 257.50 → 250', 15)]))));
+  t = vistaDe(p);
+  console.log('     ' + t.split(SALTO).slice(-4).join(SALTO + '     '));
+  chk(p.pasa && movs(p).length === 1 && movs(p)[0].tipo === 'pago' && movs(p)[0].forma === 'cuenta' && movs(p)[0].monto_usd === 300 && /Banco Pichincha ref 123456/.test(movs(p)[0].detalle),
+      'foto de un comprobante de 300,00 USD: se anota como pago por CUENTA', '-> ' + JSON.stringify(movs(p)));
+  chk(/✅ Con este pago ya pasarían: ZELLE/.test(t) && /💵 Pago: 300\$ \(foto de pago/.test(t), '...y libera el pedido que esperaba');
+  t = vistaDe(correr('', CON(Object.assign(FOTO({ foto: { tipo: 'comprobante', monto: 300, moneda: 'USD', banco: 'no visible', referencia: 'no visible' } }), SALDO([])))));
+  chk(/💵 Pago: 300\$ \(foto de pago\)/.test(t), 'foto de pago sin pedidos: igual se muestra el pago (y "no visible" no se escribe)', '-> ' + JSON.stringify(t));
+  t = vistaDe(correr('', CON(Object.assign(FOTO({ foto: { tipo: 'comprobante', monto: '500.000', moneda: 'VES' } }), SALDO([])))));
+  chk(/no pude leer el monto en dólares \(leí 500.000 VES\)/.test(t), 'foto de un pago en bolivares: no se anota, avisa que la revisen', '-> ' + JSON.stringify(t));
+  t = vistaDe(correr('', CON(Object.assign(FOTO({ foto: { tipo: 'cuenta' } }), SALDO([])))));
+  chk(/parece los datos de una CUENTA/.test(t), 'foto con los datos de una cuenta: lo dice (pedido en foto)');
+  chk(!correr('', CON(Object.assign(FOTO({ foto: { tipo: 'otra' } }), SALDO([])))).envios.length, 'foto de otra cosa: nada');
+  chk(!correr('', CON(Object.assign(FOTO({}), SALDO([])))).envios.length, 'si la IA no leyo la foto: nada');
+  chk(!correr('', Object.assign(FOTO({ extra: { imagen: true, numero: '593990000003' } }), CON(SALDO([])))).pasa, 'la foto que manda la OPERADORA no va a la IA');
+
+  // "Armar Movimientos": uno por fila y sin repetir la clave
+  const armar = new Function('$input', code('Armar Movimientos'));
+  const filas = armar({ all: () => [{ json: { movimientos: [{ clave: 'A:pago:0' }, { clave: 'A:pago:1' }] } }, { json: { movimientos: [{ clave: 'A:pago:0' }] } }, { json: {} }] });
+  chk(filas.length === 2 && filas[0].json.clave === 'A:pago:0', '"Armar Movimientos": una fila por movimiento, sin repetir la clave');
 }
 
 console.log('');

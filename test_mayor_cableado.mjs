@@ -149,7 +149,12 @@ console.log('=== 4) QUIEN PUEDE MANDAR MENSAJES (Fase 2: solo 2 nodos, y a un de
   const codigos = mayor.nodes.filter(n => n.type.endsWith('.code')).map(n => n.parameters.jsCode).join(String.fromCharCode(10));
   chk(!/\$helpers|httpRequest|fetch\(|axios|XMLHttpRequest/.test(codigos), 'ningun nodo de codigo hace llamadas a internet');
   const tipos = [...new Set(mayor.nodes.map(n => n.type.replace('n8n-nodes-base.', '')))].sort();
-  chk(tipos.every(t => ['stickyNote', 'executeWorkflowTrigger', 'code', 'redis', 'supabase', 'httpRequest', 'if'].includes(t)), 'y no hay ningun otro tipo de nodo (nada de IA, correo, Telegram...)', '-> ' + tipos.join());
+  chk(tipos.every(t => ['stickyNote', 'executeWorkflowTrigger', 'code', 'redis', 'supabase', 'httpRequest', 'if', '@n8n/n8n-nodes-langchain.openAi'].includes(t)), 'y no hay ningun otro tipo de nodo (nada de correo, Telegram...)', '-> ' + tipos.join());
+  // La UNICA IA del mayor (27/11, pedido de Kelvin): "Leer Pago" solo LEE la foto que mando el cliente (como en el detal). No escribe a nadie.
+  const ias = mayor.nodes.filter(n => /openAi/i.test(n.type));
+  chk(ias.length === 1 && ias[0].name === 'Leer Pago' && ias[0].parameters.resource === 'image' && ias[0].parameters.operation === 'analyze',
+      'la unica IA es "Leer Pago" (lee la foto del pago; no escribe a nadie)', '-> ' + ias.map(n => n.name + ':' + n.parameters.resource + '/' + n.parameters.operation));
+  chk(JSON.stringify(((mayor.connections['¿Foto de Pago?'] || {}).main || [])[0].map(c => c.node)) === '["Descargar Foto"]', 'a la IA solo llegan las FOTOS del cliente ("¿Foto de Pago?")');
   // Desde "Mayor Escuchar" nada puede llegar a un nodo que envie
   const alcanzables = new Set(); const pila = ['Mayor Escuchar'];
   while (pila.length) { const x = pila.pop(); for (const s of ((bot.connections[x] || {}).main || [])) for (const c of s) if (!alcanzables.has(c.node)) { alcanzables.add(c.node); pila.push(c.node); } }
@@ -176,15 +181,31 @@ console.log('=== 5) El workflow del mayor ===');
       '"Retiros Recientes": una sola consulta, del mismo grupo y sin el mensaje de ahora (y sigue aunque no haya filas)');
   const sale = n => (((mayor.connections[n] || {}).main || [])[0] || []).map(c => c.node);
   chk(JSON.stringify(sale('Grupos Destino')) === '["Retiros Recientes"]' && JSON.stringify(sale('Retiros Recientes')) === '["Redis Leer Sin Banco"]'
-      && JSON.stringify(sale('Redis Leer Sin Banco')) === '["Decidir Publicacion"]',
-      'el orden es Grupos Destino -> Retiros Recientes -> Redis Leer Sin Banco -> Decidir Publicacion');
+      && JSON.stringify(sale('Redis Leer Sin Banco')) === '["Leer Tasas"]' && JSON.stringify(sale('Leer Tasas')) === '["Formas de Pago Vistas"]'
+      && JSON.stringify(sale('Formas de Pago Vistas')) === '["Saldo del Cliente"]' && JSON.stringify(sale('Saldo del Cliente')) === '["¿Foto de Pago?"]'
+      && JSON.stringify(sale('Leer Pago')) === '["Decidir Publicacion"]',
+      'el orden es Grupos Destino -> Retiros Recientes -> Redis Leer Sin Banco -> Leer Tasas -> Formas de Pago Vistas -> Saldo del Cliente -> ¿Foto de Pago? -> Decidir Publicacion');
+  // el saldo (Parte B): lee la vista saldo_mayor y anota en movimientos_mayor, sin caerse si la tabla no esta
+  const sc = nodo(mayor, 'Saldo del Cliente'), gm = nodo(mayor, 'Guardar Movimientos');
+  chk(sc.parameters.tableId === 'saldo_mayor' && sc.executeOnce === true && sc.onError === 'continueRegularOutput' && sc.alwaysOutputData === true
+      && gm.parameters.tableId === 'movimientos_mayor' && gm.parameters.operation === 'create' && gm.onError === 'continueRegularOutput'
+      && JSON.stringify(sale('Decidir Publicacion')) === '["Enviar","Armar Movimientos"]' && JSON.stringify(sale('Armar Movimientos')) === '["Guardar Movimientos"]',
+      'el saldo: lee saldo_mayor y anota en movimientos_mayor (Decidir Publicacion -> Armar Movimientos -> Guardar Movimientos)');
+  // como pasa la operadora los pedidos del cliente (27/11): una sola consulta, de solo lectura, y si falla igual sigue
+  const fp = nodo(mayor, 'Formas de Pago Vistas');
+  chk(fp.parameters.operation === 'getAll' && fp.parameters.tableId === 'transacciones_mayor_por_whatsapp' && /datos->>cabecera=ilike/.test(fp.parameters.filterString)
+      && fp.executeOnce === true && fp.onError === 'continueRegularOutput' && fp.alwaysOutputData === true && !!fp.credentials, '"Formas de Pago Vistas": una consulta de solo lectura (cabeceras del equipo), y si falla no se cae');
+  // la hoja de tasas (27/11): solo LEE la hoja publicada (GET, sin credenciales), una vez, y si Google no contesta igual sigue
+  const lt = nodo(mayor, 'Leer Tasas');
+  chk(lt.parameters.method === 'GET' && /docs\.google\.com\/spreadsheets\/.*output=csv/.test(lt.parameters.url) && !lt.credentials && lt.executeOnce === true
+      && lt.onError === 'continueRegularOutput' && lt.alwaysOutputData === true, '"Leer Tasas": solo lee la hoja publicada (GET, sin credenciales), una vez, y si falla no se cae');
   // "sin banco" (27/11): las veces que el cliente no puso el banco; UNA sola lectura, y si Redis falla igual sigue
   const sb = nodo(mayor, 'Redis Leer Sin Banco');
   chk(sb.executeOnce === true && sb.alwaysOutputData === true && sb.onError === 'continueRegularOutput' && !!sb.credentials && sb.parameters.operation === 'get'
       && /sinBanco:/.test(sb.parameters.key), '"Redis Leer Sin Banco": una sola lectura (sinBanco:<grupo>), con credencial, y si falla no se cae');
   // el lienzo en orden de proceso (de izquierda a derecha)
   const x = n => nodo(mayor, n).position[0];
-  const fila = ['Hace Falta Publicar?', 'Redis Leer Publicacion', 'Redis Leer Temporal', 'Grupos Destino', 'Retiros Recientes', 'Redis Leer Sin Banco', 'Decidir Publicacion', 'Enviar', 'Fallo la Cita?'];
+  const fila = ['Hace Falta Publicar?', 'Redis Leer Publicacion', 'Redis Leer Temporal', 'Grupos Destino', 'Retiros Recientes', 'Redis Leer Sin Banco', 'Leer Tasas', 'Formas de Pago Vistas', 'Saldo del Cliente', '¿Foto de Pago?', 'Descargar Foto', 'Foto a Binario', 'Leer Pago', 'Decidir Publicacion', 'Enviar', 'Fallo la Cita?'];
   chk(fila.every((n, i) => i === 0 || x(n) > x(fila[i - 1])), 'en el lienzo los nodos van en el orden del proceso, de izquierda a derecha');
   chk(!!nodo(mayor, 'Nota') && /FASE 2/.test(nodo(mayor, 'Nota').parameters.content) && /ENSAYO/.test(nodo(mayor, 'Nota').parameters.content), 'trae la nota que explica la Fase 2 y el modo ensayo');
 }

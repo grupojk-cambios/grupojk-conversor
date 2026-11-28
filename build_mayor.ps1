@@ -27,6 +27,8 @@ $redisCred = @{ redis = @{ id = 'SKkvpS5A65SOcmJs'; name = 'Redis memoria para C
 # Fase 2: modo (ensayo / real), grupo de avisos, horario y reglas de los RST (ver mayor_comun.ps1).
 . (Join-Path $PSScriptRoot 'mayor_comun.ps1')
 $HORAS_MAPA_PUBLICACION = 24 * 7     # cuanto se recuerda que mensaje del banco corresponde a que cliente
+# La hoja de tasas publicada (la misma de src/constants.js y del bot del detal): precios de BINANCE / ZELLE del mayor (27/11).
+$URL_HOJA_TASAS = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRwirpun5iWeuc7fc0mvv-nXQl-2ZyJMkOOJbNGLoh9U5qb5Hy9SRKnldeifWHp8a10MC1UK_0DU8co/pub?output=csv'
 
 # ===================== CODIGO: ENTENDER MENSAJE =====================
 $entenderCode = @'
@@ -215,6 +217,9 @@ function extraerMontos(b){
 // Los espacios sueltos NO se juntan: "9650 098 715 8373" son una clave y un telefono.
 function numerosLargos(b){
   const out = [];
+  // Una cuenta de Venezuela sola en su renglon con espacios o guiones donde caigan ("0102 05182300 0007 2054", protocolo de
+  // pedidos 27/11): si el renglon es solo numeros y al quitar los separadores quedan 20 digitos que empiezan por 01, es UNA cuenta.
+  b = String(b).split('\n').map(l => { const d = l.replace(/[\s.\-]/g, ''); return (/^[\d\s.\-]+$/.test(l.trim()) && /^01\d{18}$/.test(d)) ? d : l; }).join('\n');
   for (const m of b.matchAll(/(?<![\d.,])(\d{4}(?: \d{4}){3,})(?!\d)/g)) out.push(m[1].replace(/ /g, ''));
   const resto = b.replace(/\d{4}(?: \d{4}){3,}/g, ' ');
   for (const m of resto.matchAll(/\d+(?:[-.]\d+)*/g)){ const d = m[0].replace(/[-.]/g, ''); if (d.length >= 8) out.push(d); }
@@ -319,7 +324,7 @@ const PAISES_EXPLICITOS = [['Venezuela', /\bvenezuela\b|🇻🇪/], ['Colombia',
 function paisDe(b, ctx){
   const explicitos = PAISES_EXPLICITOS.filter(([n, rx]) => rx.test(b)).map(([n]) => n);
   const senales = [];
-  if (ctx.cuentaVE || ctx.pagoMovil || /banesco|bicentenario|bancamiga|\bbnc\b|banco de venezuela|\bbdv\b|provincial/.test(b)) senales.push('Venezuela');
+  if (ctx.cuentaVE || ctx.pagoMovil || ctx.cuentaVEmala || /banesco|bicentenario|bancamiga|\bbnc\b|banco de venezuela|\bbdv\b|provincial/.test(b)) senales.push('Venezuela');
   if (/nequi|daviplata|bancolombia|davivienda|\bcop\b|pesos colombianos/.test(b)) senales.push('Colombia');
   if (/\bpix\b|\bbrl\b|reais|\bcpf\b/.test(b)) senales.push('Brasil');
   if (/\byape\b|\bplin\b|\bbcp\b|interbank|\bcci\b|\bsoles\b|\bdni\b|scotiabank/.test(b)) senales.push('Perú');
@@ -434,8 +439,11 @@ function entenderBloque(bloque){
     || (tels.length > 0 && /nequi|daviplata|yape|plin|pix/.test(b))
     || (cedulas.length > 0 && /\brut\b|cuenta vista|cuenta rut|\bdni\b/.test(b))        // en Chile la cuenta RUT es la cedula
     || /\balias\s*[:.]?\s*[a-z0-9._-]{4,}/.test(b);                                       // Argentina
+  // En Venezuela TODA cuenta tiene 20 digitos (protocolo de pedidos, 27/11). Una que empieza por 01 y tiene 16 a 24 digitos
+  // pero no 20 casi seguro esta mal copiada: se marca para avisarlo en la vista previa (y cuenta como señal de Venezuela).
+  const cuentaVEmala = cuentaVE ? '' : (cuentas.find(n => /^01/.test(n) && n.length >= 16 && n.length <= 24 && n.length !== 20) || '');
   if (hayIdentificador){
-    const p = paisDe(b, { cuentaVE, pagoMovil, largos: cuentas, bancoEC, billetera });
+    const p = paisDe(b, { cuentaVE, pagoMovil, largos: cuentas, bancoEC, billetera, cuentaVEmala });
     const hayMonto = mon.usd !== null || mon.local !== null || mon.sinMoneda !== null;
     if (p.pais || hayMonto){
       const pais = p.pais;
@@ -449,7 +457,8 @@ function entenderBloque(bloque){
       if (pais === 'Venezuela') destino = (banco === 'Banesco') ? 'BANESCO' : 'VENEZUELA';
       return { tipo: 'beneficiario', pais, banco: banco || null, monto_usd: usd, monto_local: mon.local, moneda: moneda || null,
                datos: { cuentas, cedulas, telefonos: tels, correos, billetera: billetera || null, tasa: mon.tasa, monto_sin_moneda: (usd === null ? mon.sinMoneda : null),
-                        destino_sugerido: destino, candidatos: p.candidatos, senales: p.senales, pago_movil: pagoMovil || undefined }, bloque };
+                        destino_sugerido: destino, candidatos: p.candidatos, senales: p.senales, pago_movil: pagoMovil || undefined,
+                        cuenta_ve_digitos: (pais === 'Venezuela' && cuentaVEmala) ? cuentaVEmala.length : undefined }, bloque };
     }
   }
   return null;
@@ -574,6 +583,18 @@ if (grupo.tipo === 'tasas'){
     if (pz && fila.tipo === 'otro') fila.datos.pieza = pz;
   }
 }
+// ---------- LA CABECERA DE UN PEDIDO QUE PASO EL EQUIPO (27/11) ----------
+// En los grupos de PAISES la operadora pasa cada pedido con el NOMBRE del cliente arriba y en la 2da linea COMO PAGA: "RST" o
+// "CUENTA" (Kelvin: "esa linea la pone mi operadora porque ya sabemos por donde paga el cliente"; "EST" es un error de tipeo de RST).
+// Se guarda (datos.cabecera + datos.forma_pago) para que el bot aprenda como paga SIEMPRE cada cliente.
+if (esDestino && PISTA.pais && !PISTA.bancoEC && textoCrudo){
+  const ls = limpio.split('\n').map(l => l.trim()).filter(Boolean);
+  if (ls.length >= 2 && !/\d/.test(ls[0]) && ls[0].split(/\s+/).length <= 5){
+    const l2 = minus(ls[1]).replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const forma = /^(rst|est|r s t)$/.test(l2) ? 'RST' : /^(x |por )?(cuenta|transferencia|deposito)$/.test(l2) ? 'CUENTA' : '';
+    if (forma){ fila.datos.cabecera = minus(ls[0]).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); fila.datos.forma_pago = forma; }
+  }
+}
 // Una edicion manda sobre el tipo: el mensaje no trae texto, asi que arriba habria quedado en "otro".
 if (editado){ fila.tipo = 'edicion'; fila.datos.editado_id = editado; }
 // A que mensaje responde (la cita): sirve para reconocer cuando un banco responde a UNA publicacion nuestra.
@@ -625,6 +646,7 @@ $hacePublicarCode = @'
 //   - JEP: un cliente que QUIERE hacer un RST ("quiero retirar por JEP") aunque no mande datos, o el cobrador
 //     que avisa en el grupo de JEP, citando nuestro mensaje, que ya esta en el cajero ("listo, ya estoy aca").
 //   - un "si" / "no" corto del cliente: puede ser la respuesta a "¿Su retiro es de Produbanco?" ("Decidir Publicacion" lo confirma);
+//   - una FOTO del cliente: puede ser la captura de su pago (se lee con IA para el saldo, 27/11);
 // Lo que Kelvin o la operadora escriban en un grupo de cliente nunca dispara nada.
 __PUBLICAR_COMUN__
 __SI_NO__
@@ -640,7 +662,11 @@ const hayPedido = regs.some(r => r.tipo === 'beneficiario');
 const delCliente = fila.autor_rol === 'cliente' || fila.autor_rol === 'operador_extra';
 const t = String(fila.texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 // (un mensaje con UN numero de 6 digitos puede ser la clave temporal de Solidario que el cobrador pidio: "Decidir Publicacion" lo confirma)
-if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pieza || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente' } }];
+// (cabecera: la 1ra palabra del nombre del cliente, para buscar como pasa la operadora sus pedidos en los grupos de paises, 27/11)
+const cabeceraCliente = String(fila.cliente_nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3)[0] || '';
+if (grupo.tipo === 'cliente' && delCliente && (hayRetiro || hayPedido || d.pieza || d.pide_texto || quiereJep(fila.texto) || codigoTemporalDe(fila.texto) || respuestaSiNo(fila.texto))) return [{ json: { motivo: 'cliente', cabecera: cabeceraCliente } }];
+// Una FOTO del cliente (sin un RST en el pie): puede ser la captura de su PAGO. "Leer Pago" la lee con IA, como en el detal (27/11).
+if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'captura') return [{ json: { motivo: 'foto', cabecera: cabeceraCliente } }];
 // El cliente edito un mensaje suyo. Solo importa si lo que edito fue un RST/RCT o una cuenta: eso lo mira
 // "Decidir Publicacion" contra los mensajes recientes del grupo.
 if (grupo.tipo === 'cliente' && delCliente && fila.tipo === 'edicion' && d.editado_id) return [{ json: { motivo: 'edicion' } }];
@@ -825,6 +851,240 @@ function pedidoJuntado(){
   };
 }
 
+// ---------- PRECIOS DEL MAYOR: los de la APP (hoja de tasas + src/motor.js), 27/11 ----------
+// El bot no tiene precios propios: "Leer Tasas" baja la hoja publicada y el motor (src/motor.js, el MISMO de la app, inyectado
+// por el build) saca la tasa. Paga con RST -> 'mayor_rst' (columna "Margen Mayor X RST"); por CUENTA -> 'mayor' ("Margen Envio
+// Mayor"); un pedido de $1,000+ -> 'mayor_volumen' ("Margen Mayor 1000"), si esta llena. Es lo mismo que dice el "Aviso USDT".
+__MOTOR_JK__
+function paisesDeLaHoja(csv){
+  const lineas = String(csv || '').split('\n').filter(l => l.trim());
+  if (lineas.length < 2) return [];
+  const celdas = l => { const out = []; let q = false, cur = ''; for (const c of l.trim()){ if (c === '"') q = !q; else if (c === ',' && !q){ out.push(cur); cur = ''; } else cur += c; } out.push(cur); return out; };
+  const head = celdas(lineas[0]).map(h => h.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
+  const col = (...k) => head.findIndex(h => k.some(x => h.includes(x)));
+  const iCod = col('CODIGO', 'BANCO'), iEM = col('MARGEN ENVIO MAYOR', 'TASA 1 X CUENTA', 'TASA 1 CUENTA'), iRM = col('MARGEN RECIBO MAYOR'),
+        iRST = col('MARGEN MAYOR X RST', 'MARGEN MAYOR RST', 'MAYOR X RST', 'MAYOR RST'), iVol = col('MARGEN MAYOR 1000', 'MARGEN MAYOR VOLUMEN', 'MAYOR 1000');
+  const num = s => { const v = parseFloat(String(s || '').replace(/\s/g, '').replace(',', '.')); return isNaN(v) ? 0 : v; };
+  const numN = s => { if (s === undefined || s === null || String(s).trim() === '') return null; const v = parseFloat(String(s).replace(/\s/g, '').replace(',', '.')); return isNaN(v) ? null : v; };
+  const out = [];
+  for (const l of lineas.slice(1)){
+    const r = celdas(l), nombrePais = (r[0] || '').trim();
+    if (!nombrePais) continue;
+    out.push({ nombre: nombrePais, codigo: (iCod !== -1 && r[iCod]) ? r[iCod].trim().toUpperCase() : nombrePais.slice(0, 3).toUpperCase(),
+               tasaProveedorEnvio: num(r[1]), margenEnvio: num(r[2]), tasaProveedorRecibo: num(r[3]), margenRecibo: num(r[4]),
+               margenEnvioMayor: iEM !== -1 ? numN(r[iEM]) : null, margenReciboMayor: iRM !== -1 ? numN(r[iRM]) : null,
+               margenMayorRST: iRST !== -1 ? numN(r[iRST]) : null, margenMayorVolumen: iVol !== -1 ? numN(r[iVol]) : null });
+  }
+  return out;
+}
+let PAISES_HOJA = [];
+try { PAISES_HOJA = paisesDeLaHoja(($('Leer Tasas').first().json || {}).data); } catch(e){ PAISES_HOJA = []; }
+const paisDeLaHoja = g => PAISES_HOJA.find(p => g === 'BINANCE' ? (p.codigo === 'USDT' || /usdt/i.test(p.nombre)) : (g === 'ZELLE' && /zelle/i.test(p.nombre))) || null;
+// La tasa para ENTREGAR en esa caja dolar (BINANCE / ZELLE) segun como paga el cliente y cuanto es.
+function precioMayor(g, forma, monto){
+  const p = paisDeLaHoja(g);
+  if (!p) return null;
+  const modo = (monto >= 1000 && tieneTasaMayorVolumen(p)) ? 'mayor_volumen' : (forma === 'CUENTA' ? 'mayor' : 'mayor_rst');
+  const tasa = calcularTasaEnvio(p, modo);
+  if (!(tasa > 0) || tasa > 1.5) return null;
+  return { modo, tasa, pct: Math.round((1 - tasa) * 10000) / 100, nombreModo: modo === 'mayor_volumen' ? '$1,000+' : (modo === 'mayor' ? 'por cuenta' : 'RST') };
+}
+const redondear = v => Math.round(v * 100) / 100;
+const fmt2 = v => (v === null || v === undefined) ? '¿?' : (Number.isInteger(v) ? String(v) : v.toFixed(2));
+// ---------- ¿COMO PAGA? "RST" o "CUENTA" (Kelvin, 27/11) ----------
+// La 2da linea del pedido la pone la operadora porque ya sabe por donde paga cada cliente, y de eso depende el PRECIO. El bot
+// lo saca asi, en este orden:
+//   1) por la TASA que uso el cliente: con los dos montos del pedido (Bs / $; en Binance y Zelle, el % entre los dos) se compara
+//      con la tasa RST, la de cuenta y la de $1,000+ de la hoja. Si cuadra con una sola (±0,3% por redondeo), esa es.
+//   2) lo que Kelvin anoto a mano en grupos_mayor.forma_pago ('rst' / 'cuenta').
+//   3) como pasa SIEMPRE la operadora los pedidos de este cliente ("NOMBRE / RST" en los grupos de paises, ultimos 45 dias).
+// Si no se sabe: "RST o CUENTA (?)". Si la tasa que uso no cuadra con ninguna, se avisa con los numeros.
+const PAIS_EN_LA_HOJA = { 'España': 'Europa' };
+function filaDeLaHoja(pais){
+  if (!pais) return null;
+  if (pais === 'USDT') return paisDeLaHoja('BINANCE');
+  if (pais === 'Zelle') return paisDeLaHoja('ZELLE');
+  const k = quitar(PAIS_EN_LA_HOJA[pais] || pais);
+  return PAISES_HOJA.find(p => quitar(p.nombre) === k) || null;
+}
+const fmtTasa = v => (v >= 100 ? (Math.round(v * 10) / 10) : (Math.round(v * 1000) / 1000)).toString().replace('.', ',');
+const fmtPct = t => (Math.round((1 - t) * 10000) / 100) + '%';
+function formaPorTasa(ped, texto, caja){
+  const p = caja ? paisDeLaHoja(caja) : filaDeLaHoja(ped.pais);
+  if (!p) return null;
+  let usada = null;
+  if (caja){
+    const ord = [...new Set(montosEnDolares(texto))].sort((a, b) => b - a);
+    if (ord.length < 2 || !(ord[1] > 0)) return null;
+    usada = (caja === 'BINANCE') ? ord[1] / ord[0] : 2 - ord[0] / ord[1];       // Zelle suma el %: cobrado = entregar x (1 + %)
+  } else {
+    if (!(ped.monto_usd > 0 && ped.monto_local > 0)) return null;
+    usada = ped.monto_local / ped.monto_usd;
+  }
+  const tasas = { RST: calcularTasaEnvio(p, 'mayor_rst'), CUENTA: calcularTasaEnvio(p, 'mayor') };
+  if (tieneTasaMayorVolumen(p)) tasas.VOLUMEN = calcularTasaEnvio(p, 'mayor_volumen');
+  // margen por redondeo: 0,3% (en Venezuela la RST y la de $1,000+ estan a 0,5% una de otra, y la de cuenta a 1%)
+  const tol = caja ? 0.002 : 0.003;
+  const cuadran = Object.keys(tasas).filter(k => tasas[k] > 0 && Math.abs(usada - tasas[k]) / tasas[k] <= tol);
+  const formas = [...new Set(cuadran.map(k => k === 'VOLUMEN' ? 'RST' : k))];        // la de $1,000+ es un precio RST
+  const mostrar = caja ? fmtPct(usada) : fmtTasa(usada), ver = t => caja ? fmtPct(t) : fmtTasa(t);
+  if (formas.length === 1) return { forma: formas[0], usada: mostrar, volumen: cuadran.indexOf('VOLUMEN') !== -1 && cuadran.indexOf('RST') === -1 };
+  if (formas.length > 1) return { forma: '', usada: mostrar, igual: true };              // en ese pais la RST y la de cuenta son iguales
+  return { forma: '', usada: mostrar, noCuadra: true, rst: ver(tasas.RST), cuenta: ver(tasas.CUENTA) };
+}
+function formaDeHabito(){
+  let filas = [];
+  try { filas = $('Formas de Pago Vistas').all().map(i => i.json).filter(r => r && r.id); } catch(e){ filas = []; }
+  const tok = s => quitar(s).split(/[^a-z0-9]+/).filter(w => w.length >= 2);
+  const mios = tok(nombre.replace(/pedidos?|\bjk\b|kelvin/gi, ' '));
+  if (!mios.length) return null;
+  const veces = { RST: 0, CUENTA: 0 };
+  for (const r of filas){
+    let d = r.datos;
+    if (typeof d === 'string'){ try { d = JSON.parse(d); } catch(e){ d = {}; } }
+    if (!d || !d.cabecera || !veces.hasOwnProperty(d.forma_pago)) continue;
+    const cab = tok(d.cabecera);
+    if (cab.length && cab.every(w => mios.some(m => m.startsWith(w)))) veces[d.forma_pago]++;
+  }
+  const n = veces.RST + veces.CUENTA;
+  if (!n) return null;
+  const forma = veces.RST >= veces.CUENTA ? 'RST' : 'CUENTA';
+  return { forma, veces: veces[forma], de: n, clara: veces[forma] / n >= 0.7 };
+}
+function comoPaga(ped, texto, caja){
+  const notas = [];
+  const t = formaPorTasa(ped, texto, caja);
+  const manual = String(grupo.forma_pago || '').toUpperCase();
+  const habito = formaDeHabito();
+  const esperado = (manual === 'RST' || manual === 'CUENTA') ? manual : (habito && habito.clara ? habito.forma : '');
+  let forma = '', por = '';
+  if (t && t.forma){ forma = t.forma; por = 'por la tasa que usó: ' + t.usada + (t.volumen ? ' (la de $1,000+)' : ''); }
+  else if (manual === 'RST' || manual === 'CUENTA'){ forma = manual; por = 'lo anotó Kelvin en grupos_mayor'; }
+  else if (habito && habito.clara){ forma = habito.forma; por = 'así lo pasa siempre la operadora (' + habito.veces + ' de ' + habito.de + ')'; }
+  if (t && t.noCuadra) notas.push('⚠️ Calculó a ' + t.usada + ': no cuadra con la tasa RST (' + t.rst + ') ni con la de cuenta (' + t.cuenta + ') de la hoja.');
+  if (t && t.forma && esperado && esperado !== t.forma) notas.push('⚠️ Calculó con el precio ' + t.forma + ', pero normalmente paga ' + esperado + '.');
+  // por que no se sabe (para la vista previa)
+  const porQueNo = forma ? '' : (!t ? 'el pedido no trae los dos montos para ver la tasa' : t.igual ? 'ahí la tasa RST y la de cuenta son iguales' : 'la tasa no cuadra')
+    + ', y no hay nada anotado para este cliente';
+  return { forma, por, notas, porQueNo };
+}
+// ---------- SALDO DEL CLIENTE: pago + pedidos / pedidos + pago (Parte B, Kelvin 27/11) ----------
+// Cada pago (un RST completo, apenas llega; o la foto de su pago leida con IA) y cada pedido (en $) se anota en movimientos_mayor
+// ("Armar Movimientos" -> "Guardar Movimientos"). "Saldo del Cliente" trae el saldo CORRIDO y los movimientos de HOY.
+// Saldo del dia = pagos + ajustes - pedidos. Los pedidos del dia se cubren en orden de llegada con todo lo pagado en el dia:
+// si alcanza, el pedido esta pagado; si no, espera su pago (sticker "esperando su pago para procesar"). Cuando llega un pago,
+// se dice que pedidos que esperaban ya pasarian. Por ahora todo eso es SOLO vista previa en avisos (los pedidos no se publican).
+const STICKER_ESPERANDO = '__STICKER_BASE__sticker-esperando-su-pago-para-procesar.webp';
+let SALDO = { corrido: 0, hoy: [], error: false };
+try {
+  const s = $('Saldo del Cliente').first().json || {};
+  let hoy = s.hoy;
+  if (typeof hoy === 'string'){ try { hoy = JSON.parse(hoy); } catch(e){ hoy = []; } }
+  SALDO = { corrido: Number(s.saldo_corrido) || 0, hoy: Array.isArray(hoy) ? hoy : [], error: !!s.error };
+} catch(e){ SALDO = { corrido: 0, hoy: [], error: true }; }
+// Lo que leyo la IA de la FOTO del cliente ("Leer Pago"): {"tipo":"comprobante|cuenta|otra","monto":..,"moneda":..,"banco":..,"referencia":..}
+let FOTO = null;
+try {
+  const j = $('Leer Pago').first().json || {};
+  FOTO = JSON.parse(String(j.content || j.text || '').replace(/```json/gi, '').replace(/```/g, '').trim());
+} catch(e){ FOTO = null; }
+const nuevos = [];                 // los movimientos de ESTE mensaje (se anotan y se usan para el saldo)
+const diaEcuador = iso => new Date((Date.parse(iso) || Date.now()) - 5 * 3600000).toISOString().slice(0, 10);
+function anotar(tipo, forma, monto, detalle, msgId){
+  const v = Math.round(Number(monto) * 100) / 100;
+  if (!(v > 0)) return null;
+  const m = { grupo_jid: grupo.grupo_jid, cliente_nombre: nombre, fecha: fila.fecha_mensaje || new Date().toISOString(), dia: diaEcuador(fila.fecha_mensaje),
+              tipo, forma: forma ? String(forma).toLowerCase() : null, monto_usd: v, detalle: String(detalle || '').slice(0, 200),
+              mensaje_id: msgId || fila.mensaje_id, clave: (msgId || fila.mensaje_id) + ':' + tipo + ':' + nuevos.length, estado: 'ok', origen: 'bot' };
+  nuevos.push(m);
+  return m;
+}
+// Que pedidos del dia quedan cubiertos con lo pagado (en orden de llegada; 1$ de tolerancia por redondeo).
+function cubiertos(movs){
+  const pagos = movs.filter(m => m.tipo !== 'pedido').reduce((a, m) => a + (Number(m.monto_usd) || 0), 0);
+  let acum = 0; const out = new Map();
+  for (const m of movs.filter(m => m.tipo === 'pedido')){ acum += Number(m.monto_usd) || 0; out.set(m, acum <= pagos + 1); }
+  return out;
+}
+const cuentasDelDia = movs => { let pagos = 0, pedidos = 0; for (const m of movs){ const v = Number(m.monto_usd) || 0; if (m.tipo === 'pedido') pedidos += v; else pagos += v; } return { pagos, pedidos, saldo: pagos - pedidos }; };
+const conSigno = v => (v >= 0 ? '+' : '-') + fmt2(Math.abs(Math.round(v * 100) / 100)) + '$';
+const horaDe = iso => new Date((Date.parse(iso) || Date.now()) - 5 * 3600000).toISOString().slice(11, 16);
+// Lo que cuesta un pedido en $: el $ del pedido; si solo trae la moneda local, la moneda local / la tasa (RST o cuenta).
+function dolaresDelPedido(ped, forma){
+  if (ped.monto_usd > 0) return ped.monto_usd;
+  if (!(ped.monto_local > 0)) return null;
+  const p = filaDeLaHoja(ped.pais);
+  if (!p) return null;
+  const t = calcularTasaEnvio(p, forma === 'CUENTA' ? 'mayor' : 'mayor_rst');
+  return (t > 0) ? ped.monto_local / t : null;
+}
+// Los montos en dolares escritos en el pedido, en orden ("Pedido USDT / 150$ / Cliente / 145.5$" -> [150, 145.5]).
+function montosEnDolares(texto){
+  const aNum = s => { s = String(s).replace(/[^0-9.,]/g, '').replace(/[.,]+$/, ''); if (!s) return null; const u = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+    let v; if (u === -1) v = parseFloat(s); else { const dec = s.slice(u + 1); v = (dec.length === 3) ? parseFloat(s.replace(/[.,]/g, '')) : parseFloat(s.slice(0, u).replace(/[.,]/g, '') + '.' + dec); }
+    return isNaN(v) ? null : v; };
+  const out = [];
+  for (const m of String(texto || '').matchAll(/\$[ \t]*(\d[\d.,]*\d|\d)|(?<![\w.@$])(\d[\d.,]*\d|\d)[ \t]*(?:\$|usdt\b|usd\b|d[oó]lares)/gi)){
+    const v = aNum(m[1] || m[2]);
+    if (v !== null && v > 0 && out.indexOf(v) === -1) out.push(v);
+  }
+  return out;
+}
+// BINANCE: de todo lo que mando el cliente se pega UNA sola cosa, en este orden (protocolo de pedidos, seccion 8):
+// BEP20 (0x..., 42) > TRC20 (T..., 34) > correo > telefono > ID Binance. Se lee del texto ORIGINAL (las direcciones distinguen mayusculas).
+function destinosBinance(texto){
+  const t = String(texto || ''), out = [];
+  const bep = t.match(/\b0x[a-fA-F0-9]{40}\b/); if (bep) out.push({ tipo: 'BEP20', valor: bep[0] });
+  const trc = t.match(/\bT[1-9A-HJ-NP-Za-km-z]{33}\b/); if (trc) out.push({ tipo: 'TRC20', valor: trc[0] });
+  // otra billetera (ni BEP20 ni TRC20: otra red o mal copiada): se pega, pero se avisa que hay que confirmar la red
+  const otra = (bep || trc) ? null : t.match(/\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{26,60}\b/); if (otra) out.push({ tipo: 'billetera', valor: otra[0] });
+  const correo = t.match(/[^\s@*:]+@[^\s@*]+\.[a-zA-Z]{2,}/); if (correo) out.push({ tipo: 'correo', valor: correo[0] });
+  const tel = t.match(/(?:\+\d{1,3}[\s-]?)\d[\d\s-]{6,14}\d/); if (tel) out.push({ tipo: 'teléfono', valor: tel[0].replace(/[\s-]/g, '') });
+  const id = t.match(/\b(?:binance\s*)?(?:pay\s*)?id\b(?:\s*(?:de\s*)?binance)?\s*[:./]?\s*([A-Za-z0-9_.-]{4,30})/i); if (id) out.push({ tipo: 'ID Binance', valor: id[1] });
+  return out;
+}
+// Un pedido a BINANCE o ZELLE (caja dolar) va en 2 mensajes (protocolo, secciones 1.4, 8 y 9; fotos de los grupos):
+//   1) BINANCE: solo el destino ganador (si es BEP20, otro mensaje que dice "BEP20") | ZELLE: los datos tal cual los mando el cliente
+//   2) lo COBRADO en $ / el NOMBRE del cliente / lo que se ENTREGA ("150 / NOMBRE / 145.5")
+// Binance: el cliente dice lo que paga en $ y se le resta el % ("$1500 - 3% = 1455"). Zelle: dice lo que hay que mandar por Zelle y
+// se le suma el % ("$240 + 3% = 247.20"). Si el cliente escribe los dos montos se usan esos, y se avisa si no cuadran con la hoja.
+function pedidoEnDolares(g, ped, texto, forma, por){
+  const notas = [], info = [];
+  const lista = montosEnDolares(texto);
+  const base = lista.length ? lista : [ped.monto_usd, ped.datos && ped.datos.monto_sin_moneda].filter(v => v !== null && v !== undefined).map(Number);
+  let cobrado = null, entregar = null;
+  if (base.length >= 2){ const ord = [...new Set(base)].sort((a, b) => b - a); cobrado = ord[0]; entregar = ord[1]; }
+  else if (base.length === 1){ if (g === 'BINANCE') cobrado = base[0]; else entregar = base[0]; }
+  const precio = precioMayor(g, forma, cobrado || entregar || 0);
+  if (precio){
+    if (cobrado !== null && entregar === null) entregar = redondear(cobrado * precio.tasa);
+    else if (entregar !== null && cobrado === null) cobrado = redondear(entregar * (1 + precio.pct / 100));
+    else if (cobrado !== null && entregar !== null){
+      // Binance: lo que se entrega sale de lo cobrado (- %). Zelle: lo cobrado sale de lo que se entrega (+ %).
+      const [c2, e2] = (g === 'BINANCE') ? [cobrado, redondear(cobrado * precio.tasa)] : [redondear(entregar * (1 + precio.pct / 100)), entregar];
+      if (Math.abs(c2 - cobrado) > 0.05 || Math.abs(e2 - entregar) > 0.05)
+        notas.push('⚠️ El cliente puso ' + fmt2(cobrado) + ' → ' + fmt2(entregar) + ', pero con el precio ' + precio.nombreModo + ' (' + precio.pct + '%) sería ' + fmt2(c2) + ' → ' + fmt2(e2) + '.');
+    }
+    info.push((forma ? 'Paga con ' + forma + (por ? ' (' + por + ')' : '') : 'No sé si paga con RST o por cuenta: lo calculé con el precio RST')
+      + ' → ' + precio.pct + '% (' + precio.nombreModo + ', de la hoja de tasas).');
+    if (!forma && cobrado !== null){ const pc = precioMayor(g, 'CUENTA', cobrado); if (pc && pc.pct !== precio.pct) info.push('Por cuenta sería ' + pc.pct + '%: ' + fmt2(g === 'BINANCE' ? redondear(cobrado * pc.tasa) : redondear(entregar * (1 + pc.pct / 100))) + '.'); }
+  } else if (cobrado === null || entregar === null) notas.push('⚠️ No pude leer el precio en la hoja de tasas: falta calcular ' + (cobrado === null ? 'lo que se cobra' : 'lo que se entrega') + '.');
+  if (cobrado === null && entregar === null) notas.push('⚠️ Sin monto: falta que diga cuánto.');
+  const msgs = [];
+  if (g === 'BINANCE'){
+    const ds = destinosBinance(texto);
+    if (!ds.length) notas.push('⚠️ No encontré la billetera (BEP20/TRC20), el correo, el teléfono ni el ID de Binance.');
+    else {
+      msgs.push(ds[0].valor);
+      if (ds[0].tipo === 'BEP20') msgs.push('BEP20');
+      if (ds[0].tipo === 'billetera') notas.push('⚠️ La billetera no parece BEP20 ni TRC20: confirma la red con el cliente.');
+      info.push('Se pega ' + (['correo', 'teléfono', 'ID Binance'].indexOf(ds[0].tipo) !== -1 ? 'el ' : 'la ') + ds[0].tipo + (ds.length > 1 ? ' (también mandó ' + unir(ds.slice(1).map(d => d.tipo)) + ': no se pega).' : '.'));
+    }
+  } else msgs.push(texto);
+  msgs.push([fmt2(cobrado), nombre.toUpperCase(), fmt2(entregar)].join('\n'));
+  return { msgs, notas, info, cobrado, entregar };
+}
+
 const envios = [];
 let estadoFila = '', grupoDestinoFila = '', real = false;
 let filaPendiente = 0;
@@ -917,7 +1177,7 @@ else if (grupo.tipo === 'cliente'){
     const hoy = !enBanco && DURA_24H.indexOf(k) === -1;                    // se vence el mismo dia
     const texto = bloque(nombre, reg, false) + (hoy ? '\n' + AVISO_COBRAR_HOY : '');
     const vistaTexto = bloque(nombre, reg, true) + (hoy ? '\n' + AVISO_COBRAR_HOY : '');
-    publicados.push({ k, destinoClave, estado: enBanco ? 'publicado' : (hoy ? 'cobrar_hoy' : 'en_cobrar_manana') });
+    publicados.push({ k, destinoClave, estado: enBanco ? 'publicado' : (hoy ? 'cobrar_hoy' : 'en_cobrar_manana'), reg });
     envios.push({ etapa: 'banco', tipo: 'texto', jid, texto,
                   vista: '➡️ iría a ' + NOMBRE_GRUPO(destinoClave) + (enBanco ? '' : ' (fuera de horario)') + (jid ? '' : ' (grupo todavía no cargado en la tabla)') + ':\n' + vistaTexto,
                   mapa: { cliente_jid: grupo.grupo_jid, cliente_nombre: nombre, id_msg_cliente: msgRef, banco: reg.banco, tipo: reg.tipo, fila_id: filaRef, destino: NOMBRE_GRUPO(destinoClave) },
@@ -932,6 +1192,20 @@ else if (grupo.tipo === 'cliente'){
     const PESO = { en_cobrar_manana: 3, cobrar_hoy: 2, publicado: 1 };
     estadoFila = publicados.map(p => p.estado).sort((a, b) => PESO[b] - PESO[a])[0];
     grupoDestinoFila = [...new Set(publicados.map(p => NOMBRE_GRUPO(p.destinoClave)))].join(', ');
+  }
+  // ---------- el RST/RCT que se publica es un PAGO del cliente: cuenta apenas llega (Kelvin, 27/11) ----------
+  for (const p of publicados) anotar('pago', 'rst', p.reg.monto_usd, (p.reg.tipo === 'rct' ? 'RCT ' : 'RST ') + (p.reg.banco || ''), msgRef);
+  // ---------- la FOTO del cliente, leida con IA ("Leer Pago"): si es el comprobante de su pago en dolares, es un PAGO por cuenta ----------
+  var fotoNota = '';
+  if (fila.tipo === 'captura' && !regs.length && FOTO){
+    const numero = x => { if (typeof x === 'number') return x; const s = String(x || '').replace(/[^0-9.,]/g, '').replace(/[.,]+$/, ''); const u = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+      const v = u === -1 ? parseFloat(s) : (s.length - u - 1 === 3 ? parseFloat(s.replace(/[.,]/g, '')) : parseFloat(s.slice(0, u).replace(/[.,]/g, '') + '.' + s.slice(u + 1))); return isNaN(v) ? 0 : v; };
+    const visible = x => x && !/no visible/i.test(String(x));
+    if (FOTO.tipo === 'comprobante'){
+      const monto = numero(FOTO.monto), mon = String(FOTO.moneda || '').toUpperCase();
+      if (monto > 0 && (!mon || mon === 'USD' || mon === 'USDT')) anotar('pago', 'cuenta', monto, 'foto de pago' + (visible(FOTO.banco) ? ': ' + FOTO.banco : '') + (visible(FOTO.referencia) ? ' ref ' + FOTO.referencia : ''));
+      else fotoNota = '⚠️ La foto parece un pago, pero no pude leer el monto en dólares' + (visible(FOTO.monto) ? ' (leí ' + FOTO.monto + (mon ? ' ' + mon : '') + ')' : '') + ': revísala.';
+    } else if (FOTO.tipo === 'cuenta') fotoNota = '📷 La foto parece los datos de una CUENTA (un pedido en foto): todavía no los leo.';
   }
   // ---------- NO PUSO EL NOMBRE DEL BANCO (27/11) ----------
   // Cada RST sin el nombre del banco (el de "¿es de Guayaquil?" y el de "¿de qué banco es?") se anota (7 dias). Cuando el
@@ -1067,12 +1341,63 @@ else if (grupo.tipo === 'cliente'){
     if (paisSinGrupo.length) notas.push('⚠️ ' + unir(paisSinGrupo) + ': no hay grupo para ese país.');
     const noCargados = nombres.filter(n => !destinos[quitar(n)]);
     if (noCargados.length) notas.push('⚠️ No hay grupo ' + unir(noCargados) + ' en la tabla de grupos.');
-    const sinMonto = pedidos.filter(p => [p.monto_usd, p.monto_local, p.datos && p.datos.monto_sin_moneda].every(v => v === null || v === undefined));
-    if (sinMonto.length) notas.push('⚠️ ' + (pedidos.length > 1 ? sinMonto.length + ' sin monto' : 'Sin monto') + ': falta que diga cuánto.');
-    const donde = nombres.length ? unir(nombres) : 'NINGÚN grupo';
-    const vista = '📦 PEDIDO' + (pedidos.length > 1 ? ' (' + pedidos.length + ' cuentas)' : '') + (juntado ? ' (junté ' + juntado.n + ' mensajes)' : '') + ' → iría a ' + donde + ':\n'
-      + nombre.toUpperCase() + '\n' + textoPedido + (notas.length ? '\n\n' + notas.join('\n') : '');
+    // Venezuela: toda cuenta tiene 20 digitos (protocolo de pedidos). El Pago Movil por ahora SI se acepta (Kelvin, 27/11).
+    for (const p of pedidos.filter(p => p.datos && p.datos.cuenta_ve_digitos)) notas.push('⚠️ La cuenta de Venezuela tiene ' + p.datos.cuenta_ve_digitos + ' dígitos (deben ser 20): hay que pedirle que la revise.');
+    const cabecera = juntado ? ' (junté ' + juntado.n + ' mensajes)' : '';
+    const caja = (pedidos.length === 1 && nombres.length === 1 && (nombres[0] === 'BINANCE' || nombres[0] === 'ZELLE')) ? nombres[0] : '';
+    // RST o CUENTA: por la tasa que uso, lo que anoto Kelvin o como lo pasa siempre la operadora (ver comoPaga)
+    const cp = comoPaga(pedidos[0], textoPedido, caja);
+    const forma = cp.forma;
+    notas.push(...cp.notas);
+    let vista, pedidoCaja = null;
+    if (caja){
+      // ---------- BINANCE / ZELLE: en 2 mensajes, con lo cobrado y lo que se entrega calculados con la hoja de tasas ----------
+      const r = pedidoEnDolares(caja, pedidos[0], textoPedido, forma, cp.por);
+      pedidoCaja = r;
+      vista = '📦 PEDIDO' + cabecera + ' → iría a ' + caja + ', en ' + r.msgs.length + ' mensajes:\n' + r.msgs.map((m, i) => '— ' + (i + 1) + ' —\n' + m).join('\n')
+        + (r.info.length ? '\n\nℹ️ ' + r.info.join(' ') : '') + (notas.concat(r.notas).length ? '\n\n' + notas.concat(r.notas).join('\n') : '');
+    } else {
+      // ---------- los demas paises: el NOMBRE arriba, en la 2da linea como paga (RST o CUENTA) y debajo los datos ----------
+      const sinMonto = pedidos.filter(p => [p.monto_usd, p.monto_local, p.datos && p.datos.monto_sin_moneda].every(v => v === null || v === undefined));
+      if (sinMonto.length) notas.push('⚠️ ' + (pedidos.length > 1 ? sinMonto.length + ' sin monto' : 'Sin monto') + ': falta que diga cuánto.');
+      notas.push(forma ? 'ℹ️ ' + forma + ': ' + cp.por + '.' : 'ℹ️ No sé si paga con RST o por cuenta: ' + cp.porQueNo + '.');
+      const donde = nombres.length ? unir(nombres) : 'NINGÚN grupo';
+      vista = '📦 PEDIDO' + (pedidos.length > 1 ? ' (' + pedidos.length + ' cuentas)' : '') + cabecera + ' → iría a ' + donde + ':\n'
+        + nombre.toUpperCase() + '\n' + (forma || 'RST o CUENTA (?)') + '\n\n' + textoPedido + (notas.length ? '\n\n' + notas.join('\n') : '');
+    }
     envios.push({ etapa: 'pedido', soloEnsayo: true, tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, vista });
+    // el pedido se anota en $, al precio de como paga (Binance/Zelle: lo cobrado)
+    if (caja){ if (pedidoCaja && pedidoCaja.cobrado > 0) anotar('pedido', forma || null, pedidoCaja.cobrado, caja + ' ' + fmt2(pedidoCaja.cobrado) + ' → ' + fmt2(pedidoCaja.entregar)); }
+    else for (const p of pedidos){
+      const usd = dolaresDelPedido(p, forma);
+      if (usd > 0) anotar('pedido', forma || null, usd, (grupoDe(p) || p.pais || 'pedido') + (p.monto_usd > 0 ? '' : ' ' + fmt2(p.monto_local) + ' ' + (p.moneda || '') + ' (convertido)'));
+    }
+  }
+  // ---------- SALDO DEL DIA (vista previa): pago + pedidos / pedidos + pago ----------
+  // Solo sale cuando importa: hay un pedido nuevo, un pago que libera pedidos o que llega con pedidos esperando, o algo raro en la
+  // foto. Un RST cualquiera sin pedidos de por medio se anota callado (si no, en modo real cada RST mandaria un aviso de mas).
+  const antesS = SALDO.hoy, despuesS = antesS.concat(nuevos), cubAS = cubiertos(antesS), cubDS = cubiertos(despuesS);
+  const hayEsperando = [...cubDS.values()].some(v => v === false);
+  const importa = nuevos.some(m => m.tipo === 'pedido') || antesS.some(m => m.tipo === 'pedido' && cubAS.get(m) === false) || hayEsperando || !!fotoNota
+    || (fila.tipo === 'captura' && nuevos.length > 0);
+  if (importa && (nuevos.length || fotoNota)){
+    const antes = antesS, despues = despuesS;
+    const cubA = cubAS, cubD = cubDS, d = cuentasDelDia(despues);
+    const lineas = [];
+    for (const m of nuevos.filter(m => m.tipo === 'pago')) lineas.push('💵 Pago: ' + fmt2(m.monto_usd) + '$ (' + m.detalle + ')');
+    for (const m of nuevos.filter(m => m.tipo === 'pedido')) lineas.push((cubD.get(m) ? '✅ Pedido pagado: ' : '⏳ Pedido esperando su pago: ') + m.detalle + ' = ' + fmt2(m.monto_usd) + '$');
+    const liberados = antes.filter(m => m.tipo === 'pedido' && cubA.get(m) === false && cubD.get(m) === true);
+    if (liberados.length) lineas.push('✅ Con este pago ya pasarían: ' + liberados.map(m => m.detalle + ' (' + horaDe(m.fecha) + ', ' + fmt2(Number(m.monto_usd)) + '$)').join('; '));
+    if (fotoNota) lineas.push(fotoNota);
+    if (nuevos.length){
+      const r2 = v => Math.round(v * 100) / 100;
+      const delta = nuevos.reduce((a, m) => a + (m.tipo === 'pedido' ? -m.monto_usd : m.monto_usd), 0);
+      lineas.push('💰 Hoy: pagó ' + fmt2(r2(d.pagos)) + '$ · pidió ' + fmt2(r2(d.pedidos)) + '$ → ' + (d.saldo >= 0 ? 'le sobran ' + fmt2(r2(d.saldo)) : 'le faltan ' + fmt2(r2(-d.saldo))) + '$ · corrido: ' + conSigno(SALDO.corrido + delta));
+    }
+    if (nuevos.some(m => m.tipo === 'pedido' && !cubD.get(m))) lineas.push('➡️ al cliente: sticker "Esperando su pago para procesar"');
+    if (SALDO.error) lineas.push('⚠️ No pude leer los saldos: ¿ya está creada la tabla movimientos_mayor en Supabase (sql/mayor_saldos.sql)?');
+    const vistaSaldo = lineas.join('\n');
+    envios.push({ etapa: 'saldo', soloEnsayo: true, tipo: 'texto', jid: GRUPO_AVISOS, texto: vistaSaldo, vista: vistaSaldo });
   }
 } else if (grupo.tipo === 'destino' && pub && pub.cliente_jid && datos.cita_id){
   // ---------- el banco responde a UNA publicacion nuestra ----------
@@ -1122,20 +1447,62 @@ if (!real){
   const anotar = filaEditada || estadoFila === 'confirmar_banco' || (pendiente && respuesta === 'no');
   // El contador de "sin banco" SI se anota en ensayo: asi la vista previa muestra el recordatorio firme cuando toca.
   return [{ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: (anotar ? estadoFila : 'ensayo'), grupo_destino: '',
-                    redisSet: redisSiempre.length ? redisSiempre : undefined } }];
+                    redisSet: redisSiempre.length ? redisSiempre : undefined, movimientos: nuevos.length ? nuevos : undefined } }];
 }
 // REAL: los RST salen de verdad, pero los PEDIDOS siguen siendo solo vista previa en el grupo de avisos.
 const salida = envios.filter(e => !e.soloEnsayo).map(e => ({ json: Object.assign({ fila_id: filaDestino, estado_fila: estadoFila, grupo_destino: grupoDestinoFila }, e) }));
-if (redisSiempre.length && salida.length) salida[0].json.redisSet = (salida[0].json.redisSet || []).concat(redisSiempre);
 const soloVista = envios.filter(e => e.soloEnsayo);
 if (soloVista.length){
   const vista = '🧪 ENSAYO — ' + nombre + (grupo.nombre ? ' (' + grupo.nombre + ')' : '') + '\n\n' + soloVista.map(e => e.vista).join('\n\n');
   salida.push({ json: { etapa: 'ensayo', tipo: 'texto', jid: GRUPO_AVISOS, texto: vista, fila_id: filaDestino, estado_fila: estadoFila || 'ensayo', grupo_destino: grupoDestinoFila } });
 }
+// (despues de armar TODA la salida: un mensaje que solo trae un pedido sale solo con la vista previa, y ahi van tambien)
+if (redisSiempre.length && salida.length) salida[0].json.redisSet = (salida[0].json.redisSet || []).concat(redisSiempre);
+// los pagos y pedidos de este mensaje se anotan en movimientos_mayor ("Armar Movimientos"), en ensayo y en real
+if (nuevos.length && salida.length) salida[0].json.movimientos = nuevos;
 return salida;
 '@
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__HORARIO_JK__', $horarioJs).Replace('__PUBLICAR_COMUN__', $publicarJs).Replace('__SI_NO__', $siNoJs)
 $decidirPublicacionCode = $decidirPublicacionCode.Replace('__MODO__', $MAYOR_MODO).Replace('__GRUPO_AVISOS__', $GRUPO_AVISOS).Replace('__STICKER_BASE__', $STICKER_BASE)
+
+# ===================== MOTOR DE CALCULO (src/motor.js, el MISMO de la app) =====================
+# Los precios de los pedidos a BINANCE / ZELLE salen de aqui (27/11). Igual que en build_ia_atencion.ps1: se le quitan los
+# "export" y se inyecta el texto tal cual. Si el motor cambia, hay que volver a construir y desplegar el mayor.
+$motorPath = Join-Path $PSScriptRoot 'src\motor.js'
+if(-not (Test-Path $motorPath)){ throw "No encontre el motor en $motorPath." }
+$motorJs = [System.IO.File]::ReadAllText($motorPath, [System.Text.Encoding]::UTF8)
+if($motorJs.Length -gt 0 -and [int][char]$motorJs[0] -eq 0xFEFF){ $motorJs = $motorJs.Substring(1) }
+$motorJs = $motorJs -replace '(?m)^export\s+function\s+', 'function '
+if($motorJs -match '(?m)^\s*(export|import)\s'){ throw 'src/motor.js tiene import/export que no supe quitar.' }
+foreach($obligatoria in @('calcularTasaEnvio','tieneTasaMayorVolumen','tieneTasaMayorRST')){
+  if($motorJs -notmatch ('(?m)^function\s+' + $obligatoria + '\b')){ throw "A src/motor.js le falta la funcion '$obligatoria'. El mayor la necesita." }
+}
+$decidirPublicacionCode = $decidirPublicacionCode.Replace('__MOTOR_JK__', $motorJs)
+if($decidirPublicacionCode.Contains('__MOTOR_JK__')){ throw 'Quedo un __MOTOR_JK__ sin reemplazar en Decidir Publicacion.' }
+
+# ===================== PARTE B (27/11): LA FOTO DEL PAGO Y LOS MOVIMIENTOS DEL SALDO =====================
+$fotoABinarioCode = @'
+// Convierte el base64 de la foto (de Evolution) en binario para que GPT-4o-mini la lea (igual que en "Bot JK - Procesar Media").
+const b64 = $json.base64;
+if (!b64) return [{ json: { sinImagen: true } }];
+return [{ json: { mimetype: $json.mimetype || 'image/jpeg' }, binary: { data: { data: b64, mimeType: $json.mimetype || 'image/jpeg', fileName: 'pago.jpg' } } }];
+'@
+$PROMPT_LEER_PAGO = @'
+Esta imagen la envio un cliente MAYORISTA de una casa de cambio de Ecuador (Cambios JK) en su grupo de WhatsApp. Responde SOLO un JSON valido, sin texto extra. Si es el comprobante o la captura de un pago, deposito o transferencia que hizo el cliente: {"tipo": "comprobante", "monto": <numero con punto decimal, sin simbolos ni separador de miles>, "moneda": "USD | USDT | VES | COP | PEN | ... (el codigo de la moneda del monto; en Ecuador es USD)", "banco": "<banco desde donde pago o al que deposito>", "fecha": "<fecha>", "referencia": "<numero de referencia o de comprobante>"}. Si son los datos de una cuenta bancaria o una billetera (un pedido): {"tipo": "cuenta"}. Si es otra cosa: {"tipo": "otra"}. Si un dato no se ve, escribe "no visible".
+'@
+$armarMovimientosCode = @'
+// Los pagos y pedidos de este mensaje (Parte B, 27/11): "Decidir Publicacion" los trae en el campo "movimientos".
+// Uno por fila para "Guardar Movimientos" (movimientos_mayor). La "clave" es unica: si llegara dos veces, no se cuenta dos veces.
+const out = [], vistos = new Set();
+for (const it of $input.all()){
+  for (const m of ((it.json || {}).movimientos || [])){
+    if (!m || !m.clave || vistos.has(m.clave)) continue;
+    vistos.add(m.clave);
+    out.push({ json: m });
+  }
+}
+return out;
+'@
 
 # ===================== CODIGO: ARMAR MAPA (Fase 2) =====================
 $armarMapaCode = @'
@@ -1273,7 +1640,9 @@ El bot principal le pasa a este workflow cada mensaje de los **grupos del mayor*
 
 **Monto pegado al banco** (27/11): "Pichincha 140 / 099 ... / Código ..." -> el 140 es el monto (antes los pedazos del celular lo tapaban).
 
-**Pedidos a países** (solo vista previa en avisos, aun en modo real): la cuenta del cliente con el país y el grupo al que iría. Si el pedido viene en varios mensajes del mismo cliente con menos de 3 minutos entre uno y otro (la cuenta en uno y el monto en otro, o billetera + correo + monto), los junta en un solo pedido. En Brasil la llave PIX puede ser el mismo número de la cédula (CPF).
+**Pedidos a países** (solo vista previa en avisos, aun en modo real), según `EJEMPLOS PARA EL BOT/protocolo_para_pedidos.md` (27/11): el NOMBRE del cliente arriba, en la 2da línea cómo paga (**RST** o **CUENTA**: un RST suyo de los últimos 30 min = RST; la foto de su pago = CUENTA) y debajo los datos. **BINANCE y ZELLE van en 2 mensajes**: 1) Binance: solo el destino que gana (BEP20 > TRC20 > correo > teléfono > ID; si es BEP20, otro mensaje "BEP20") / Zelle: los datos tal cual; 2) lo cobrado / NOMBRE / lo que se entrega, con los precios de la APP (nodo "Leer Tasas" = la hoja publicada + `src/motor.js`: RST, por cuenta o $1,000+). Venezuela: la cuenta debe tener 20 dígitos (si no, avisa); el Pago Móvil por ahora sí se acepta. La 2da línea (RST o CUENTA) sale de la tasa que usó el cliente, de `grupos_mayor.forma_pago` o de cómo pasa siempre la operadora a ese cliente (nodo "Formas de Pago Vistas").
+
+**Saldo del cliente** (Parte B, 27/11, en ensayo): cada pago (un RST completo apenas llega, o la FOTO de su pago leída con IA en "Leer Pago") y cada pedido en $ se anotan en `movimientos_mayor` ("Armar Movimientos" → "Guardar Movimientos"); "Saldo del Cliente" lee la vista `saldo_mayor` (saldo corrido + movimientos de hoy). Con el saldo del DÍA se ve si cada pedido ya está pagado o espera su pago (sticker "esperando su pago para procesar"), y cuando llega un pago, qué pedidos ya pasarían. Los saldos de antes los anota Kelvin a mano como "ajuste" (ver `sql/mayor_saldos.sql`). Si el pedido viene en varios mensajes del mismo cliente con menos de 3 minutos entre uno y otro (la cuenta en uno y el monto en otro, o billetera + correo + monto), los junta en un solo pedido. En Brasil la llave PIX puede ser el mismo número de la cédula (CPF).
 
 **Alertas de vencimiento** (filas de abajo): cada RST que esta en el grupo de su banco se anota en `vigilancia_rst_mayor` con su hora de vencimiento (los pegados a mano y los del bot). Las reacciones de los cobradores (cualquier emoji menos la X = cobrado) se anotan alli. El workflow "Mayor: alertas de vencimiento" avisa en el grupo del banco, citando el RST, cuando falta 1 hora (5 min en JEP) y nadie lo marco como cobrado.
 
@@ -1347,9 +1716,10 @@ $nodes = @(
     # codigo cuando el cliente lo manda repetido o corregido (revision diaria del 25/11). executeOnce: "Grupos Destino" sale con
     # una fila por banco y esta consulta se hace UNA sola vez.
     # Desde el 27/11 tambien trae las filas 'otro' (ahi quedan los pedazos de pedido: un monto o un correo suelto) para juntar un
-    # pedido mandado en varios mensajes; por eso van primero las mas nuevas (order) y el limite es 60.
+    # pedido mandado en varios mensajes; por eso van primero las mas nuevas (order) y el limite es 60. Y las 'captura' (la foto
+    # del pago del cliente): con eso se sabe si un pedido se paga por CUENTA (con un RST reciente, se paga con RST).
     parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_mayor_por_whatsapp'; returnAll = $false; limit = 60; filterType = 'string'
-                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid + "&tipo=in.(rst,rct,mixto,beneficiario,otro)&fecha_mensaje=gte." + new Date(Date.now() - 30 * 60000).toISOString() + "&mensaje_id=neq." + $("Decidir").first().json.mensaje_id + "&order=fecha_mensaje.desc" }}' }
+                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid + "&tipo=in.(rst,rct,mixto,beneficiario,otro,captura)&fecha_mensaje=gte." + new Date(Date.now() - 30 * 60000).toISOString() + "&mensaje_id=neq." + $("Decidir").first().json.mensaje_id + "&order=fecha_mensaje.desc" }}' }
     id = 'c1d2e3f4-0027-4b00-8b00-mayor0000027'; name = 'Retiros Recientes'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(1496,480)
     executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
   },
@@ -1362,8 +1732,71 @@ $nodes = @(
     executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $redisCred
   },
   [ordered]@{
+    # La hoja de tasas PUBLICADA (la misma que lee la app y el bot del detal; solo lectura, sin credenciales). De ahi salen los
+    # precios del mayor para los pedidos a BINANCE y ZELLE (27/11). Si Google no contesta, sigue: la vista previa avisa que no pudo.
+    parameters = @{ method = 'GET'; url = $URL_HOJA_TASAS; options = @{ timeout = 10000; response = @{ response = @{ responseFormat = 'text'; outputPropertyName = 'data' } } } }
+    id = 'c1d2e3f4-0029-4b00-8b00-mayor0000029'; name = 'Leer Tasas'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1848,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true
+  },
+  [ordered]@{
+    # ¿Como pasa la operadora los pedidos de ESTE cliente en los grupos de paises? ("NOMBRE / RST" o "NOMBRE / CUENTA", 27/11).
+    # Busca las cabeceras de los ultimos 45 dias que tengan la 1ra palabra del nombre del cliente ("Hace Falta Publicar?" la
+    # saca); "Decidir Publicacion" se queda solo con las que son de verdad de este cliente.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'transacciones_mayor_por_whatsapp'; returnAll = $false; limit = 40; filterType = 'string'
+                    filterString = '={{ "datos->>cabecera=ilike.*" + ($("Hace Falta Publicar?").first().json.cabecera || "sin-cliente-xyz") + "*&fecha_mensaje=gte." + new Date(Date.now() - 45 * 86400000).toISOString() + "&order=fecha_mensaje.desc" }}' }
+    id = 'c1d2e3f4-0030-4b00-8b00-mayor0000030'; name = 'Formas de Pago Vistas'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2024,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
+  },
+  [ordered]@{
+    # El saldo del cliente (Parte B, 27/11): la vista saldo_mayor (sql/mayor_saldos.sql) trae el saldo CORRIDO y los movimientos de HOY.
+    parameters = @{ resource = 'row'; operation = 'getAll'; tableId = 'saldo_mayor'; returnAll = $false; limit = 1; filterType = 'string'
+                    filterString = '={{ "grupo_jid=eq." + $("Cuando lo Llama el Bot").first().json.grupo.grupo_jid }}' }
+    id = 'c1d2e3f4-0031-4b00-8b00-mayor0000031'; name = 'Saldo del Cliente'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2200,480)
+    executeOnce = $true; onError = 'continueRegularOutput'; alwaysOutputData = $true; credentials = $supaCred
+  },
+  [ordered]@{
+    # Solo las FOTOS del cliente van a la IA (cuesta plata): lo demas sigue directo a "Decidir Publicacion".
+    parameters = [ordered]@{ conditions = [ordered]@{
+        options = [ordered]@{ version = 2; typeValidation = 'loose'; leftValue = ''; caseSensitive = $true }
+        conditions = @( ,[ordered]@{ id = 'foto-pago-1'; leftValue = '={{ $("Hace Falta Publicar?").first().json.motivo }}'; rightValue = 'foto'; operator = [ordered]@{ operation = 'equals'; type = 'string' } } )
+        combinator = 'and' }; options = @{} }
+    id = 'c1d2e3f4-0032-4b00-8b00-mayor0000032'; name = '¿Foto de Pago?'; type = 'n8n-nodes-base.if'; typeVersion = 2.2; position = @(2376,480)
+  },
+  [ordered]@{
+    # Baja la foto de Evolution (igual que "Bot JK - Procesar Media" del detal).
+    parameters = [ordered]@{ method = 'POST'; url = 'http://evolution-api:8080/chat/getBase64FromMediaMessage/BOT%20JK%20Kelvin'
+                    authentication = 'genericCredentialType'; genericAuthType = 'httpHeaderAuth'; sendHeaders = $true
+                    headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
+                    jsonBody = '={{ JSON.stringify({ message: { key: { id: $("Decidir").first().json.mensaje_id } }, convertToMp4: false }) }}'; options = @{ timeout = 30000 } }
+    id = 'c1d2e3f4-0033-4b00-8b00-mayor0000033'; name = 'Descargar Foto'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2552,660)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true; credentials = $evoHeaderCred
+  },
+  [ordered]@{
+    parameters = @{ jsCode = $fotoABinarioCode }
+    id = 'c1d2e3f4-0034-4b00-8b00-mayor0000034'; name = 'Foto a Binario'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2728,660)
+  },
+  [ordered]@{
+    # GPT-4o-mini lee la foto (el mismo modelo y la misma credencial que el detal). Solo dice que es y, si es un pago, cuanto.
+    parameters = [ordered]@{ resource = 'image'; operation = 'analyze'; inputType = 'base64'; binaryPropertyName = 'data'; text = $PROMPT_LEER_PAGO
+                    modelId = [ordered]@{ __rl = $true; mode = 'list'; value = 'gpt-4o-mini'; cachedResultName = 'gpt-4o-mini' }; options = @{} }
+    id = 'c1d2e3f4-0035-4b00-8b00-mayor0000035'; name = 'Leer Pago'; type = '@n8n/n8n-nodes-langchain.openAi'; typeVersion = 1.8; position = @(2904,660)
+    onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000; alwaysOutputData = $true
+    credentials = @{ openAiApi = @{ id = '44lRGIyEnSk1lMc5'; name = 'cambios jk para n8n' } }
+  },
+  [ordered]@{
+    # Los pagos y pedidos que "Decidir Publicacion" saco de este mensaje (Parte B): uno por fila, para "Guardar Movimientos".
+    parameters = @{ jsCode = $armarMovimientosCode }
+    id = 'c1d2e3f4-0036-4b00-8b00-mayor0000036'; name = 'Armar Movimientos'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3256,-60)
+  },
+  [ordered]@{
+    # Se anotan en movimientos_mayor (sql/mayor_saldos.sql). La "clave" es unica: un mismo mensaje no se cuenta dos veces.
+    parameters = @{ resource = 'row'; operation = 'create'; tableId = 'movimientos_mayor'; dataToSend = 'autoMapInputData' }
+    id = 'c1d2e3f4-0037-4b00-8b00-mayor0000037'; name = 'Guardar Movimientos'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3432,-60)
+    onError = 'continueRegularOutput'; credentials = $supaCred
+  },
+  [ordered]@{
     parameters = @{ jsCode = $decidirPublicacionCode }
-    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(1760,300)
+    id = 'c1d2e3f4-0013-4b00-8b00-mayor0000013'; name = 'Decidir Publicacion'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3080,300)
   },
   [ordered]@{
     # UN nodo para texto y sticker. En modo ensayo el unico destino es el grupo de avisos.
@@ -1372,7 +1805,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify($json.tipo === "sticker" ? { number: $json.jid, sticker: $json.sticker } : Object.assign({ number: $json.jid, text: $json.texto }, $json.citar ? { quoted: { key: { id: $json.citar } } } : {})) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(1936,300)
+    id = 'c1d2e3f4-0014-4b00-8b00-mayor0000014'; name = 'Enviar'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3256,300)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1380,7 +1813,7 @@ $nodes = @(
     # Si fallo y llevaba cita (el mensaje citado a veces ya no esta en Evolution), se reintenta SIN cita:
     # una cita que no funcione nunca puede dejar a un cliente sin su respuesta.
     parameters = @{ conditions = @{ boolean = @( @{ value1 = '={{ !!$json.error && !!$("Decidir Publicacion").item.json.citar }}'; value2 = '={{true}}' } ) } }
-    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(2112,300)
+    id = 'c1d2e3f4-0015-4b00-8b00-mayor0000015'; name = 'Fallo la Cita?'; type = 'n8n-nodes-base.if'; typeVersion = 1; position = @(3432,300)
   },
   [ordered]@{
     parameters = @{ method = 'POST'; url = '={{ "http://evolution-api:8080/message/sendText/BOT%20JK%20Kelvin" }}'
@@ -1388,7 +1821,7 @@ $nodes = @(
                     headerParameters = @{ parameters = @( @{ name = 'Content-Type'; value = 'application/json' } ) }; sendBody = $true; specifyBody = 'json'
                     jsonBody = '={{ JSON.stringify({ number: $("Decidir Publicacion").item.json.jid, text: $("Decidir Publicacion").item.json.texto }) }}'
                     options = @{} }
-    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(2288,480)
+    id = 'c1d2e3f4-0016-4b00-8b00-mayor0000016'; name = 'Reenviar sin Cita'; type = 'n8n-nodes-base.httpRequest'; typeVersion = 4; position = @(3608,480)
     onError = 'continueRegularOutput'; retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000; alwaysOutputData = $true
     credentials = $evoHeaderCred
   },
@@ -1399,17 +1832,17 @@ $nodes = @(
                     fieldsUi = @{ fieldValues = @(
                       @{ fieldId = 'estado'; fieldValue = '={{ $json.error ? "error_envio" : $("Decidir Publicacion").item.json.estado_fila }}' },
                       @{ fieldId = 'grupo_destino'; fieldValue = '={{ $("Decidir Publicacion").item.json.grupo_destino || "" }}' } ) } }
-    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2464,120)
+    id = 'c1d2e3f4-0017-4b00-8b00-mayor0000017'; name = 'Actualizar Fila'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3784,120)
     onError = 'continueRegularOutput'; credentials = $supaCred
   },
   [ordered]@{
     parameters = @{ jsCode = $armarMapaCode }
-    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2464,300)
+    id = 'c1d2e3f4-0018-4b00-8b00-mayor0000018'; name = 'Armar Mapa'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3784,300)
   },
   [ordered]@{
     # Cada valor trae su propio tiempo de vida (ttl en segundos): la publicacion 7 dias, el permiso de JEP unas horas o minutos.
     parameters = @{ operation = 'set'; key = '={{ $json.clave }}'; value = '={{ $json.valor }}'; keyType = 'string'; expire = $true; ttl = ('={{ $json.ttl || ' + ($HORAS_MAPA_PUBLICACION * 3600) + ' }}') }
-    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(2640,300)
+    id = 'c1d2e3f4-0019-4b00-8b00-mayor0000019'; name = 'Redis Guardar Publicacion'; type = 'n8n-nodes-base.redis'; typeVersion = 1; position = @(3960,300)
     onError = 'continueRegularOutput'; credentials = $redisCred
   },
   # ----- ALERTAS DE VENCIMIENTO (protocolo, seccion 7): reacciones de los cobradores y RST vigilados -----
@@ -1443,11 +1876,11 @@ $nodes = @(
   [ordered]@{
     # Un RST que publico el propio bot en el grupo de su banco (solo en modo real).
     parameters = @{ jsCode = $armarVigilanciaCode }
-    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(2464,900)
+    id = 'c1d2e3f4-0024-4b00-8b00-mayor0000024'; name = 'Armar Vigilancia'; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(3784,900)
   },
   [ordered]@{
     parameters = @{ resource = 'row'; operation = 'create'; tableId = 'vigilancia_rst_mayor'; dataToSend = 'autoMapInputData'; inputsToIgnore = '' }
-    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(2640,900)
+    id = 'c1d2e3f4-0025-4b00-8b00-mayor0000025'; name = 'Anotar Vigilancia Bot'; type = 'n8n-nodes-base.supabase'; typeVersion = 1; position = @(3960,900)
     onError = 'continueRegularOutput'; credentials = $supaCred
   }
 )
@@ -1469,8 +1902,19 @@ $connections = [ordered]@{
   'Redis Leer Temporal'    = @{ main = @( ,@( @{ node='Grupos Destino'; type='main'; index=0 } ) ) }
   'Grupos Destino'         = @{ main = @( ,@( @{ node='Retiros Recientes'; type='main'; index=0 } ) ) }
   'Retiros Recientes'      = @{ main = @( ,@( @{ node='Redis Leer Sin Banco'; type='main'; index=0 } ) ) }
-  'Redis Leer Sin Banco'   = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
-  'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 } ) ) }
+  'Redis Leer Sin Banco'   = @{ main = @( ,@( @{ node='Leer Tasas'; type='main'; index=0 } ) ) }
+  'Leer Tasas'             = @{ main = @( ,@( @{ node='Formas de Pago Vistas'; type='main'; index=0 } ) ) }
+  'Formas de Pago Vistas'  = @{ main = @( ,@( @{ node='Saldo del Cliente'; type='main'; index=0 } ) ) }
+  'Saldo del Cliente'      = @{ main = @( ,@( @{ node='¿Foto de Pago?'; type='main'; index=0 } ) ) }
+  '¿Foto de Pago?'         = @{ main = (
+      @( ,@( @{ node='Descargar Foto'; type='main'; index=0 } ) ) +
+      @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) )
+    ) }
+  'Descargar Foto'         = @{ main = @( ,@( @{ node='Foto a Binario'; type='main'; index=0 } ) ) }
+  'Foto a Binario'         = @{ main = @( ,@( @{ node='Leer Pago'; type='main'; index=0 } ) ) }
+  'Leer Pago'              = @{ main = @( ,@( @{ node='Decidir Publicacion'; type='main'; index=0 } ) ) }
+  'Decidir Publicacion'    = @{ main = @( ,@( @{ node='Enviar'; type='main'; index=0 }, @{ node='Armar Movimientos'; type='main'; index=0 } ) ) }
+  'Armar Movimientos'      = @{ main = @( ,@( @{ node='Guardar Movimientos'; type='main'; index=0 } ) ) }
   'Enviar'                 = @{ main = @( ,@( @{ node='Fallo la Cita?'; type='main'; index=0 } ) ) }
   'Fallo la Cita?'         = @{ main = (
       @( ,@( @{ node='Reenviar sin Cita'; type='main'; index=0 } ) ) +
